@@ -1,7 +1,17 @@
 
 # common.py - shared utilities for Solitaire Suite
+import os
 import pygame
 from collections import deque
+
+# --- Image card settings ---
+USE_IMAGE_CARDS = True
+IMAGE_CARDS_DIR = os.path.join(os.path.dirname(__file__), "assets", "cards", "PNG", "Medium")
+
+# Preferred back (will auto‑fallback if file missing)
+BACK_COLOR = "Blue"      # "Blue" | "Grey" | "Red"
+BACK_VARIANT = 1         # 1 | 2
+
 
 # ---------- Configuration ----------
 SCREEN_W, SCREEN_H = 1280, 800
@@ -100,7 +110,88 @@ def draw_suit_shape(surface, center, suit_index, color, size=42):
         stem_w = max(6, size//6)
         pygame.draw.rect(surface, color, (x - stem_w//2, y + r, stem_w, size//2))
 
+# Cache
+_img_face_cache = {}   # (suit, rank) -> Surface
+_img_back_cache = None
+
+# Suit index -> name(s) used in filenames; try both to be safe
+_SUITS_PRIMARY  = {0: "Spades",   1: "Hearts",   2: "Diamonds", 3: "Clubs"}
+_SUITS_ALT      = {0: "Spade",    1: "Heart",    2: "Diamond",  3: "Club"}  # just in case
+
+def _face_filename_stems(suit_index, rank):
+    """Yield plausible filename stems (without extension) for a card face."""
+    yield f"{_SUITS_PRIMARY[suit_index]} {rank}"
+    yield f"{_SUITS_ALT[suit_index]} {rank}"
+
+def _back_filename_stems():
+    """Yield plausible filename stems (without extension) for backs in a sensible order."""
+    # Start with the user's preferred choice
+    yield f"Back {BACK_COLOR} {BACK_VARIANT}"
+    # Then try other variants/colors
+    for color in ("Blue", "Grey", "Red"):
+        for n in (1, 2):
+            if color == BACK_COLOR and n == BACK_VARIANT:
+                continue
+            yield f"Back {color} {n}"
+
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+def _find_file_for_stem(stem):
+    for ext in _IMAGE_EXTS:
+        p = os.path.join(IMAGE_CARDS_DIR, stem + ext)
+        if os.path.isfile(p):
+            return p
+    return None
+
+def _load_scaled(path, size):
+    try:
+        surf = pygame.image.load(path)
+        # convert after display is set (we're called during gameplay)
+        surf = surf.convert_alpha() if surf.get_alpha() is not None else surf.convert()
+        if surf.get_size() != size:
+            surf = pygame.transform.smoothscale(surf, size)
+        return surf
+    except Exception:
+        return None
+
+def _get_image_face_surface(card, size):
+    key = (card.suit, card.rank)
+    if key in _img_face_cache:
+        return _img_face_cache[key]
+    for stem in _face_filename_stems(card.suit, card.rank):
+        path = _find_file_for_stem(stem)
+        if path:
+            s = _load_scaled(path, size)
+            if s:
+                _img_face_cache[key] = s
+                return s
+    return None
+
+def _get_image_back_surface(size):
+    global _img_back_cache
+    if _img_back_cache is not None:
+        return _img_back_cache
+    for stem in _back_filename_stems():
+        path = _find_file_for_stem(stem)
+        if path:
+            s = _load_scaled(path, size)
+            if s:
+                _img_back_cache = s
+                return s
+    return None
+
+
+
 def get_card_surface(card):
+        # NEW: image-based rendering first
+    if USE_IMAGE_CARDS:
+        if not card.face_up:
+            return get_back_surface()
+        s = _get_image_face_surface(card, (CARD_W, CARD_H))
+        if s is not None:
+            return s
+    # EXISTING fallback drawing continues below...
+
     if not card.face_up:
         return get_back_surface()
     key = (card.suit, card.rank)
@@ -124,6 +215,15 @@ def get_card_surface(card):
     return surf
 
 def get_back_surface():
+
+    global _card_back_cache
+    # NEW: image-based back first
+    if USE_IMAGE_CARDS:
+        s = _get_image_back_surface((CARD_W, CARD_H))
+        if s is not None:
+            return s
+    # EXISTING fallback drawing continues below...
+
     global _card_back_cache
     if _card_back_cache is not None:
         return _card_back_cache
