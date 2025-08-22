@@ -6,10 +6,11 @@ from solitaire import common as C
 class MainMenuScene(C.Scene):
     def __init__(self, app):
         super().__init__(app)
-        cx = C.SCREEN_W//2 - 180
-        y = 260
-        self.b_klon = C.Button("Play Klondike", cx, y); y+=60
-        self.b_quit = C.Button("Quit", cx, y)
+        cx = C.SCREEN_W // 2
+        y  = 260
+        self.b_klon = C.Button("Play Klondike", cx, y, center=True); y += 60
+        self.b_quit = C.Button("Quit", cx, y, center=True)
+
 
     def handle_event(self, e):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:

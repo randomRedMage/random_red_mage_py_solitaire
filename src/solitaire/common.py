@@ -281,15 +281,22 @@ class Pile(Draggable):
 
 # ---------- UI ----------
 class Button:
-    def __init__(self, text, x, y, w=280, h=48):
+    def __init__(self, text, x, y, w=280, h=48, center=False):
         self.text = text
-        self.rect = pygame.Rect(x, y, w, h)
+        self.rect = pygame.Rect(0, 0, w, h)
+        if center:
+            self.rect.center = (x, y)
+        else:
+            self.rect.topleft = (x, y)
+
     def draw(self, screen, hover=False):
-        col = GOLD if hover else (200,200,200)
+        col = GOLD if hover else (200, 200, 200)
         pygame.draw.rect(screen, col, self.rect, border_radius=12)
         pygame.draw.rect(screen, BLACK, self.rect, 2, border_radius=12)
         t = FONT_UI.render(self.text, True, BLACK)
-        screen.blit(t, (self.rect.centerx - t.get_width()//2, self.rect.centery - t.get_height()//2))
+        screen.blit(t, (self.rect.centerx - t.get_width() // 2,
+                        self.rect.centery - t.get_height() // 2))
+
     def hovered(self, mouse_pos):
         return self.rect.collidepoint(mouse_pos)
 

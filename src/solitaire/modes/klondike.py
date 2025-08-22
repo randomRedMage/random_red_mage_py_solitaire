@@ -13,7 +13,7 @@ class KlondikeOptionsScene(C.Scene):
         cx = C.SCREEN_W//2 - 210
         y = 260
         self.b_start = C.Button("Start Klondike", cx, y); y+=60
-        self.b_diff  = C.Button("Difficulty: Easy (∞ stock cycles)", cx, y, w=420); y+=60
+        self.b_diff  = C.Button("Difficulty: Easy (Unlimited stock cycles)", cx, y, w=420); y+=60
         self.b_draw  = C.Button("Draw: 3", cx, y, w=420); y+=60
         y+=10
         self.b_back  = C.Button("Back", cx, y)
@@ -25,7 +25,7 @@ class KlondikeOptionsScene(C.Scene):
                 self.next_scene = KlondikeGameScene(self.app, draw_count=self.draw_mode, stock_cycles=[None,2,1][self.diff_index])
             elif self.b_diff.hovered((mx,my)):
                 self.diff_index = (self.diff_index + 1) % 3
-                txt = ["Easy (∞ stock cycles)","Medium (2 stock cycles)","Hard (1 stock cycle)"][self.diff_index]
+                txt = ["Easy (Unlimited stock cycles)","Medium (2 stock cycles)","Hard (1 stock cycle)"][self.diff_index]
                 self.b_diff.text = "Difficulty: " + txt
             elif self.b_draw.hovered((mx,my)):
                 self.draw_mode = 1 if self.draw_mode == 3 else 3
