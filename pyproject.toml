@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solitaire"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["pygame>=2.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
