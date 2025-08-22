@@ -1,7 +1,7 @@
 # klondike.py - Klondike scenes with flip-on-click, auto-finish, and win message
 import pygame
 from collections import deque
-import common as C
+from solitaire import common as C
 
 def is_red(suit): return suit in (1,2)
 
@@ -31,11 +31,11 @@ class KlondikeOptionsScene(C.Scene):
                 self.draw_mode = 1 if self.draw_mode == 3 else 3
                 self.b_draw.text = f"Draw: {self.draw_mode}"
             elif self.b_back.hovered((mx,my)):
-                from menu import MainMenuScene
+                from solitaire.scenes.menu import MainMenuScene
                 self.next_scene = MainMenuScene(self.app)
         elif e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
-                from menu import MainMenuScene
+                from solitaire.scenes.menu import MainMenuScene
                 self.next_scene = MainMenuScene(self.app)
 
     def draw(self, screen):
@@ -316,7 +316,7 @@ class KlondikeGameScene(C.Scene):
                 if self.can_autofinish():
                     self.start_auto_finish()
             elif e.key == pygame.K_ESCAPE:
-                from menu import MainMenuScene
+                from solitaire.scenes.menu import MainMenuScene
                 self.next_scene = MainMenuScene(self.app)
 
     def draw(self, screen):

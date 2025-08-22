@@ -1,8 +1,8 @@
 
 # main.py - entry point
 import pygame
-from common import (SCREEN_W, SCREEN_H, setup_fonts, TABLE_BG)
-from menu import MainMenuScene
+from solitaire.common import (SCREEN_W, SCREEN_H, setup_fonts, TABLE_BG)
+from solitaire.scenes.menu import MainMenuScene
 
 def main():
     pygame.init()

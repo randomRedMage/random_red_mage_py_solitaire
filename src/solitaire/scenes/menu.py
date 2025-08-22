@@ -1,7 +1,7 @@
 
 # menu.py - Main menu
 import pygame
-import common as C
+from solitaire import common as C
 
 class MainMenuScene(C.Scene):
     def __init__(self, app):
@@ -15,7 +15,7 @@ class MainMenuScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx,my = e.pos
             if self.b_klon.hovered((mx,my)):
-                from klondike import KlondikeOptionsScene
+                from solitaire.modes.klondike import KlondikeOptionsScene
                 self.next_scene = KlondikeOptionsScene(self.app)
             elif self.b_quit.hovered((mx,my)):
                 pygame.quit(); raise SystemExit
