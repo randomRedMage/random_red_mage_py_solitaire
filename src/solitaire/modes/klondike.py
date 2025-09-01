@@ -60,12 +60,6 @@ class KlondikeGameScene(C.Scene):
         self.message = ""
         self.drag_stack = None
 
-        # Auto-finish UI/logic
-        self.b_autofinish = C.Button("Auto Finish", C.SCREEN_W//2 - 85, 46, w=170, h=28)
-        self.auto_play_active = False
-        self.auto_last_time = 0
-        self.auto_interval_ms = 180  # move a card roughly every 0.18s
-
         # Top-bar control buttons (right-aligned)
         right_pad = 10
         btn_y = 8
@@ -75,6 +69,14 @@ class KlondikeGameScene(C.Scene):
         self.b_menu    = C.Button("Menu",         start_x,              btn_y, w=w_menu,   h=28)
         self.b_new     = C.Button("New Game",     start_x + w_menu + 10, btn_y, w=w_new,    h=28)
         self.b_restart = C.Button("Restart Deal", start_x + w_menu + w_new + 20, btn_y, w=w_restart, h=28)
+
+                # Auto-finish UI/logic
+        # Put Auto Finish just below the top bar, left side
+        top_bar_h = getattr(C, "TOP_BAR_H", 60)
+        self.b_autofinish = C.Button("Auto Finish", start_x, top_bar_h + 10, w=170, h=28)
+        self.auto_play_active = False
+        self.auto_last_time = 0
+        self.auto_interval_ms = 180  # move a card roughly every 0.18s
 
         self.deal_new()
 
@@ -285,7 +287,7 @@ class KlondikeGameScene(C.Scene):
             # Foundations (top only)
             for fi,f in enumerate(self.foundations):
                 hi = f.hit((mx,my))
-                if hi is not None and hi == len(f.cards)-1:
+                if hi is not None and hi == len(f.cards)-1 and f.cards:
                     c = f.cards.pop()
                     self.drag_stack = ([c], ("foundation", fi)); return
 
@@ -358,19 +360,16 @@ class KlondikeGameScene(C.Scene):
         for b in [self.b_menu, self.b_new, self.b_restart]:
             b.draw(screen, hover=b.hovered(mp))
 
-        # Auto Finish in top bar (centered between title and right controls)
-        title_surf = C.FONT_TITLE.render("Klondike", True, C.WHITE)
-        w_menu, w_new, w_restart = 120, 160, 170
-        total_w = w_menu + w_new + w_restart + 20
-        right_pad = 10
-        start_x = C.SCREEN_W - right_pad - total_w
-        left_bound = 12 + title_surf.get_width() + 12
-        right_bound = start_x - 12
-        auto_w = 170
-        auto_x = left_bound + max(0, (right_bound - left_bound - auto_w)//2)
-        self.b_autofinish.x = auto_x
-        self.b_autofinish.y = 8
-        self.b_autofinish.draw(screen, hover=self.b_autofinish.hovered(mp) and self.can_autofinish())
+        # Auto Finish button (dimmed when not eligible)
+        mp = pygame.mouse.get_pos()
+        enabled = self.can_autofinish()
+        self.b_autofinish.draw(screen, hover=(enabled and self.b_autofinish.hovered(mp)))
+
+        if not enabled:
+            # Draw a semi-transparent overlay to “disable/fade” the button
+            dim = pygame.Surface(self.b_autofinish.rect.size, pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 110))  # tweak alpha to taste
+            screen.blit(dim, self.b_autofinish.rect.topleft)
 
         # Foundations
         for i,f in enumerate(self.foundations):
@@ -390,9 +389,8 @@ class KlondikeGameScene(C.Scene):
         # Drag visuals
         if self.drag_stack:
             stack,_ = self.drag_stack; mx,my = pygame.mouse.get_pos()
-            from common import get_card_surface
             for i,c in enumerate(stack):
-                surf = get_card_surface(c)
+                surf = C.get_card_surface(c)
                 screen.blit(surf, (mx - C.CARD_W//2, my - C.CARD_H//2 + i*28))
 
         # Message
