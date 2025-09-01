@@ -103,15 +103,14 @@ class PyramidGameScene(C.Scene):
         self.overlap_y = int(C.CARD_H * 0.50)
         self.inner_gap_x = getattr(C, "CARD_GAP_X", max(10, C.CARD_W // 8))
 
-        # Compute needed total height for pyramid + piles + buttons
+        # Compute needed total height for pyramid + piles + bottom margin
         def total_height(overlap_y: int) -> int:
             pyr_h = C.CARD_H + overlap_y * 6  # 7 rows
             gap_y = getattr(C, "CARD_GAP_Y", 26)
             piles_h = C.CARD_H
-            buttons_h = 50
-            return self.pyr_top_y + pyr_h + gap_y + piles_h + 10 + buttons_h + 20
+            return self.pyr_top_y + pyr_h + gap_y + piles_h + 20
 
-        # If it doesn't fit, reduce overlap_y (more overlap → less vertical space)
+        # If it doesn't fit, reduce overlap_y
         while total_height(self.overlap_y) > C.SCREEN_H and self.overlap_y > int(C.CARD_H * 0.30):
             self.overlap_y -= 2  # tighten rows a bit
 
@@ -128,12 +127,15 @@ class PyramidGameScene(C.Scene):
         self.waste_left.x, self.waste_left.y = left_x + step_x, base_y
         self.waste_right.x,self.waste_right.y= left_x + 2*step_x, base_y
 
-        # Buttons row just below piles
-        btn_y = base_y + C.CARD_H + 14
-        bx = left_x
-        self.b_menu    = C.Button("Menu",       bx, btn_y, w=120); bx += 130
-        self.b_new     = C.Button("New Game",   bx, btn_y, w=160); bx += 170
-        self.b_restart = C.Button("Restart Deal", bx, btn_y, w=170)
+        # Buttons move to the TOP BAR (right-aligned)
+        btn_y = 8  # inside the top bar
+        right_pad = 10
+        widths = [120, 160, 170]  # Menu, New, Restart
+        total_w = sum(widths) + 2*10  # two 10px gaps
+        start_x = C.SCREEN_W - right_pad - total_w
+        self.b_menu    = C.Button("Menu",         start_x,              btn_y, w=widths[0])
+        self.b_new     = C.Button("New Game",     start_x + widths[0] + 10, btn_y, w=widths[1])
+        self.b_restart = C.Button("Restart Deal", start_x + widths[0] + widths[1] + 20, btn_y, w=widths[2])
 
     # ---------- Lifecycle ----------
     def deal(self, preset_order: Optional[List[Tuple[int,int]]] = None):
@@ -142,7 +144,6 @@ class PyramidGameScene(C.Scene):
             # snapshot the original order (suit, rank) for "Restart Deal"
             self.initial_order = [(c.suit, c.rank) for c in deck]
         else:
-            # Build deck from saved order (fresh Card instances)
             deck = [C.Card(s, r, False) for (s, r) in preset_order]
 
         # Build pyramid rows 0..6; all face-up
@@ -168,17 +169,14 @@ class PyramidGameScene(C.Scene):
         self.resets_used = 0 if self.allowed_resets is not None else self.resets_used
 
     def new_game(self):
-        # Fresh shuffle; keep difficulty
         self.deal()
 
     def restart_deal(self):
-        # Rebuild from the initial order
         if self.initial_order:
             self.deal(self.initial_order[:])
 
     # ---------- Geometry ----------
     def pos_for(self, r: int, i: int) -> Tuple[int, int]:
-        # Centered row with small gaps between cards; rows shift by half-step
         row_w = C.CARD_W * (r + 1) + self.inner_gap_x * r
         left  = self.center_x - row_w // 2
         x = left + i * (C.CARD_W + self.inner_gap_x)
@@ -188,7 +186,7 @@ class PyramidGameScene(C.Scene):
     def is_free(self, r: int, i: int) -> bool:
         if self.pyramid[r][i] is None:
             return False
-        if r == 6:  # bottom row
+        if r == 6:
             return True
         return (self.pyramid[r+1][i] is None) and (self.pyramid[r+1][i+1] is None)
 
@@ -199,16 +197,21 @@ class PyramidGameScene(C.Scene):
         resets_txt = "Resets: unlimited" if self.allowed_resets is None else f"Resets used: {self.resets_used}/{self.allowed_resets}"
         C.Scene.draw_top_bar(self, screen, "Pyramid", resets_txt)
 
+        # Buttons in top bar
+        mp = pygame.mouse.get_pos()
+        for b in [self.b_menu, self.b_new, self.b_restart]:
+            b.draw(screen, hover=b.hovered(mp))
+
         # Message banner (win/lose)
         if self.message:
             t = C.FONT_TITLE.render(self.message, True, C.GOLD)
             screen.blit(t, (C.SCREEN_W//2 - t.get_width()//2, 70))
 
-        # Draw pyramid (top row first so clicks prefer higher rows)
+        # Draw pyramid
         for r, row in enumerate(self.pyramid):
             for i, card in enumerate(row):
                 if card is None:
-                    continue  # no ghost outlines for removed cards
+                    continue
                 x, y = self.pos_for(r, i)
                 rect = pygame.Rect(x, y, C.CARD_W, C.CARD_H)
                 card.face_up = True
@@ -228,15 +231,20 @@ class PyramidGameScene(C.Scene):
         self.waste_left.draw(screen)
         self.waste_right.draw(screen)
 
+        # Resets-left indicator in stock slot when stock is empty
+        if not self.stock_pile.cards:
+            stock_rect = self.stock_pile.top_rect()
+            resets_left = "∞" if self.allowed_resets is None else str(max(0, self.allowed_resets - self.resets_used))
+            font = getattr(C, "FONT", getattr(C, "FONT_TITLE", None))
+            if font is None:
+                font = pygame.font.SysFont(None, 28)
+            surf = font.render(resets_left, True, C.WHITE)
+            screen.blit(surf, (stock_rect.centerx - surf.get_width()//2, stock_rect.centery - surf.get_height()//2))
+
         if self.sel_src == ("w1", 0, 0) and self.waste_left.cards:
             pygame.draw.rect(screen, C.GOLD, self.waste_left.top_rect(), 4, border_radius=C.CARD_RADIUS)
         if self.sel_src == ("w2", 0, 0) and self.waste_right.cards:
             pygame.draw.rect(screen, C.GOLD, self.waste_right.top_rect(), 4, border_radius=C.CARD_RADIUS)
-
-        # Control buttons
-        mp = pygame.mouse.get_pos()
-        for b in [self.b_menu, self.b_new, self.b_restart]:
-            b.draw(screen, hover=b.hovered(mp))
 
     # ---------- Input ----------
     def handle_event(self, e):
@@ -248,7 +256,7 @@ class PyramidGameScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
 
-            # UI buttons first
+            # UI buttons first (top bar)
             if self.b_menu.hovered((mx,my)):
                 from solitaire.scenes.menu import MainMenuScene
                 self.next_scene = MainMenuScene(self.app); return
