@@ -66,6 +66,16 @@ class KlondikeGameScene(C.Scene):
         self.auto_last_time = 0
         self.auto_interval_ms = 180  # move a card roughly every 0.18s
 
+        # Top-bar control buttons (right-aligned)
+        right_pad = 10
+        btn_y = 8
+        w_menu, w_new, w_restart = 120, 160, 170
+        total_w = w_menu + w_new + w_restart + 20  # two 10px gaps
+        start_x = C.SCREEN_W - right_pad - total_w
+        self.b_menu    = C.Button("Menu",         start_x,              btn_y, w=w_menu,   h=28)
+        self.b_new     = C.Button("New Game",     start_x + w_menu + 10, btn_y, w=w_new,    h=28)
+        self.b_restart = C.Button("Restart Deal", start_x + w_menu + w_new + 20, btn_y, w=w_restart, h=28)
+
         self.deal_new()
 
     def _clear_all_piles(self):
@@ -247,7 +257,17 @@ class KlondikeGameScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
 
+            # Top bar buttons
+            if self.b_menu.hovered((mx,my)):
+                from solitaire.scenes.menu import MainMenuScene
+                self.next_scene = MainMenuScene(self.app); return
+            if self.b_new.hovered((mx,my)):
+                self.deal_new(); return
+            if self.b_restart.hovered((mx,my)):
+                self.restart(); return
+
             # Auto Finish button
+
             if self.b_autofinish.hovered((mx,my)) and self.can_autofinish():
                 self.start_auto_finish()
                 return
@@ -320,7 +340,7 @@ class KlondikeGameScene(C.Scene):
                 self.next_scene = MainMenuScene(self.app)
 
     def draw(self, screen):
-        screen.fill((2,100,40))
+        screen.fill(C.TABLE_BG)
 
         # Auto-finish animation stepper
         if self.auto_play_active:
@@ -329,17 +349,27 @@ class KlondikeGameScene(C.Scene):
                 self.step_auto_finish()
                 self.auto_last_time = now
 
-        # HUD
-        hints = "ESC: Menu  N: New  R: Restart  U: Undo  A: Auto Finish"
-        h = C.FONT_UI.render(hints, True, (245,245,245))
-        screen.blit(h, (C.SCREEN_W - h.get_width() - 20, 10))
-        if self.stock_cycles_allowed is not None:
-            left = max(0, self.stock_cycles_allowed - self.stock_cycles_used)
-            sc = C.FONT_UI.render(f"Stock cycles left: {left}", True, (245,245,245))
-            screen.blit(sc, (C.SCREEN_W//2 - sc.get_width()//2, 10))
+        # Top bar and controls
+        extra = "Stock cycles: unlimited" if self.stock_cycles_allowed is None else f"Stock cycles used: {self.stock_cycles_used}/{self.stock_cycles_allowed}"
+        C.Scene.draw_top_bar(self, screen, "Klondike", extra)
 
-        # Auto Finish button (enabled only when eligible)
+        # Right-aligned control buttons
         mp = pygame.mouse.get_pos()
+        for b in [self.b_menu, self.b_new, self.b_restart]:
+            b.draw(screen, hover=b.hovered(mp))
+
+        # Auto Finish in top bar (centered between title and right controls)
+        title_surf = C.FONT_TITLE.render("Klondike", True, C.WHITE)
+        w_menu, w_new, w_restart = 120, 160, 170
+        total_w = w_menu + w_new + w_restart + 20
+        right_pad = 10
+        start_x = C.SCREEN_W - right_pad - total_w
+        left_bound = 12 + title_surf.get_width() + 12
+        right_bound = start_x - 12
+        auto_w = 170
+        auto_x = left_bound + max(0, (right_bound - left_bound - auto_w)//2)
+        self.b_autofinish.x = auto_x
+        self.b_autofinish.y = 8
         self.b_autofinish.draw(screen, hover=self.b_autofinish.hovered(mp) and self.can_autofinish())
 
         # Foundations
