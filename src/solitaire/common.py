@@ -335,3 +335,12 @@ class UndoManager:
         if self._stack:
             fn = self._stack.pop()
             fn()
+
+# --- Text cleanup overrides ---
+# Ensure suit symbols render with Unicode glyphs, and clean __repr__ text
+SUITS = ["♠", "♥", "♦", "♣"]  # 0..3
+
+def _card_repr(self):
+    return f"{RANK_TO_TEXT[self.rank]}{SUITS[self.suit]}{'↑' if self.face_up else '↓'}"
+
+Card.__repr__ = _card_repr

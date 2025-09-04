@@ -394,3 +394,13 @@ class PyramidGameScene(C.Scene):
             if (13 - v) in s:
                 return True
         return False
+
+# --- Text cleanup: normalize win message ---
+_orig_after_move = PyramidGameScene.after_move_checks
+
+def _patched_after_move(self):
+    _orig_after_move(self)
+    if isinstance(self.message, str) and "win" in self.message.lower():
+        self.message = "You win!"
+
+PyramidGameScene.after_move_checks = _patched_after_move
