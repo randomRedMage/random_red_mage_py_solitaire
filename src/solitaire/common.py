@@ -344,3 +344,11 @@ def _card_repr(self):
     return f"{RANK_TO_TEXT[self.rank]}{SUITS[self.suit]}{'↑' if self.face_up else '↓'}"
 
 Card.__repr__ = _card_repr
+
+# Canonical Unicode values (append to ensure clean runtime values)
+SUITS = ["\u2660", "\u2665", "\u2666", "\u2663"]  # ["♠", "♥", "♦", "♣"]
+
+def _card_repr_unicode(self):
+    return f"{RANK_TO_TEXT[self.rank]}{SUITS[self.suit]}{'↑' if self.face_up else '↓'}"
+
+Card.__repr__ = _card_repr_unicode

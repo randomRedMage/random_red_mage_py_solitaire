@@ -50,6 +50,8 @@ class KlondikeOptionsScene(C.Scene):
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
         title = C.FONT_TITLE.render("Klondike – Options", True, C.WHITE)
+        # Override garbled title with a clean one
+        title = C.FONT_TITLE.render("Klondike - Options", True, C.WHITE)
         screen.blit(title, (C.SCREEN_W//2 - title.get_width()//2, 120))
         mp = pygame.mouse.get_pos()
         for b in [self.b_start, self.b_diff, self.b_draw, self.b_back]:
