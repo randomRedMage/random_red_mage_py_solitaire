@@ -3,6 +3,7 @@
 import os
 import pygame
 from collections import deque
+from typing import Callable, List
 
 # --- Image card settings ---
 USE_IMAGE_CARDS = True
@@ -315,3 +316,22 @@ class Scene:
         if extra:
             s = FONT_UI.render(extra, True, WHITE)
             screen.blit(s, (20, 60 - s.get_height() - 6))
+
+class UndoManager:
+    """
+    Store undo lambdas. After each successful move, push a function
+    that will restore the prior state.
+    """
+    def __init__(self):
+        self._stack: List[Callable[[], None]] = []
+
+    def push(self, undo_fn: Callable[[], None]):
+        self._stack.append(undo_fn)
+
+    def can_undo(self) -> bool:
+        return len(self._stack) > 0
+
+    def undo(self):
+        if self._stack:
+            fn = self._stack.pop()
+            fn()
