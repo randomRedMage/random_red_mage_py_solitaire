@@ -54,6 +54,18 @@ ENV/
 # screenshots/
 # test_output/
 
+# User settings and saves (persisted outside repo or during local dev)
+# Windows APPDATA folder used by the game
+RandomRedMageSolitaire/
+# Home-directory dot folder used by the game (Linux/macOS)
+.random_red_mage_solitaire/
+# If a settings file is generated in the project during testing
+settings.json
+# Optional future save files/directories
+saves/
+*.sav
+*.save
+
 # -------------------------------------------------------------------
 # OS-specific junk
 # -------------------------------------------------------------------

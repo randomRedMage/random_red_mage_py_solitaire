@@ -64,6 +64,14 @@ class PyramidOptionsScene(C.Scene):
 class PyramidGameScene(C.Scene):
     def __init__(self, app, allowed_resets: Optional[int] = None):
         super().__init__(app)
+        # 2D scroll offset to accommodate larger cards
+        self.scroll_x: int = 0
+        self.scroll_y: int = 0
+        self._panning: bool = False
+        self._pan_anchor = (0, 0)
+        self._scroll_anchor = (0, 0)
+        self._drag_vscroll = False
+        self._drag_hscroll = False
         # Difficulty / resets
         self.allowed_resets: Optional[int] = allowed_resets  # None => unlimited
         self.resets_used: int = 0
@@ -131,6 +139,41 @@ class PyramidGameScene(C.Scene):
         # Initialize undo stack with starting state
         self.undo_mgr = C.UndoManager()
         self.push_undo()
+
+    # ---------- Scrolling helpers ----------
+    def _content_bottom_y(self) -> int:
+        # Pyramid bottom
+        pyr_bottom = self.pyr_top_y + 6 * self.overlap_y + C.CARD_H
+        base_y = pyr_bottom + getattr(C, "CARD_GAP_Y", 26)
+        piles_bottom = base_y + C.CARD_H
+        return max(piles_bottom, pyr_bottom)
+
+    def _content_bounds_x(self) -> tuple:
+        # Compute left/right bounds considering widest pyramid row and piles span
+        widest_row_w = C.CARD_W * 7 + self.inner_gap_x * 6
+        left_pyr = self.center_x - widest_row_w // 2
+        right_pyr = left_pyr + widest_row_w
+        step_x = C.CARD_W + self.inner_gap_x
+        group_w = step_x * 2 + C.CARD_W
+        piles_left = self.center_x - group_w // 2
+        piles_right = piles_left + group_w
+        return min(left_pyr, piles_left), max(right_pyr, piles_right)
+
+    def _clamp_scroll(self):
+        bottom = self._content_bottom_y()
+        min_scroll = min(0, C.SCREEN_H - bottom - 20)
+        if self.scroll_y < min_scroll:
+            self.scroll_y = min_scroll
+        if self.scroll_y > 0:
+            self.scroll_y = 0
+        # Clamp X as well
+        left, right = self._content_bounds_x()
+        max_scroll_x = 20 - left
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        if self.scroll_x > max_scroll_x:
+            self.scroll_x = max_scroll_x
+        if self.scroll_x < min_scroll_x:
+            self.scroll_x = min_scroll_x
 
     # ---------- Layout / Responsiveness ----------
     def compute_layout(self):
@@ -303,12 +346,8 @@ class PyramidGameScene(C.Scene):
     # ---------- Drawing ----------
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
-        # Top bar
+        # Top bar text (drawn at end so content scrolls behind)
         resets_txt = "Resets: unlimited" if self.allowed_resets is None else f"Resets used: {self.resets_used}/{self.allowed_resets}"
-        C.Scene.draw_top_bar(self, screen, "Pyramid", resets_txt)
-
-        # Toolbar in top bar
-        self.toolbar.draw(screen)
 
         # Expire transient hint
         if self.hint_srcs and pygame.time.get_ticks() > self.hint_expires_at:
@@ -320,16 +359,20 @@ class PyramidGameScene(C.Scene):
             t = C.FONT_TITLE.render(msg, True, C.GOLD)
             screen.blit(t, (C.SCREEN_W//2 - t.get_width()//2, 70))
 
+        # Apply draw offset for piles and pyramid
+        C.DRAW_OFFSET_X = self.scroll_x
+        C.DRAW_OFFSET_Y = self.scroll_y
+
         # Draw pyramid
         for r, row in enumerate(self.pyramid):
             for i, card in enumerate(row):
                 if card is None:
                     continue
                 x, y = self.pos_for(r, i)
-                rect = pygame.Rect(x, y, C.CARD_W, C.CARD_H)
+                rect = pygame.Rect(x + self.scroll_x, y + self.scroll_y, C.CARD_W, C.CARD_H)
                 card.face_up = True
                 surf = C.get_card_surface(card)
-                screen.blit(surf, (x, y))
+                screen.blit(surf, (x + self.scroll_x, y + self.scroll_y))
 
                 if self.sel_src == ("pyr", r, i):
                     pygame.draw.rect(screen, C.GOLD, rect, 4, border_radius=C.CARD_RADIUS)
@@ -340,7 +383,7 @@ class PyramidGameScene(C.Scene):
                 if not self.is_free(r, i):
                     overlay = pygame.Surface((C.CARD_W, C.CARD_H), pygame.SRCALPHA)
                     overlay.fill((0,0,0,90))
-                    screen.blit(overlay, (x, y))
+                    screen.blit(overlay, (x + self.scroll_x, y + self.scroll_y))
 
         # Draw piles
         self.stock_pile.draw(screen)
@@ -349,7 +392,7 @@ class PyramidGameScene(C.Scene):
 
         # Resets-left indicator in stock slot when stock is empty
         if not self.stock_pile.cards:
-            stock_rect = self.stock_pile.top_rect()
+            stock_rect = self.stock_pile.top_rect().copy(); stock_rect.move_ip(self.scroll_x, self.scroll_y)
             resets_left = "∞" if self.allowed_resets is None else str(max(0, self.allowed_resets - self.resets_used))
             # Override with a clean symbol for unlimited
             resets_left = "∞" if self.allowed_resets is None else resets_left
@@ -375,21 +418,164 @@ class PyramidGameScene(C.Scene):
                 screen.blit(_surf, (stock_rect.centerx - _surf.get_width()//2, stock_rect.centery - _surf.get_height()//2))
 
         if self.sel_src == ("w1", 0, 0) and self.waste_left.cards:
-            pygame.draw.rect(screen, C.GOLD, self.waste_left.top_rect(), 4, border_radius=C.CARD_RADIUS)
+            r = self.waste_left.top_rect().copy(); r.move_ip(self.scroll_x, self.scroll_y)
+            pygame.draw.rect(screen, C.GOLD, r, 4, border_radius=C.CARD_RADIUS)
         if self.sel_src == ("w2", 0, 0) and self.waste_right.cards:
-            pygame.draw.rect(screen, C.GOLD, self.waste_right.top_rect(), 4, border_radius=C.CARD_RADIUS)
+            r = self.waste_right.top_rect().copy(); r.move_ip(self.scroll_x, self.scroll_y)
+            pygame.draw.rect(screen, C.GOLD, r, 4, border_radius=C.CARD_RADIUS)
         # Hint highlight on waste piles
         if self.hint_srcs:
             if ("w1", 0, 0) in self.hint_srcs and self.waste_left.cards:
-                pygame.draw.rect(screen, C.BLUE, self.waste_left.top_rect(), 6, border_radius=C.CARD_RADIUS)
+                r = self.waste_left.top_rect().copy(); r.move_ip(self.scroll_x, self.scroll_y)
+                pygame.draw.rect(screen, C.BLUE, r, 6, border_radius=C.CARD_RADIUS)
             if ("w2", 0, 0) in self.hint_srcs and self.waste_right.cards:
-                pygame.draw.rect(screen, C.BLUE, self.waste_right.top_rect(), 6, border_radius=C.CARD_RADIUS)
+                r = self.waste_right.top_rect().copy(); r.move_ip(self.scroll_x, self.scroll_y)
+                pygame.draw.rect(screen, C.BLUE, r, 6, border_radius=C.CARD_RADIUS)
+
+        # Draw scrollbars when content extends beyond view
+        C.DRAW_OFFSET_X = 0
+        C.DRAW_OFFSET_Y = 0
+        bottom = self._content_bottom_y()
+        if bottom > C.SCREEN_H:
+            track_rect, knob_rect, *_ = self._vertical_scrollbar()
+            pygame.draw.rect(screen, (40,40,40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200,200,200), knob_rect, border_radius=3)
+
+        # Horizontal scrollbar if content wider than view
+        widest_row_w = C.CARD_W * 7 + self.inner_gap_x * 6
+        left_x = self.center_x - widest_row_w // 2
+        right_x = left_x + widest_row_w
+        step_x = C.CARD_W + self.inner_gap_x
+        group_w = step_x * 2 + C.CARD_W
+        piles_left = self.center_x - group_w // 2
+        piles_right = piles_left + group_w
+        left = min(left_x, piles_left)
+        right = max(right_x, piles_right)
+        if right - left > C.SCREEN_W - 40:
+            track_rect, knob_rect, *_ = self._horizontal_scrollbar()
+            pygame.draw.rect(screen, (40,40,40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200,200,200), knob_rect, border_radius=3)
+
+        # Draw top bar and toolbar last so content scrolls behind
+        C.Scene.draw_top_bar(self, screen, "Pyramid", resets_txt)
+        self.toolbar.draw(screen)
+
+    # ---------- Scrollbar geometry helpers ----------
+    def _vertical_scrollbar(self):
+        bottom = self._content_bottom_y()
+        if bottom <= C.SCREEN_H:
+            return None
+        track_x = C.SCREEN_W - 12
+        track_y = getattr(C, "TOP_BAR_H", 64)
+        track_h = C.SCREEN_H - track_y - 10
+        track_rect = pygame.Rect(track_x, track_y, 6, track_h)
+        view_h = C.SCREEN_H
+        content_h = bottom
+        knob_h = max(30, int(track_h * (view_h / content_h)))
+        max_scroll = 0
+        min_scroll = C.SCREEN_H - bottom - 20
+        denom = (max_scroll - min_scroll)
+        t = (self.scroll_y - min_scroll) / denom if denom != 0 else 1.0
+        knob_y = int(track_y + (track_h - knob_h) * (1.0 - t))
+        knob_rect = pygame.Rect(track_x, knob_y, 6, knob_h)
+        return track_rect, knob_rect, min_scroll, max_scroll, track_y, track_h, knob_h
+
+    def _horizontal_scrollbar(self):
+        # Compute content bounds
+        widest_row_w = C.CARD_W * 7 + self.inner_gap_x * 6
+        left_x = self.center_x - widest_row_w // 2
+        right_x = left_x + widest_row_w
+        step_x = C.CARD_W + self.inner_gap_x
+        group_w = step_x * 2 + C.CARD_W
+        piles_left = self.center_x - group_w // 2
+        piles_right = piles_left + group_w
+        left, right = min(left_x, piles_left), max(right_x, piles_right)
+        if right - left <= C.SCREEN_W - 40:
+            return None
+        track_x = 10
+        track_w = C.SCREEN_W - 20
+        track_y = C.SCREEN_H - 10
+        track_rect = pygame.Rect(track_x, track_y-6, track_w, 6)
+        view_w = C.SCREEN_W
+        content_w = right - left + 40
+        knob_w = max(30, int(track_w * (view_w / max(view_w, content_w))))
+        max_scroll_x = 20 - left
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        denom = (max_scroll_x - min_scroll_x)
+        t = (self.scroll_x - min_scroll_x) / denom if denom != 0 else 1.0
+        knob_x = int(track_x + (track_w - knob_w) * t)
+        knob_rect = pygame.Rect(knob_x, track_y-6, knob_w, 6)
+        return track_rect, knob_rect, min_scroll_x, max_scroll_x, track_x, track_w, knob_w
 
     # ---------- Input ----------
     def handle_event(self, e):
         # Toolbar first
         if self.toolbar.handle_event(e):
             return
+
+        # Mouse wheel -> scroll (vertical + horizontal if available)
+        if e.type == pygame.MOUSEWHEEL:
+            self.scroll_y += e.y * 60
+            try:
+                self.scroll_x += e.x * 60
+            except Exception:
+                pass
+            self._clamp_scroll()
+            return
+
+        # Scrollbar interactions (mouse) — handle before content clicks
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            vsb = self._vertical_scrollbar()
+            if vsb is not None:
+                track_rect, knob_rect, min_sy, max_sy, track_y, track_h, knob_h = vsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_vscroll = True
+                    self._vscroll_drag_dy = e.pos[1] - knob_rect.y
+                    self._vscroll_geom = (min_sy, max_sy, track_y, track_h, knob_h)
+                    return
+                elif track_rect.collidepoint(e.pos):
+                    y = min(max(e.pos[1] - knob_h//2, track_y), track_y + track_h - knob_h)
+                    t_knob = (y - track_y) / max(1, (track_h - knob_h))
+                    t = 1.0 - t_knob
+                    self.scroll_y = min_sy + t * (max_sy - min_sy)
+                    self._clamp_scroll()
+                    return
+
+            hsb = self._horizontal_scrollbar()
+            if hsb is not None:
+                track_rect, knob_rect, min_sx, max_sx, track_x, track_w, knob_w = hsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_hscroll = True
+                    self._hscroll_drag_dx = e.pos[0] - knob_rect.x
+                    self._hscroll_geom = (min_sx, max_sx, track_x, track_w, knob_w)
+                    return
+                elif track_rect.collidepoint(e.pos):
+                    x = min(max(e.pos[0] - knob_w//2, track_x), track_x + track_w - knob_w)
+                    t_knob = (x - track_x) / max(1, (track_w - knob_w))
+                    self.scroll_x = min_sx + t_knob * (max_sx - min_sx)
+                    self._clamp_scroll()
+                    return
+
+        if e.type == pygame.MOUSEBUTTONUP and e.button == 1:
+            self._drag_vscroll = False
+            self._drag_hscroll = False
+
+        if e.type == pygame.MOUSEMOTION:
+            if getattr(self, "_drag_vscroll", False):
+                min_sy, max_sy, track_y, track_h, knob_h = self._vscroll_geom
+                y = min(max(e.pos[1] - self._vscroll_drag_dy, track_y), track_y + track_h - knob_h)
+                t_knob = (y - track_y) / max(1, (track_h - knob_h))
+                t = 1.0 - t_knob
+                self.scroll_y = min_sy + t * (max_sy - min_sy)
+                self._clamp_scroll()
+                return
+            if getattr(self, "_drag_hscroll", False):
+                min_sx, max_sx, track_x, track_w, knob_w = self._hscroll_geom
+                x = min(max(e.pos[0] - self._hscroll_drag_dx, track_x), track_x + track_w - knob_w)
+                t_knob = (x - track_x) / max(1, (track_w - knob_w))
+                self.scroll_x = min_sx + t_knob * (max_sx - min_sx)
+                self._clamp_scroll()
+                return
 
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
             from solitaire.scenes.menu import MainMenuScene
@@ -398,20 +584,44 @@ class PyramidGameScene(C.Scene):
         elif e.type == pygame.KEYDOWN and e.key == pygame.K_u:
             self.undo(); return
 
+        # Middle button drag to pan
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 2:
+            self._panning = True
+            self._pan_anchor = e.pos
+            self._scroll_anchor = (self.scroll_x, self.scroll_y)
+            return
+        elif e.type == pygame.MOUSEBUTTONUP and e.button == 2:
+            self._panning = False
+            return
+        elif e.type == pygame.MOUSEMOTION and self._panning:
+            mx, my = e.pos
+            ax, ay = self._pan_anchor
+            dx = mx - ax
+            dy = my - ay
+            self.scroll_x = self._scroll_anchor[0] + dx
+            self.scroll_y = self._scroll_anchor[1] + dy
+            self._clamp_scroll()
+            return
+
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
+            # Prevent interactions under top bar (content is visually behind it)
+            if my < getattr(C, "TOP_BAR_H", 64):
+                return
+            mxw = mx - self.scroll_x
+            myw = my - self.scroll_y
 
             # Toolbar handles its own clicks
 
             # 1) Stock click (even when empty to attempt reset)
-            if self.stock_pile.top_rect().collidepoint((mx, my)):
+            if self.stock_pile.top_rect().collidepoint((mxw, myw)):
                 self.on_stock_click()
                 return
 
             # 2) Waste clicks
-            if self.waste_left.top_rect().collidepoint((mx,my)) and self.waste_left.cards:
+            if self.waste_left.top_rect().collidepoint((mxw,myw)) and self.waste_left.cards:
                 self.on_source_click(("w1", 0, 0)); return
-            if self.waste_right.top_rect().collidepoint((mx,my)) and self.waste_right.cards:
+            if self.waste_right.top_rect().collidepoint((mxw,myw)) and self.waste_right.cards:
                 self.on_source_click(("w2", 0, 0)); return
 
             # 3) Pyramid clicks
@@ -421,7 +631,7 @@ class PyramidGameScene(C.Scene):
                         continue
                     x, y = self.pos_for(r, i)
                     rect = pygame.Rect(x, y, C.CARD_W, C.CARD_H)
-                    if rect.collidepoint((mx, my)) and self.is_free(r, i):
+                    if rect.collidepoint((mxw, myw)) and self.is_free(r, i):
                         self.on_source_click(("pyr", r, i))
                         return
 
