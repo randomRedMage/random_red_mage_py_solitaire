@@ -10,6 +10,7 @@ class MainMenuScene(C.Scene):
         y  = 260
         self.b_klon = C.Button("Play Klondike", cx, y, center=True); y += 60
         self.b_pyr  = C.Button("Play Pyramid",  cx, y, center=True); y += 60
+        self.b_settings = C.Button("Settings", cx, y, center=True); y += 60
         self.b_quit = C.Button("Quit", cx, y, center=True)
 
 
@@ -22,6 +23,9 @@ class MainMenuScene(C.Scene):
             elif self.b_pyr.hovered((mx,my)):
                 from solitaire.modes.pyramid import PyramidOptionsScene
                 self.next_scene = PyramidOptionsScene(self.app)
+            elif self.b_settings.hovered((mx,my)):
+                from solitaire.scenes.settings import SettingsScene
+                self.next_scene = SettingsScene(self.app)
             elif self.b_quit.hovered((mx,my)):
                 pygame.quit(); raise SystemExit
         elif e.type == pygame.KEYDOWN:
@@ -33,5 +37,5 @@ class MainMenuScene(C.Scene):
         title = C.FONT_TITLE.render("Solitaire Suite", True, C.WHITE)
         screen.blit(title, (C.SCREEN_W//2 - title.get_width()//2, 120))
         mp = pygame.mouse.get_pos()
-        for b in [self.b_klon, self.b_pyr, self.b_quit]:
+        for b in [self.b_klon, self.b_pyr, self.b_settings, self.b_quit]:
             b.draw(screen, hover=b.hovered(mp))

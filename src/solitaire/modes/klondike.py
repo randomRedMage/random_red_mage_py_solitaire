@@ -63,13 +63,22 @@ class KlondikeOptionsScene(C.Scene):
 class KlondikeGameScene(C.Scene):
     def __init__(self, app, draw_count=3, stock_cycles=None):
         super().__init__(app)
+        # 2D scroll for large cards
+        self.scroll_x = 0
+        self.scroll_y = 0
+        self._panning = False
+        self._pan_anchor = (0, 0)
+        self._scroll_anchor = (0, 0)
+        self._drag_vscroll = False
+        self._drag_hscroll = False
         self.draw_count = draw_count
         self.stock_cycles_allowed = stock_cycles
         self.stock_cycles_used = 0
-        self.foundations = [C.Pile(40 + i*(C.CARD_W+20), 90) for i in range(4)]
-        self.stock_pile = C.Pile(40, 260)
-        self.waste_pile = C.Pile(40 + (C.CARD_W+20), 260)
-        self.tableau = [C.Pile(300 + i*(C.CARD_W+C.CARD_GAP_X), 260, fan_y=28) for i in range(7)]
+        # Piles (positions/fan set in compute_layout)
+        self.foundations = [C.Pile(0, 0) for _ in range(4)]
+        self.stock_pile = C.Pile(0, 0)
+        self.waste_pile = C.Pile(0, 0)
+        self.tableau = [C.Pile(0, 0, fan_y=0) for _ in range(7)]
         self.undo_mgr = C.UndoManager()
         self.message = ""
         self.drag_stack = None
@@ -107,7 +116,81 @@ class KlondikeGameScene(C.Scene):
         self.auto_last_time = 0
         self.auto_interval_ms = 180
 
+        # Layout depends on current card size and screen size
+        self.compute_layout()
         self.deal_new()
+
+    # ---------- Layout ----------
+    def compute_layout(self):
+        gap_x = getattr(C, "CARD_GAP_X", max(18, C.CARD_W // 6))
+        gap_y = getattr(C, "CARD_GAP_Y", max(20, C.CARD_H // 6))
+        left_margin = 20
+        top_bar_h = getattr(C, "TOP_BAR_H", 64)
+        top_y = max(80, top_bar_h + 26)
+
+        # Row 1: Foundations across the top
+        for i, f in enumerate(self.foundations):
+            f.x = left_margin + i * (C.CARD_W + gap_x)
+            f.y = top_y
+
+        # Row 2: Stock + Waste directly below foundations
+        row2_y = top_y + C.CARD_H + gap_y
+        self.stock_pile.x, self.stock_pile.y = left_margin, row2_y
+        self.waste_pile.x, self.waste_pile.y = left_margin + (C.CARD_W + gap_x), row2_y
+
+        # Tableau starts to the right, 7 columns
+        tab_left = left_margin + 2 * (C.CARD_W + gap_x) + max(40, 2 * gap_x)
+        fan_y = max(18, int(C.CARD_H * 0.28))
+        for i, t in enumerate(self.tableau):
+            t.x = tab_left + i * (C.CARD_W + gap_x)
+            t.y = row2_y
+            t.fan_y = fan_y
+
+    # ---------- Scrolling helpers ----------
+    def _content_bottom_y(self) -> int:
+        # Estimate the maximum Y occupied by content (foundations/tableau)
+        bottoms = []
+        bottoms.append(self.stock_pile.y + C.CARD_H)
+        bottoms.append(self.waste_pile.y + C.CARD_H)
+        for f in self.foundations:
+            bottoms.append(f.y + C.CARD_H)
+        for t in self.tableau:
+            n = max(1, len(t.cards))
+            bottoms.append(t.y + (n-1)*t.fan_y + C.CARD_H)
+        return max(bottoms) if bottoms else C.SCREEN_H
+
+    def _clamp_scroll(self):
+        # Allow scrolling upward to reveal content bottom, but not past the top
+        bottom = self._content_bottom_y()
+        min_scroll = min(0, C.SCREEN_H - bottom - 20)  # bottom margin
+        if self.scroll_y < min_scroll:
+            self.scroll_y = min_scroll
+        if self.scroll_y > 0:
+            self.scroll_y = 0
+
+    def _content_bounds_x(self):
+        # Compute min left and max right of content (foundations, stock/waste, tableau)
+        lefts = []
+        rights = []
+        piles = self.foundations + [self.stock_pile, self.waste_pile] + self.tableau
+        for p in piles:
+            lefts.append(p.x)
+            rights.append(p.x + C.CARD_W)
+        return (min(lefts) if lefts else 0, max(rights) if rights else C.SCREEN_W)
+
+    def _clamp_scroll_xy(self):
+        # Clamp Y using existing helper
+        self._clamp_scroll()
+        # Clamp X using computed bounds: keep some 20px margin both sides
+        left, right = self._content_bounds_x()
+        # how far can we scroll rightwards (positive scroll_x) so left edge doesn't pass 20px
+        max_scroll_x = 20 - left
+        # how far can we scroll leftwards (negative scroll_x) so right edge stays within screen - 20
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        if self.scroll_x > max_scroll_x:
+            self.scroll_x = max_scroll_x
+        if self.scroll_x < min_scroll_x:
+            self.scroll_x = min_scroll_x
 
     # ---------- Lifecycle ----------
     def _clear_all_piles(self):
@@ -278,25 +361,99 @@ class KlondikeGameScene(C.Scene):
         if self.toolbar.handle_event(e):
             return
 
+        # Mouse wheel scrolling (supports trackpads: e.x horizontal, e.y vertical)
+        if e.type == pygame.MOUSEWHEEL:
+            self.scroll_y += e.y * 60  # up is positive
+            # Horizontal wheel (shift+wheel or trackpad)
+            try:
+                self.scroll_x += e.x * 60
+            except Exception:
+                pass
+            self._clamp_scroll_xy()
+            return
+
+        # Scrollbar interactions (mouse)
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            # Vertical scrollbar knob
+            vsb = self._vertical_scrollbar()
+            if vsb is not None:
+                track_rect, knob_rect, min_sy, max_sy, track_y, track_h, knob_h = vsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_vscroll = True
+                    self._vscroll_drag_dy = e.pos[1] - knob_rect.y
+                    self._vscroll_geom = (min_sy, max_sy, track_y, track_h, knob_h)
+                    return
+                elif track_rect.collidepoint(e.pos):
+                    # Jump to position
+                    y = min(max(e.pos[1] - knob_h//2, track_y), track_y + track_h - knob_h)
+                    t_knob = (y - track_y) / max(1, (track_h - knob_h))
+                    t = 1.0 - t_knob
+                    self.scroll_y = min_sy + t * (max_sy - min_sy)
+                    self._clamp_scroll_xy()
+                    return
+
+            # Horizontal scrollbar knob
+            hsb = self._horizontal_scrollbar()
+            if hsb is not None:
+                track_rect, knob_rect, min_sx, max_sx, track_x, track_w, knob_w = hsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_hscroll = True
+                    self._hscroll_drag_dx = e.pos[0] - knob_rect.x
+                    self._hscroll_geom = (min_sx, max_sx, track_x, track_w, knob_w)
+                    return
+                elif track_rect.collidepoint(e.pos):
+                    x = min(max(e.pos[0] - knob_w//2, track_x), track_x + track_w - knob_w)
+                    t_knob = (x - track_x) / max(1, (track_w - knob_w))
+                    # Map knob position to scroll_x
+                    self.scroll_x = min_sx + t_knob * (max_sx - min_sx)
+                    self._clamp_scroll_xy()
+                    return
+
+        if e.type == pygame.MOUSEBUTTONUP and e.button == 1:
+            self._drag_vscroll = False
+            self._drag_hscroll = False
+
+        if e.type == pygame.MOUSEMOTION:
+            if getattr(self, "_drag_vscroll", False):
+                min_sy, max_sy, track_y, track_h, knob_h = self._vscroll_geom
+                y = min(max(e.pos[1] - self._vscroll_drag_dy, track_y), track_y + track_h - knob_h)
+                t_knob = (y - track_y) / max(1, (track_h - knob_h))
+                t = 1.0 - t_knob
+                self.scroll_y = min_sy + t * (max_sy - min_sy)
+                self._clamp_scroll_xy()
+                return
+            if getattr(self, "_drag_hscroll", False):
+                min_sx, max_sx, track_x, track_w, knob_w = self._hscroll_geom
+                x = min(max(e.pos[0] - self._hscroll_drag_dx, track_x), track_x + track_w - knob_w)
+                t_knob = (x - track_x) / max(1, (track_w - knob_w))
+                self.scroll_x = min_sx + t_knob * (max_sx - min_sx)
+                self._clamp_scroll_xy()
+                return
+
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
+            mxw = mx - self.scroll_x
+            myw = my - self.scroll_y  # convert to world coords for hit-tests
+            # Prevent interactions under top bar (content is visually behind it)
+            if my < getattr(C, "TOP_BAR_H", 64):
+                return
             # Stock
-            if pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H).collidepoint((mx,my)):
+            if pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H).collidepoint((mxw,myw)):
                 self.push_undo(); self.draw_from_stock(); return
             # Waste
-            wi = self.waste_pile.hit((mx,my))
+            wi = self.waste_pile.hit((mxw,myw))
             if wi is not None and wi == len(self.waste_pile.cards)-1:
                 c = self.waste_pile.cards.pop()
                 self.drag_stack = ([c], ("waste", None)); return
             # Foundations
             for fi,f in enumerate(self.foundations):
-                hi = f.hit((mx,my))
+                hi = f.hit((mxw,myw))
                 if hi is not None and hi == len(f.cards)-1 and f.cards:
                     c = f.cards.pop()
                     self.drag_stack = ([c], ("foundation", fi)); return
             # Tableau
             for ti,t in enumerate(self.tableau):
-                hi = t.hit((mx,my))
+                hi = t.hit((mxw,myw))
                 if hi is None: continue
                 if hi == len(t.cards)-1 and not t.cards[hi].face_up:
                     t.cards[hi].face_up = True
@@ -305,19 +462,40 @@ class KlondikeGameScene(C.Scene):
                     seq = t.cards[hi:]; t.cards = t.cards[:hi]
                     self.drag_stack = (seq, ("tableau", ti)); return
 
+        # Middle-button drag panning
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 2:
+            self._panning = True
+            self._pan_anchor = e.pos
+            self._scroll_anchor = (self.scroll_x, self.scroll_y)
+            return
+        elif e.type == pygame.MOUSEBUTTONUP and e.button == 2:
+            self._panning = False
+            return
+        elif e.type == pygame.MOUSEMOTION and self._panning:
+            mx, my = e.pos
+            ax, ay = self._pan_anchor
+            dx = mx - ax
+            dy = my - ay
+            self.scroll_x = self._scroll_anchor[0] + dx
+            self.scroll_y = self._scroll_anchor[1] + dy
+            self._clamp_scroll_xy()
+            return
+
         elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
             if not self.drag_stack: return
             stack, from_info = self.drag_stack; self.drag_stack = None
             mx, my = e.pos
+            mxw = mx - self.scroll_x
+            myw = my - self.scroll_y
             # Foundations
             for fi,f in enumerate(self.foundations):
-                if f.top_rect().collidepoint((mx,my)) and len(stack)==1:
+                if f.top_rect().collidepoint((mxw,myw)) and len(stack)==1:
                     c = stack[0]
                     if self.can_move_to_foundation(c, fi):
                         self.push_undo(); f.cards.append(c); self.post_move_cleanup(); return
             # Tableau
             for ti,t in enumerate(self.tableau):
-                if t.top_rect().collidepoint((mx,my)):
+                if t.top_rect().collidepoint((mxw,myw)):
                     if self.drop_stack_on_tableau(stack, t):
                         self.push_undo(); self.post_move_cleanup(); return
             # Return to origin
@@ -349,21 +527,22 @@ class KlondikeGameScene(C.Scene):
 
         extra = ("Stock cycles: unlimited" if self.stock_cycles_allowed is None
                  else f"Stock cycles used: {self.stock_cycles_used}/{self.stock_cycles_allowed}")
-        C.Scene.draw_top_bar(self, screen, "Klondike", extra)
 
-        self.toolbar.draw(screen)
+        # Apply draw offset for piles and other content
+        C.DRAW_OFFSET_X = self.scroll_x
+        C.DRAW_OFFSET_Y = self.scroll_y
 
         for i,f in enumerate(self.foundations):
             f.draw(screen)
             label = C.FONT_SMALL.render("Foundation", True, (245,245,245))
-            screen.blit(label, (f.x + (C.CARD_W - label.get_width())//2, f.y - 22))
+            screen.blit(label, (f.x + (C.CARD_W - label.get_width())//2 + self.scroll_x, f.y - 22 + self.scroll_y))
 
         self.stock_pile.draw(screen)
         lab = C.FONT_SMALL.render("Stock", True, (245,245,245))
-        screen.blit(lab, (self.stock_pile.x + (C.CARD_W - lab.get_width())//2, self.stock_pile.y - 22))
+        screen.blit(lab, (self.stock_pile.x + (C.CARD_W - lab.get_width())//2 + self.scroll_x, self.stock_pile.y - 22 + self.scroll_y))
         self.waste_pile.draw(screen)
         lab2 = C.FONT_SMALL.render("Waste", True, (245,245,245))
-        screen.blit(lab2, (self.waste_pile.x + (C.CARD_W - lab2.get_width())//2, self.waste_pile.y - 22))
+        screen.blit(lab2, (self.waste_pile.x + (C.CARD_W - lab2.get_width())//2 + self.scroll_x, self.waste_pile.y - 22 + self.scroll_y))
 
         for t in self.tableau:
             t.draw(screen)
@@ -377,3 +556,62 @@ class KlondikeGameScene(C.Scene):
         if self.message:
             msg = C.FONT_UI.render(self.message, True, (255, 255, 180))
             screen.blit(msg, (C.SCREEN_W//2 - msg.get_width()//2, C.SCREEN_H - 40))
+
+        # Draw a simple vertical scrollbar when content extends beyond view
+        C.DRAW_OFFSET_X = 0
+        C.DRAW_OFFSET_Y = 0  # reset for UI
+        bottom = self._content_bottom_y()
+        if bottom > C.SCREEN_H:
+            track_rect, knob_rect, *_ = self._vertical_scrollbar()
+            pygame.draw.rect(screen, (40,40,40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200,200,200), knob_rect, border_radius=3)
+
+        # Horizontal scrollbar when content wider than view
+        hsb = self._horizontal_scrollbar()
+        if hsb is not None:
+            track_rect, knob_rect, *_ = hsb
+            pygame.draw.rect(screen, (40,40,40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200,200,200), knob_rect, border_radius=3)
+
+        # Draw top bar and toolbar last so content scrolls behind
+        C.Scene.draw_top_bar(self, screen, "Klondike", extra)
+        self.toolbar.draw(screen)
+
+    # ---------- Scrollbar geometry helpers ----------
+    def _vertical_scrollbar(self):
+        bottom = self._content_bottom_y()
+        if bottom <= C.SCREEN_H:
+            return None
+        track_x = C.SCREEN_W - 12
+        track_y = getattr(C, "TOP_BAR_H", 64)
+        track_h = C.SCREEN_H - track_y - 10
+        track_rect = pygame.Rect(track_x, track_y, 6, track_h)
+        view_h = C.SCREEN_H
+        content_h = bottom
+        knob_h = max(30, int(track_h * (view_h / content_h)))
+        max_scroll = 0
+        min_scroll = C.SCREEN_H - bottom - 20
+        denom = (max_scroll - min_scroll)
+        t = (self.scroll_y - min_scroll) / denom if denom != 0 else 1.0
+        knob_y = int(track_y + (track_h - knob_h) * (1.0 - t))
+        knob_rect = pygame.Rect(track_x, knob_y, 6, knob_h)
+        return track_rect, knob_rect, min_scroll, max_scroll, track_y, track_h, knob_h
+
+    def _horizontal_scrollbar(self):
+        left, right = self._content_bounds_x()
+        if right - left <= C.SCREEN_W - 40:
+            return None
+        track_x = 10
+        track_w = C.SCREEN_W - 20
+        track_y = C.SCREEN_H - 10
+        track_rect = pygame.Rect(track_x, track_y-6, track_w, 6)
+        view_w = C.SCREEN_W
+        content_w = right - left + 40
+        knob_w = max(30, int(track_w * (view_w / max(view_w, content_w))))
+        max_scroll_x = 20 - left
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        denom = (max_scroll_x - min_scroll_x)
+        t = (self.scroll_x - min_scroll_x) / denom if denom != 0 else 1.0
+        knob_x = int(track_x + (track_w - knob_w) * t)
+        knob_rect = pygame.Rect(knob_x, track_y-6, knob_w, 6)
+        return track_rect, knob_rect, min_scroll_x, max_scroll_x, track_x, track_w, knob_w

@@ -1,17 +1,99 @@
 
 # common.py - shared utilities for Solitaire Suite
 import os
+import json
 import pygame
 from collections import deque
 from typing import Callable, List
 
-# --- Image card settings ---
+# --- Settings / Image card settings ---
 USE_IMAGE_CARDS = True
-IMAGE_CARDS_DIR = os.path.join(os.path.dirname(__file__), "assets", "cards", "PNG", "Medium")
 
-# Preferred back (will auto‑fallback if file missing)
-BACK_COLOR = "Blue"      # "Blue" | "Grey" | "Red"
-BACK_VARIANT = 1         # 1 | 2
+# Defaults (may be overridden by persisted settings)
+_DEFAULT_SETTINGS = {
+    "card_size": "Medium",   # Small | Medium | Large
+    "back_color": "Blue",    # Blue | Grey | Red
+    "back_variant": 1,        # 1 | 2
+}
+
+_CURRENT_SETTINGS = dict(_DEFAULT_SETTINGS)
+
+def _settings_dir() -> str:
+    # Prefer %APPDATA% on Windows, else ~/.random_red_mage_solitaire
+    base = os.environ.get("APPDATA")
+    if base:
+        return os.path.join(base, "RandomRedMageSolitaire")
+    return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+
+def _settings_path() -> str:
+    return os.path.join(_settings_dir(), "settings.json")
+
+def get_current_settings():
+    return dict(_CURRENT_SETTINGS)
+
+def load_settings():
+    global _CURRENT_SETTINGS
+    try:
+        with open(_settings_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                _CURRENT_SETTINGS.update({
+                    "card_size": data.get("card_size", _CURRENT_SETTINGS["card_size"]),
+                    "back_color": data.get("back_color", _CURRENT_SETTINGS["back_color"]),
+                    "back_variant": int(data.get("back_variant", _CURRENT_SETTINGS["back_variant"]))
+                })
+    except Exception:
+        pass
+
+def save_settings(new_values: dict):
+    # Merge and write to disk
+    global _CURRENT_SETTINGS
+    _CURRENT_SETTINGS.update({
+        k: new_values[k] for k in ("card_size", "back_color", "back_variant") if k in new_values
+    })
+    try:
+        os.makedirs(_settings_dir(), exist_ok=True)
+        with open(_settings_path(), "w", encoding="utf-8") as f:
+            json.dump(_CURRENT_SETTINGS, f, indent=2)
+    except Exception:
+        pass
+
+def _size_to_dims(size_name: str):
+    size_name = (size_name or "Medium").capitalize()
+    if size_name == "Small":
+        return 75, 105
+    if size_name == "Large":
+        return 150, 210
+    return 100, 140
+
+def _size_to_dir(size_name: str):
+    size_name = (size_name or "Medium").capitalize()
+    return {"Small": "Small", "Medium": "Medium", "Large": "Large"}.get(size_name, "Medium")
+
+def invalidate_card_caches():
+    global _img_face_cache, _img_back_cache, _card_face_cache, _card_back_cache
+    _img_face_cache = {}
+    _img_back_cache = None
+    _card_face_cache = {}
+    _card_back_cache = None
+
+def apply_card_settings(size_name: str = None, back_color: str = None, back_variant: int = None):
+    # Update globals for gameplay rendering
+    global IMAGE_CARDS_DIR, BACK_COLOR, BACK_VARIANT, CARD_W, CARD_H
+    if size_name is not None:
+        CARD_W, CARD_H = _size_to_dims(size_name)
+        IMAGE_CARDS_DIR = os.path.join(os.path.dirname(__file__), "assets", "cards", "PNG", _size_to_dir(size_name))
+    if back_color is not None:
+        BACK_COLOR = back_color
+    if back_variant is not None:
+        BACK_VARIANT = int(back_variant)
+    invalidate_card_caches()
+
+# Load any persisted settings and apply now
+load_settings()
+IMAGE_CARDS_DIR = os.path.join(os.path.dirname(__file__), "assets", "cards", "PNG", _size_to_dir(_CURRENT_SETTINGS["card_size"]))
+BACK_COLOR = _CURRENT_SETTINGS["back_color"]
+BACK_VARIANT = int(_CURRENT_SETTINGS["back_variant"])
 
 
 # ---------- Configuration ----------
@@ -19,7 +101,7 @@ SCREEN_W, SCREEN_H = 1280, 800
 GREEN_TABLE = (2, 100, 40)
 TABLE_BG = GREEN_TABLE
 
-CARD_W, CARD_H = 100, 140
+CARD_W, CARD_H = _size_to_dims(_CURRENT_SETTINGS.get("card_size", "Medium"))
 CARD_RADIUS = 10
 CARD_GAP_X = 18
 CARD_GAP_Y = 26
@@ -44,6 +126,9 @@ def setup_fonts():
     FONT_CORNER_RANK = pygame.font.SysFont(FONT_NAME, 28, bold=True)
     FONT_CORNER_SUIT = pygame.font.SysFont(FONT_NAME, 26, bold=True)
     FONT_CENTER_SUIT = pygame.font.SysFont(FONT_NAME, 56, bold=True)
+
+# UI bar heights
+TOP_BAR_H = 60
 
 # Colors
 BLACK = (20, 20, 20)
@@ -82,6 +167,10 @@ def make_deck(shuffle=True):
 
 _card_face_cache = {}
 _card_back_cache = None
+
+# Global draw offsets for scrolling game areas (set by scenes during draw)
+DRAW_OFFSET_X = 0
+DRAW_OFFSET_Y = 0
 
 def draw_suit_shape(surface, center, suit_index, color, size=42):
     x, y = center
@@ -263,11 +352,17 @@ class Pile(Draggable):
         return self.rect_for_index(len(self.cards)-1)
     def draw(self, screen):
         if not self.cards:
-            pygame.draw.rect(screen, (255,255,255,40), (self.x, self.y, CARD_W, CARD_H), border_radius=CARD_RADIUS, width=2)
+            pygame.draw.rect(
+                screen,
+                (255, 255, 255, 40),
+                (self.x + DRAW_OFFSET_X, self.y + DRAW_OFFSET_Y, CARD_W, CARD_H),
+                border_radius=CARD_RADIUS,
+                width=2,
+            )
         for i, c in enumerate(self.cards):
             r = self.rect_for_index(i)
             surf = get_card_surface(c)
-            screen.blit(surf, r.topleft)
+            screen.blit(surf, (r.left + DRAW_OFFSET_X, r.top + DRAW_OFFSET_Y))
     def hit(self, pos):
         if not self.cards:
             r = pygame.Rect(self.x, self.y, CARD_W, CARD_H)
