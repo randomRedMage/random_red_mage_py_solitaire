@@ -119,6 +119,11 @@ class KlondikeGameScene(C.Scene):
         # Layout depends on current card size and screen size
         self.compute_layout()
         self.deal_new()
+        # Hover peek for face-up cards within a pile
+        self.peek_overlay = None  # (card, world_x, world_y)
+        self._peek_candidate = None  # (pile_id, index)
+        self._peek_started_at = 0
+        self._peek_pending = None
 
     # ---------- Layout ----------
     def compute_layout(self):
@@ -370,6 +375,9 @@ class KlondikeGameScene(C.Scene):
             except Exception:
                 pass
             self._clamp_scroll_xy()
+            # Scrolling cancels peek state
+            self.peek_overlay = None
+            self._peek_candidate = None
             return
 
         # Scrollbar interactions (mouse)
@@ -409,6 +417,38 @@ class KlondikeGameScene(C.Scene):
                     self._clamp_scroll_xy()
                     return
 
+        # Hover peek when not dragging scrollbars or stacks
+        if e.type == pygame.MOUSEMOTION and not getattr(self, "_drag_vscroll", False) and not getattr(self, "_drag_hscroll", False) and not self.drag_stack:
+            mx, my = e.pos
+            mxw = mx - self.scroll_x
+            myw = my - self.scroll_y
+            self.peek_overlay = None
+            candidate = None
+            pending = None
+            for t in self.tableau:
+                hi = t.hit((mxw, myw))
+                if hi is None or hi == -1:
+                    continue
+                # Only peek if not fully exposed (not the top card)
+                if hi < len(t.cards) - 1 and t.cards[hi].face_up:
+                    r = t.rect_for_index(hi)
+                    candidate = (id(t), hi)
+                    pending = (t.cards[hi], r.x, r.y)
+                    break
+
+            now = pygame.time.get_ticks()
+            if candidate is None:
+                self._peek_candidate = None
+                self._peek_pending = None
+                return
+            if candidate != self._peek_candidate:
+                self._peek_candidate = candidate
+                self._peek_started_at = now
+                self._peek_pending = pending
+                return
+            if now - self._peek_started_at >= 2000 and self._peek_pending is not None:
+                self.peek_overlay = self._peek_pending
+
         if e.type == pygame.MOUSEBUTTONUP and e.button == 1:
             self._drag_vscroll = False
             self._drag_hscroll = False
@@ -431,6 +471,9 @@ class KlondikeGameScene(C.Scene):
                 return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            # Any click clears peek state
+            self.peek_overlay = None
+            self._peek_candidate = None
             mx, my = e.pos
             mxw = mx - self.scroll_x
             myw = my - self.scroll_y  # convert to world coords for hit-tests
@@ -532,6 +575,16 @@ class KlondikeGameScene(C.Scene):
         C.DRAW_OFFSET_X = self.scroll_x
         C.DRAW_OFFSET_Y = self.scroll_y
 
+        # If a peek is pending and delay elapsed, activate it even without mouse movement
+        now2 = pygame.time.get_ticks()
+        if (
+            self.peek_overlay is None
+            and getattr(self, "_peek_candidate", None) is not None
+            and getattr(self, "_peek_pending", None) is not None
+            and now2 - getattr(self, "_peek_started_at", 0) >= 2000
+        ):
+            self.peek_overlay = self._peek_pending
+
         for i,f in enumerate(self.foundations):
             f.draw(screen)
             label = C.FONT_SMALL.render("Foundation", True, (245,245,245))
@@ -552,6 +605,12 @@ class KlondikeGameScene(C.Scene):
             for i,c in enumerate(stack):
                 surf = C.get_card_surface(c)
                 screen.blit(surf, (mx - C.CARD_W//2, my - C.CARD_H//2 + i*28))
+        elif self.peek_overlay:
+            c, rx, ry = self.peek_overlay
+            surf = C.get_card_surface(c)
+            sx = rx + self.scroll_x
+            sy = ry + self.scroll_y
+            screen.blit(surf, (sx, sy))
 
         if self.message:
             msg = C.FONT_UI.render(self.message, True, (255, 255, 180))

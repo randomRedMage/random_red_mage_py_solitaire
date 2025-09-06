@@ -1,7 +1,7 @@
 Solitaire Suite (Pygame)
 
 Overview
-- Simple Pygame-based solitaire suite including Klondike and Pyramid.
+- Simple Pygame-based solitaire suite including Klondike, FreeCell, and Pyramid.
 - Uses built-in vector drawing with optional image card assets bundled under `src/solitaire/assets`.
 
 Requirements
@@ -36,25 +36,64 @@ Controls
   - `U`: Undo last move
   - `A`: Auto-finish when available
 
+- FreeCell:
+  - Drag single cards or valid descending, alternating sequences between tableau columns
+  - Place one card per free cell (top-left)
+  - Build foundations by suit from Ace upward (top-right)
+  - `N`: New deal
+  - `R`: Restart current deal
+  - `U`: Undo last move
+  - `A`: Auto-move available cards to foundations
+
 - Pyramid:
   - Click the stock to flip to waste
   - Remove any exposed King, or any two exposed cards summing to 13
   - Limited stock resets based on options
 
 Settings
-- Card assets and style are configured in `src/solitaire/common.py`:
-  - `USE_IMAGE_CARDS`: use PNG assets if available; falls back to drawn cards
-  - `BACK_COLOR` and `BACK_VARIANT`: choose the card back style
-  - `IMAGE_CARDS_DIR`: path to preferred card face size (`PNG/Medium` by default)
+- Use the in‑game Settings screen (from the main menu) to choose:
+  - Card size: Small | Medium | Large
+  - Card back: Blue/Grey/Red + variant
+- Choices are saved to disk and applied at runtime:
+  - Windows: `%APPDATA%/RandomRedMageSolitaire/settings.json`
+  - macOS/Linux: `~/.random_red_mage_solitaire/settings.json`
+- Rendering notes:
+  - PNG image cards are used by default if available and are scaled to the selected size.
+  - Falls back to vector‑drawn cards when images are unavailable.
 
 Project Layout
 - `src/solitaire/__main__.py`: entry point
 - `src/solitaire/scenes/menu.py`: main menu
 - `src/solitaire/modes/klondike.py`: Klondike options and game scenes
+- `src/solitaire/modes/freecell.py`: FreeCell options and game scenes
 - `src/solitaire/modes/pyramid.py`: Pyramid options and game scenes
 - `src/solitaire/ui.py`: shared UI widgets (toolbar, buttons)
 
 Notes
 - Unicode cleanup: suit symbols now render as standard `♠ ♥ ♦ ♣`. If your system font misses them, image cards are used by default.
 - Assets include card PNGs and a font license; see `src/solitaire/assets/` for details.
+ - Hover Peek: in Klondike and FreeCell, hovering a partially covered, face‑up card reveals it in place after ~2 seconds so suits/ranks are readable. Move/scroll/click to cancel.
 
+Contributing
+- Dev setup:
+  - Python 3.11+, `python -m pip install -e .` in the repo root
+  - Run with `python -m solitaire` (ensure `PYTHONPATH` includes `src` if not installed)
+- Code style:
+  - Keep changes small and focused; match existing patterns and naming
+  - Prefer adding a new mode under `src/solitaire/modes/<name>.py` with:
+    - `<Name>OptionsScene` and `<Name>GameScene`
+    - Toolbar via `solitaire.ui.make_toolbar`
+    - Use shared primitives from `solitaire.common` (`Card`, `Pile`, `UndoManager`)
+  - UI should respect window resizing and current card size from settings
+- Manual QA checklist:
+  - Resize window; verify layout recomputes
+  - Start each mode; basic play loop works; Undo/Restart/New behave
+  - Settings changes (size/back) persist and take effect without restart
+  - Image cards load; fallback drawing looks acceptable
+
+Known Issues / Future Work
+- FreeCell: scrollbar is wheel/trackpad only; knob is not draggable yet
+- FreeCell: cannot move cards back out of foundations (some variants allow this)
+- Klondike/FreeCell: peek delay is fixed at ~2s; consider a settings toggle for delay/disable
+- Asset loading does per‑size scaling on first use; initial draw may incur a brief cost
+- Pyramid intentionally has no peek overlay (not needed for its mechanics)

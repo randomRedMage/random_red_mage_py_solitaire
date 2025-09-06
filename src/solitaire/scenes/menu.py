@@ -9,6 +9,7 @@ class MainMenuScene(C.Scene):
         cx = C.SCREEN_W // 2
         y  = 260
         self.b_klon = C.Button("Play Klondike", cx, y, center=True); y += 60
+        self.b_free = C.Button("Play FreeCell", cx, y, center=True); y += 60
         self.b_pyr  = C.Button("Play Pyramid",  cx, y, center=True); y += 60
         self.b_settings = C.Button("Settings", cx, y, center=True); y += 60
         self.b_quit = C.Button("Quit", cx, y, center=True)
@@ -20,6 +21,9 @@ class MainMenuScene(C.Scene):
             if self.b_klon.hovered((mx,my)):
                 from solitaire.modes.klondike import KlondikeOptionsScene
                 self.next_scene = KlondikeOptionsScene(self.app)
+            elif self.b_free.hovered((mx,my)):
+                from solitaire.modes.freecell import FreeCellOptionsScene
+                self.next_scene = FreeCellOptionsScene(self.app)
             elif self.b_pyr.hovered((mx,my)):
                 from solitaire.modes.pyramid import PyramidOptionsScene
                 self.next_scene = PyramidOptionsScene(self.app)
@@ -37,5 +41,5 @@ class MainMenuScene(C.Scene):
         title = C.FONT_TITLE.render("Solitaire Suite", True, C.WHITE)
         screen.blit(title, (C.SCREEN_W//2 - title.get_width()//2, 120))
         mp = pygame.mouse.get_pos()
-        for b in [self.b_klon, self.b_pyr, self.b_settings, self.b_quit]:
+        for b in [self.b_klon, self.b_free, self.b_pyr, self.b_settings, self.b_quit]:
             b.draw(screen, hover=b.hovered(mp))
