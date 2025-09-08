@@ -1,0 +1,66 @@
+name: Build Solitaire Suite
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    name: Windows (PyInstaller onedir)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pyinstaller
+
+      - name: Package (PyInstaller)
+        shell: pwsh
+        run: ./scripts/package_windows_pyinstaller.ps1
+
+      - name: Upload artifact (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SolitaireSuite-windows
+          path: dist/SolitaireSuite/**
+
+  build-macos:
+    name: macOS (PyInstaller onedir)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -e . pyinstaller
+
+      - name: Make packaging script executable
+        run: chmod +x scripts/package_macos_pyinstaller.sh
+
+      - name: Package (PyInstaller)
+        run: bash scripts/package_macos_pyinstaller.sh
+
+      - name: Upload artifact (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SolitaireSuite-macos
+          path: dist/SolitaireSuite/**
+

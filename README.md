@@ -68,6 +68,9 @@ Project Layout
 - `src/solitaire/modes/freecell.py`: FreeCell options and game scenes
 - `src/solitaire/modes/pyramid.py`: Pyramid options and game scenes
 - `src/solitaire/ui.py`: shared UI widgets (toolbar, buttons)
+ - `packaging/pyinstaller/solitaire.spec`: PyInstaller build spec
+ - `scripts/package_windows_pyinstaller.ps1`: Windows packaging helper
+ - `scripts/package_macos_pyinstaller.sh`: macOS packaging helper
 
 Notes
 - Unicode cleanup: suit symbols now render as standard `♠ ♥ ♦ ♣`. If your system font misses them, image cards are used by default.
@@ -97,3 +100,13 @@ Known Issues / Future Work
 - Klondike/FreeCell: peek delay is fixed at ~2s; consider a settings toggle for delay/disable
 - Asset loading does per‑size scaling on first use; initial draw may incur a brief cost
 - Pyramid intentionally has no peek overlay (not needed for its mechanics)
+
+Packaging
+- PyInstaller (recommended for quick, cross‑platform bundles):
+  - Windows (PowerShell): `./scripts/package_windows_pyinstaller.ps1`
+  - macOS (Terminal): `bash ./scripts/package_macos_pyinstaller.sh`
+  - Outputs to `dist/SolitaireSuite` (onedir). One‑file builds are supported by toggling the script flag but start slower.
+- Notes:
+  - Assets (`src/solitaire/assets`) are bundled via the spec. If you add new files, they will be included automatically.
+  - Pygame DLLs/frameworks are handled by PyInstaller hooks; no extra steps usually needed.
+  - To set a custom icon, edit `packaging/pyinstaller/solitaire.spec` and set `icon` to a `.ico` (Windows) or `.icns` (macOS) path.
