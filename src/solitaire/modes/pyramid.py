@@ -624,9 +624,12 @@ class PyramidGameScene(C.Scene):
             if self.waste_right.top_rect().collidepoint((mxw,myw)) and self.waste_right.cards:
                 self.on_source_click(("w2", 0, 0)); return
 
-            # 3) Pyramid clicks
-            for r, row in enumerate(self.pyramid):
-                for i, card in enumerate(row):
+            # 3) Pyramid clicks – iterate from bottom to top so the
+            # visually front-most cards receive the click first.
+            for r in range(len(self.pyramid) - 1, -1, -1):
+                row = self.pyramid[r]
+                for i in range(len(row) - 1, -1, -1):
+                    card = row[i]
                     if card is None:
                         continue
                     x, y = self.pos_for(r, i)

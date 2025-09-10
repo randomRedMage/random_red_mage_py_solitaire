@@ -479,9 +479,11 @@ class TriPeaksGameScene(C.Scene):
                         self.message = "Game Over"
                 return
 
-            # Tableau click: if free & face-up & adjacent to waste -> move to waste
-            for r, row in enumerate(self.rows):
-                for i, c in enumerate(row):
+            # Tableau click: prefer top-most visible cards (bottom row drawn last)
+            for r in range(len(self.rows) - 1, -1, -1):
+                row = self.rows[r]
+                for i in range(len(row) - 1, -1, -1):
+                    c = row[i]
                     if c is None:
                         continue
                     x, y = self.pos_for(r, i)
