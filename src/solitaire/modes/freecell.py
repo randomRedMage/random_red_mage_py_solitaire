@@ -50,6 +50,8 @@ class FreeCellGameScene(C.Scene):
         # Piles
         self.freecells: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
         self.foundations: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
+        # Dedicated foundation suits left-to-right: [Spades, Hearts, Diamonds, Clubs]
+        self.foundation_suits: List[int] = [0, 1, 2, 3]
         self.tableau: List[C.Pile] = [C.Pile(0, 0, fan_y=max(24, C.CARD_H // 5)) for _ in range(8)]
 
         # Drag state: (stack, src_kind, src_index)
@@ -191,9 +193,13 @@ class FreeCellGameScene(C.Scene):
         return (is_red(upper.suit) != is_red(lower.suit)) and (upper.rank == lower.rank - 1)
 
     def _can_move_to_foundation(self, card: C.Card, fi: int) -> bool:
+        # Enforce dedicated suit per foundation index
+        required_suit = self.foundation_suits[fi]
+        if card.suit != required_suit:
+            return False
         f = self.foundations[fi]
         if not f.cards:
-            return card.rank == 1  # Ace
+            return card.rank == 1  # Ace of the required suit
         top = f.cards[-1]
         return (card.suit == top.suit) and (card.rank == top.rank + 1)
 
@@ -468,8 +474,14 @@ class FreeCellGameScene(C.Scene):
             screen.blit(lab, (p.x + (C.CARD_W - lab.get_width()) // 2, p.y - 22 + self.scroll_y))
         for i, p in enumerate(self.foundations):
             p.draw(screen)
-            lab = font_lbl.render("Foundation", True, (245, 245, 245))
-            screen.blit(lab, (p.x + (C.CARD_W - lab.get_width()) // 2, p.y - 22 + self.scroll_y))
+            # Draw suit character (plain white) on empty foundation placeholder
+            if not p.cards:
+                suit_i = self.foundation_suits[i]
+                suit_char = C.SUITS[suit_i]
+                txt = C.FONT_CENTER_SUIT.render(suit_char, True, C.WHITE)
+                cx = p.x + C.CARD_W // 2
+                cy = p.y + C.CARD_H // 2 + self.scroll_y
+                screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
         # Draw tableau
         for p in self.tableau:

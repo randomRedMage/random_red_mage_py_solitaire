@@ -76,6 +76,8 @@ class KlondikeGameScene(C.Scene):
         self.stock_cycles_used = 0
         # Piles (positions/fan set in compute_layout)
         self.foundations = [C.Pile(0, 0) for _ in range(4)]
+        # Dedicated foundation suits left-to-right: [Spades, Hearts, Diamonds, Clubs]
+        self.foundation_suits = [0, 1, 2, 3]
         self.stock_pile = C.Pile(0, 0)
         self.waste_pile = C.Pile(0, 0)
         self.tableau = [C.Pile(0, 0, fan_y=0) for _ in range(7)]
@@ -299,8 +301,13 @@ class KlondikeGameScene(C.Scene):
         return card.rank == 13  # King
 
     def can_move_to_foundation(self, card: C.Card, foundation_index: int):
+        # Enforce dedicated suit per foundation index
+        required_suit = self.foundation_suits[foundation_index]
+        if card.suit != required_suit:
+            return False
         f = self.foundations[foundation_index]
-        if not f.cards: return card.rank == 1
+        if not f.cards:
+            return card.rank == 1  # Ace of the required suit
         top = f.cards[-1]
         return (card.suit == top.suit) and (card.rank == top.rank + 1)
 
@@ -587,8 +594,14 @@ class KlondikeGameScene(C.Scene):
 
         for i,f in enumerate(self.foundations):
             f.draw(screen)
-            label = C.FONT_SMALL.render("Foundation", True, (245,245,245))
-            screen.blit(label, (f.x + (C.CARD_W - label.get_width())//2 + self.scroll_x, f.y - 22 + self.scroll_y))
+            # Draw suit character (plain white) on empty foundation placeholder
+            if not f.cards:
+                suit_i = self.foundation_suits[i]
+                suit_char = C.SUITS[suit_i]
+                txt = C.FONT_CENTER_SUIT.render(suit_char, True, C.WHITE)
+                cx = f.x + C.CARD_W // 2 + self.scroll_x
+                cy = f.y + C.CARD_H // 2 + self.scroll_y
+                screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
         self.stock_pile.draw(screen)
         lab = C.FONT_SMALL.render("Stock", True, (245,245,245))

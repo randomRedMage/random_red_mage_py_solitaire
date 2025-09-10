@@ -119,13 +119,38 @@ FONT_CENTER_SUIT = None
 def setup_fonts():
     global FONT_NAME, FONT_RANK, FONT_SMALL, FONT_UI, FONT_TITLE, FONT_CORNER_RANK, FONT_CORNER_SUIT, FONT_CENTER_SUIT
     FONT_NAME = pygame.font.get_default_font()
+    # Core UI/number fonts (system default is fine)
     FONT_RANK = pygame.font.SysFont(FONT_NAME, 24, bold=True)
     FONT_SMALL = pygame.font.SysFont(FONT_NAME, 20, bold=True)
     FONT_UI = pygame.font.SysFont(FONT_NAME, 26, bold=True)
     FONT_TITLE = pygame.font.SysFont(FONT_NAME, 44, bold=True)
     FONT_CORNER_RANK = pygame.font.SysFont(FONT_NAME, 28, bold=True)
-    FONT_CORNER_SUIT = pygame.font.SysFont(FONT_NAME, 26, bold=True)
-    FONT_CENTER_SUIT = pygame.font.SysFont(FONT_NAME, 56, bold=True)
+
+    # Suit glyphs require a Unicode-capable font. Prefer bundled DejaVuSans.
+    suit_font_small = None
+    suit_font_large = None
+    try:
+        _font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "DejaVuSans.ttf")
+        if os.path.isfile(_font_path):
+            suit_font_small = pygame.font.Font(_font_path, 26)
+            suit_font_large = pygame.font.Font(_font_path, 56)
+    except Exception:
+        suit_font_small = None
+        suit_font_large = None
+    # Fallbacks for environments without the bundled font
+    if suit_font_small is None:
+        try:
+            suit_font_small = pygame.font.SysFont("Segoe UI Symbol", 26, bold=True)
+        except Exception:
+            suit_font_small = pygame.font.SysFont(FONT_NAME, 26, bold=True)
+    if suit_font_large is None:
+        try:
+            suit_font_large = pygame.font.SysFont("Segoe UI Symbol", 56, bold=True)
+        except Exception:
+            suit_font_large = pygame.font.SysFont(FONT_NAME, 56, bold=True)
+
+    FONT_CORNER_SUIT = suit_font_small
+    FONT_CENTER_SUIT = suit_font_large
 
 # UI bar heights
 TOP_BAR_H = 60
