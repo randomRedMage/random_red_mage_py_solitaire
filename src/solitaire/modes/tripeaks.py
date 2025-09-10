@@ -185,6 +185,44 @@ class TriPeaksGameScene(C.Scene):
         if self.scroll_x < min_scroll_x:
             self.scroll_x = min_scroll_x
 
+    def _vertical_scrollbar(self):
+        bottom = self._content_bottom_y()
+        if bottom <= C.SCREEN_H:
+            return None
+        track_x = C.SCREEN_W - 12
+        track_y = getattr(C, "TOP_BAR_H", 60)
+        track_h = C.SCREEN_H - track_y - 10
+        track_rect = pygame.Rect(track_x, track_y, 6, track_h)
+        view_h = C.SCREEN_H
+        content_h = bottom
+        knob_h = max(30, int(track_h * (view_h / content_h)))
+        max_scroll = 0
+        min_scroll = C.SCREEN_H - bottom - 20
+        denom = (max_scroll - min_scroll)
+        t = (self.scroll_y - min_scroll) / denom if denom != 0 else 1.0
+        knob_y = int(track_y + (track_h - knob_h) * (1.0 - t))
+        knob_rect = pygame.Rect(track_x, knob_y, 6, knob_h)
+        return track_rect, knob_rect, min_scroll, max_scroll, track_y, track_h, knob_h
+
+    def _horizontal_scrollbar(self):
+        left, right = self._content_bounds_x()
+        if right - left <= C.SCREEN_W - 40:
+            return None
+        track_x = 10
+        track_w = C.SCREEN_W - 20
+        track_y = C.SCREEN_H - 10
+        track_rect = pygame.Rect(track_x, track_y - 6, track_w, 6)
+        view_w = C.SCREEN_W
+        content_w = right - left + 40
+        knob_w = max(30, int(track_w * (view_w / max(view_w, content_w))))
+        max_scroll_x = 20 - left
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        denom = (max_scroll_x - min_scroll_x)
+        t = (self.scroll_x - min_scroll_x) / denom if denom != 0 else 1.0
+        knob_x = int(track_x + (track_w - knob_w) * t)
+        knob_rect = pygame.Rect(knob_x, track_y - 6, knob_w, 6)
+        return track_rect, knob_rect, min_scroll_x, max_scroll_x, track_x, track_w, knob_w
+
     # ---------- Deal / Restart ----------
     def _clear(self):
         self.rows = []
@@ -439,6 +477,19 @@ class TriPeaksGameScene(C.Scene):
             msg = C.FONT_UI.render(self.message, True, (255, 255, 180))
             screen.blit(msg, (C.SCREEN_W // 2 - msg.get_width() // 2, C.SCREEN_H - 40))
 
+        # Vertical scrollbar
+        vsb = self._vertical_scrollbar()
+        if vsb is not None:
+            track_rect, knob_rect, *_ = vsb
+            pygame.draw.rect(screen, (40, 40, 40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200, 200, 200), knob_rect, border_radius=3)
+        # Horizontal scrollbar
+        hsb = self._horizontal_scrollbar()
+        if hsb is not None:
+            track_rect, knob_rect, *_ = hsb
+            pygame.draw.rect(screen, (40,40,40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200,200,200), knob_rect, border_radius=3)
+
         # Tooling: top bar + toolbar (draw last)
         C.Scene.draw_top_bar(self, screen, "TriPeaks")
         self.toolbar.draw(screen)
@@ -448,6 +499,52 @@ class TriPeaksGameScene(C.Scene):
         # Toolbar first
         if hasattr(self, "toolbar") and self.toolbar.handle_event(e):
             return
+
+        # Mouse wheel scrolling
+        if e.type == pygame.MOUSEWHEEL:
+            # Keep vertical: up => content down
+            self.scroll_y += e.y * 60
+            # Invert horizontal: left => content moves right
+            try:
+                self.scroll_x -= e.x * 60
+            except Exception:
+                pass
+            self._clamp_scroll()
+            return
+
+        # Scrollbar interactions
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            vsb = self._vertical_scrollbar()
+            if vsb is not None:
+                track_rect, knob_rect, *_ = vsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_vscroll = True
+                    return
+            hsb = self._horizontal_scrollbar()
+            if hsb is not None:
+                track_rect, knob_rect, *_ = hsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_hscroll = True
+                    return
+        if e.type == pygame.MOUSEBUTTONUP and e.button == 1:
+            self._drag_vscroll = False
+            self._drag_hscroll = False
+        if e.type == pygame.MOUSEMOTION and self._drag_vscroll:
+            vsb = self._vertical_scrollbar()
+            if vsb is not None:
+                track_rect, knob_rect, min_sy, max_sy, track_y, track_h, knob_h = vsb
+                t = (e.pos[1] - track_y - knob_h / 2) / max(1, (track_h - knob_h))
+                t = max(0.0, min(1.0, t))
+                self.scroll_y = min_sy + t * (max_sy - min_sy)
+                self._clamp_scroll()
+        if e.type == pygame.MOUSEMOTION and self._drag_hscroll:
+            hsb = self._horizontal_scrollbar()
+            if hsb is not None:
+                track_rect, knob_rect, min_sx, max_sx, track_x, track_w, knob_w = hsb
+                t = (e.pos[0] - track_x - knob_w / 2) / max(1, (track_w - knob_w))
+                t = max(0.0, min(1.0, t))
+                self.scroll_x = min_sx + t * (max_sx - min_sx)
+                self._clamp_scroll()
 
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
