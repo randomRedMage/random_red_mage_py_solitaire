@@ -11,7 +11,7 @@ class TitleScene(C.Scene):
         self._raw_image = None  # original loaded surface
         self._image = None      # scaled surface to current window
         self._image_rect = pygame.Rect(0, 0, 0, 0)
-        self._prompt_text = "Click or press any key to play — Esc to exit"
+        self._prompt_text = "Click or press Enter/Space to play — Esc returns"
         self._pulse_period_ms = 1600  # slow flash
         self._load_image()
         self.compute_layout()
@@ -50,12 +50,15 @@ class TitleScene(C.Scene):
         self.next_scene = MainMenuScene(self.app)
 
     def handle_event(self, e):
-        # Any click or key goes to menu; ESC quits
+        # Enter/Space: go to menu; Esc or Q: confirm quit
         if e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_ESCAPE:
-                pygame.quit(); raise SystemExit
-            else:
+            if e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                 self._goto_menu(); return
+            elif e.key in (pygame.K_ESCAPE, pygame.K_q):
+                try:
+                    pygame.event.post(pygame.event.Event(pygame.QUIT))
+                except Exception:
+                    pygame.quit(); raise SystemExit
         if e.type == pygame.MOUSEBUTTONDOWN:
             if e.button in (1, 2, 3):
                 self._goto_menu(); return

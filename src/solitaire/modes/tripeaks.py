@@ -556,6 +556,8 @@ class TriPeaksGameScene(C.Scene):
                 self.restart_deal()
             elif e.key == pygame.K_u:
                 self.undo()
+            elif e.key == pygame.K_h:
+                self.show_hint()
 
         elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
