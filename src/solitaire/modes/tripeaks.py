@@ -149,15 +149,19 @@ class TriPeaksGameScene(C.Scene):
         self.waste_pile.x, self.waste_pile.y = left_x + C.CARD_W + self.inner_gap_x, base_y
 
     def _content_bounds_x(self) -> Tuple[int, int]:
-        sizes = [3, 6, 9, 10]
-        widest = max(sizes)
-        row_w = widest * C.CARD_W + (widest - 1) * self.inner_gap_x
-        left = self.center_x - row_w // 2
-        right = left + row_w
+        # Compute bounds from actual positioned cards to account for extra gaps
+        left = 10**9
+        right = -10**9
+        for r, row in enumerate(self.rows if self.rows else [[], [], [], [None]*10]):
+            n = len(row) if row else [3, 6, 9, 10][r]
+            for i in range(n):
+                x, _ = self.pos_for(r, i)
+                left = min(left, x)
+                right = max(right, x + C.CARD_W)
         # include piles
-        px_left = min(left, self.stock_pile.x)
-        px_right = max(right, self.waste_pile.x + C.CARD_W)
-        return px_left, px_right
+        left = min(left, self.stock_pile.x)
+        right = max(right, self.waste_pile.x + C.CARD_W)
+        return left, right
 
     def _content_bottom_y(self) -> int:
         bottom_tableau = self.top_y + 3 * self.overlap_y + C.CARD_H
@@ -276,19 +280,50 @@ class TriPeaksGameScene(C.Scene):
 
     # ---------- Helpers ----------
     def pos_for(self, r: int, i: int) -> Tuple[int, int]:
-        n = [3, 6, 9, 10][r]
-        row_w = n * C.CARD_W + (n - 1) * self.inner_gap_x
-        left = self.center_x - row_w // 2
+        """Position cards using a group-based TriPeaks layout:
+        - Row 3 (bottom): 10 cards at slots 0..9
+        - Row 2: 9 cards at half-slots 0.5..8.5 (3,3,3 groups)
+        - Row 1: 6 cards grouped as (2,2,2) at slots [1,2], [4,5], [7,8]
+        - Row 0 (top): 3 cards at slots 1.5, 4.5, 7.5
+        A "slot" is measured in multiples of (card_width + inner_gap_x) from the left edge
+        of the bottom row.
+        """
         step_x = C.CARD_W + self.inner_gap_x
-        x = left + i * step_x
+        bottom_w = 10 * C.CARD_W + 9 * self.inner_gap_x
+        left_base = self.center_x - bottom_w // 2
+
+        # Determine fractional slot index s for (r, i)
+        if r == 3:
+            s = float(i)
+        elif r == 2:
+            s = i + 0.5
+        elif r == 1:
+            g = i // 2  # group 0..2
+            k = i % 2   # position within group
+            s = 1.0 + 3.0 * g + k
+        elif r == 0:
+            s = 1.5 + 3.0 * i
+        else:
+            s = float(i)
+
+        x = int(left_base + s * step_x)
         y = self.top_y + r * self.overlap_y
         return x, y
 
     def children_indices(self, r: int, i: int) -> List[Tuple[int, int]]:
-        if r >= 3:
-            return []
-        # children at next row positions i and i+1
-        return [(r + 1, i), (r + 1, i + 1)]
+        # Respect the grouped geometry so flipping works with the visual layout
+        if r == 0:
+            # top -> row1 pairs within each peak
+            return [(1, 2 * i), (1, 2 * i + 1)]
+        if r == 1:
+            # row1 -> row2 (3 per group). Map pair index to two beneath within same group
+            g = i // 2
+            k = i % 2
+            return [(2, 3 * g + k), (2, 3 * g + k + 1)]
+        if r == 2:
+            # row2 -> bottom: standard adjacent mapping
+            return [(3, i), (3, i + 1)]
+        return []
 
     def is_free(self, r: int, i: int) -> bool:
         card = self.rows[r][i]
