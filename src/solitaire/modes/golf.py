@@ -58,7 +58,7 @@ class GolfOptionsScene(C.Scene):
         super().__init__(app)
         self.holes_options = [1, 3, 9, 18]
         self.holes_idx = 0
-        self.around = False
+        self.around = True
 
         cx = C.SCREEN_W // 2 - 220
         y = 220
@@ -140,6 +140,15 @@ class GolfGameScene(C.Scene):
         self.current_hole = 1
         self.scores: List[int] = []  # per-hole completed scores
         self.message = ""
+        # Scrolling (vertical + horizontal)
+        self.scroll_y: int = 0
+        self.scroll_x: int = 0
+        self._drag_vscroll: bool = False
+        self._drag_hscroll: bool = False
+        # Last drawn geometry for scrollbar calculations
+        self._last_tableau_rect: Optional[pygame.Rect] = None
+        self._last_bottom_rect: Optional[pygame.Rect] = None
+        self._last_score_rect: Optional[pygame.Rect] = None
         # Piles
         self.tableau: List[C.Pile] = [C.Pile(0, 0, fan_y=0) for _ in range(7)]
         self.stock_pile: C.Pile = C.Pile(0, 0)
@@ -184,23 +193,92 @@ class GolfGameScene(C.Scene):
         else:
             self.deal_new_hole()
 
+    # ----- Scroll helpers -----
+    def _content_bottom_y(self) -> int:
+        if isinstance(self._last_bottom_rect, pygame.Rect):
+            return self._last_bottom_rect.bottom
+        # Fallback: use screen height
+        return C.SCREEN_H
+
+    def _clamp_scroll(self):
+        bottom = self._content_bottom_y()
+        min_scroll = min(0, C.SCREEN_H - bottom - 20)
+        if self.scroll_y < min_scroll:
+            self.scroll_y = min_scroll
+        if self.scroll_y > 0:
+            self.scroll_y = 0
+        # Horizontal clamp based on content bounds
+        left, right = self._content_bounds_x()
+        max_scroll_x = 20 - left
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        if self.scroll_x > max_scroll_x:
+            self.scroll_x = max_scroll_x
+        if self.scroll_x < min_scroll_x:
+            self.scroll_x = min_scroll_x
+
+    def _vertical_scrollbar(self):
+        bottom = self._content_bottom_y()
+        if bottom <= C.SCREEN_H:
+            return None
+        track_x = C.SCREEN_W - 12
+        track_y = getattr(C, "TOP_BAR_H", 60)
+        track_h = C.SCREEN_H - track_y - 10
+        track_rect = pygame.Rect(track_x, track_y, 6, track_h)
+        view_h = C.SCREEN_H
+        content_h = bottom
+        knob_h = max(30, int(track_h * (view_h / content_h)))
+        max_scroll = 0
+        min_scroll = C.SCREEN_H - bottom - 20
+        denom = (max_scroll - min_scroll)
+        t = (self.scroll_y - min_scroll) / denom if denom != 0 else 1.0
+        knob_y = int(track_y + (track_h - knob_h) * (1.0 - t))
+        knob_rect = pygame.Rect(track_x, knob_y, 6, knob_h)
+        return track_rect, knob_rect, min_scroll, max_scroll, track_y, track_h, knob_h
+
+    def _content_bounds_x(self) -> Tuple[int, int]:
+        # Use last layout of tableau panel
+        if isinstance(self._last_tableau_rect, pygame.Rect):
+            return self._last_tableau_rect.left, self._last_tableau_rect.right
+        # Fallback: treat current designed geometry
+        return 0, C.SCREEN_W
+
+    def _horizontal_scrollbar(self):
+        left, right = self._content_bounds_x()
+        if right - left <= C.SCREEN_W - 40:
+            return None
+        track_x = 10
+        track_w = C.SCREEN_W - 20
+        track_y = C.SCREEN_H - 10
+        track_rect = pygame.Rect(track_x, track_y-6, track_w, 6)
+        view_w = C.SCREEN_W
+        content_w = right - left + 40
+        knob_w = max(30, int(track_w * (view_w / max(view_w, content_w))))
+        max_scroll_x = 20 - left
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        denom = (max_scroll_x - min_scroll_x)
+        t = (self.scroll_x - min_scroll_x) / denom if denom != 0 else 1.0
+        knob_x = int(track_x + (track_w - knob_w) * t)
+        knob_rect = pygame.Rect(knob_x, track_y-6, knob_w, 6)
+        return track_rect, knob_rect, min_scroll_x, max_scroll_x, track_x, track_w, knob_w
+
     # ----- Layout -----
     def compute_layout(self):
+        # Layout is finalized during draw to reflect dynamic tableau height.
+        # Provide a sensible initial placement and set fan to 50% overlap.
         gap_x = getattr(C, "CARD_GAP_X", max(18, C.CARD_W // 6))
-        gap_y = getattr(C, "CARD_GAP_Y", max(20, C.CARD_H // 6))
         top_bar_h = getattr(C, "TOP_BAR_H", 60)
         top_y = max(90, top_bar_h + 22)
 
-        # Row 1: foundation (left), stock (right of foundation)
-        self.foundation.x, self.foundation.y = 20, top_y
-        self.stock_pile.x, self.stock_pile.y = self.foundation.x + (C.CARD_W + gap_x), top_y
-
-        # Row 2: tableau columns start to the right, 7 columns
-        tab_left = self.stock_pile.x + (C.CARD_W + gap_x) + max(30, gap_x)
+        score_w = max(240, int(C.CARD_W * 2))
+        left_margin = 16
+        tab_left = left_margin + score_w + 16
         for i, t in enumerate(self.tableau):
             t.x = tab_left + i * (C.CARD_W + gap_x)
             t.y = top_y
-            t.fan_y = max(12, int(C.CARD_H * 0.06))
+            t.fan_y = max(12, int(C.CARD_H * 0.5))
+        # Put stock/foundation below; switch positions horizontally (stock left, foundation right)
+        self.stock_pile.x, self.stock_pile.y = tab_left, top_y + C.CARD_H * 3
+        self.foundation.x, self.foundation.y = tab_left + 6 * (C.CARD_W + gap_x), self.stock_pile.y
 
     # ----- Persistence -----
     def _game_state(self) -> Dict[str, Any]:
@@ -403,6 +481,50 @@ class GolfGameScene(C.Scene):
     def handle_event(self, e):
         if self.toolbar.handle_event(e):
             return
+        # Scroll wheel for content
+        if e.type == pygame.MOUSEWHEEL:
+            # Keep vertical: up => content down (positive scroll_y)
+            self.scroll_y += e.y * 60
+            # Invert horizontal: left => content moves right
+            try:
+                self.scroll_x -= e.x * 60
+            except Exception:
+                pass
+            self._clamp_scroll()
+            return
+        # Scrollbar drag
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            vsb = self._vertical_scrollbar()
+            if vsb is not None:
+                track_rect, knob_rect, *_ = vsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_vscroll = True
+                    return
+            hsb = self._horizontal_scrollbar()
+            if hsb is not None:
+                track_rect, knob_rect, *_ = hsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_hscroll = True
+                    return
+        if e.type == pygame.MOUSEBUTTONUP and e.button == 1:
+            self._drag_vscroll = False
+            self._drag_hscroll = False
+        if e.type == pygame.MOUSEMOTION and self._drag_vscroll:
+            vsb = self._vertical_scrollbar()
+            if vsb is not None:
+                track_rect, knob_rect, min_sy, max_sy, track_y, track_h, knob_h = vsb
+                t = (e.pos[1] - track_y - knob_h / 2) / max(1, (track_h - knob_h))
+                t = max(0.0, min(1.0, t))
+                self.scroll_y = min_sy + t * (max_sy - min_sy)
+                self._clamp_scroll()
+        if e.type == pygame.MOUSEMOTION and self._drag_hscroll:
+            hsb = self._horizontal_scrollbar()
+            if hsb is not None:
+                track_rect, knob_rect, min_sx, max_sx, track_x, track_w, knob_w = hsb
+                t = (e.pos[0] - track_x - knob_w / 2) / max(1, (track_w - knob_w))
+                t = max(0.0, min(1.0, t))
+                self.scroll_x = min_sx + t * (max_sx - min_sx)
+                self._clamp_scroll()
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
             # ESC = back to options (no save)
             from solitaire.modes.golf import GolfOptionsScene
@@ -411,8 +533,10 @@ class GolfGameScene(C.Scene):
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
+            mxw = mx - self.scroll_x
+            myw = my - self.scroll_y  # convert to world coords for hit-tests
             # Click stock to flip to foundation
-            if self.stock_pile.top_rect().collidepoint((mx, my)):
+            if self.stock_pile.top_rect().collidepoint((mxw, myw)):
                 if self.stock_pile.cards:
                     self.push_undo()
                     c = self.stock_pile.cards.pop()
@@ -426,7 +550,7 @@ class GolfGameScene(C.Scene):
                     continue
                 top_i = len(t.cards) - 1
                 r = t.rect_for_index(top_i)
-                if r.collidepoint((mx, my)) and self._is_playable(t.cards[-1]):
+                if r.collidepoint((mxw, myw)) and self._is_playable(t.cards[-1]):
                     self.push_undo()
                     c = t.cards.pop()
                     # already face_up
@@ -456,25 +580,61 @@ class GolfGameScene(C.Scene):
         self.deal_new_hole()
 
     # ----- Drawing helpers -----
-    def _draw_scores_table(self, screen):
-        # Draw a small table with hole scores and running total
-        x = 20
-        y = self.foundation.y + C.CARD_H + 14
-        header = C.FONT_UI.render("Scores (Hole / Total)", True, C.WHITE)
-        screen.blit(header, (x, y)); y += header.get_height() + 6
-        running = 0
-        for i in range(self.holes_total):
-            label = f"{i+1:>2}:"
-            if i < len(self.scores):
-                running += self.scores[i]
-                val = f"{self.scores[i]:>4} / {running:>4}"
+    def _draw_score_grid(self, screen: pygame.Surface, panel_rect: pygame.Rect):
+        """Draw score grid with no outer border lines, thicker internals, centered text."""
+        # Inset grid so we don't overlap the rounded panel border
+        inset = 6
+        inner = pygame.Rect(panel_rect.x + inset, panel_rect.y + inset,
+                            panel_rect.w - 2 * inset, panel_rect.h - 2 * inset)
+        rows = 1 + 19
+        row_h = max(22, int(inner.h / rows))
+
+        # Two columns; first is 'Hole', second 'Score'
+        col1_w = max(90, int(inner.w * 0.5))
+        col2_w = inner.w - col1_w
+
+        grid_col = (225, 225, 232)  # slightly brighter for thicker lines
+        h_thick = 4  # horizontal separators
+        v_thick = 4  # vertical divider
+
+        # Horizontal lines (skip top and bottom to avoid table border)
+        for r in range(1, rows):
+            y = inner.y + r * row_h
+            pygame.draw.line(screen, grid_col, (inner.x, y), (inner.right, y), width=h_thick)
+
+        # Vertical divider only (no left/right table borders)
+        divider_x = inner.x + col1_w
+        pygame.draw.line(screen, grid_col, (divider_x, inner.y), (divider_x, inner.bottom), v_thick)
+
+        # Header labels centered (white for contrast)
+        hdr_hole = C.FONT_SMALL.render("Hole", True, C.WHITE)
+        hdr_score = C.FONT_SMALL.render("Score", True, C.WHITE)
+        hdr_y = inner.y + (row_h - hdr_hole.get_height()) // 2
+        hole_cx = inner.x + col1_w // 2
+        score_cx = inner.x + col1_w + col2_w // 2
+        screen.blit(hdr_hole, (hole_cx - hdr_hole.get_width() // 2, hdr_y))
+        screen.blit(hdr_score, (score_cx - hdr_score.get_width() // 2, hdr_y))
+
+        # Body rows
+        total_so_far = sum(self.scores)
+        for i in range(19):
+            ry = inner.y + row_h * (i + 1)
+            if i < 18:
+                hole_num = i + 1
+                hole_label = str(hole_num) if hole_num <= self.holes_total else ""
+                hole_score = ""
+                if hole_num <= self.holes_total and hole_num <= len(self.scores):
+                    hole_score = str(self.scores[hole_num - 1])
+                t1 = C.FONT_SMALL.render(hole_label, True, C.WHITE)
+                t2 = C.FONT_SMALL.render(hole_score, True, C.WHITE)
             else:
-                val = "--   / --"
-            t1 = C.FONT_SMALL.render(label, True, C.WHITE)
-            t2 = C.FONT_SMALL.render(val, True, C.WHITE)
-            screen.blit(t1, (x, y))
-            screen.blit(t2, (x + 40, y))
-            y += t1.get_height() + 2
+                t1 = C.FONT_SMALL.render("Total", True, C.WHITE)
+                t2 = C.FONT_SMALL.render(str(total_so_far), True, C.WHITE)
+
+            c1_y = ry + (row_h - t1.get_height()) // 2
+            c2_y = ry + (row_h - t2.get_height()) // 2
+            screen.blit(t1, (hole_cx - t1.get_width() // 2, c1_y))
+            screen.blit(t2, (score_cx - t2.get_width() // 2, c2_y))
 
     def _next_button_rect(self) -> pygame.Rect:
         w, h = 160, 36
@@ -496,18 +656,88 @@ class GolfGameScene(C.Scene):
         # Title and info
         extra = f"Holes: {self.holes_total} — Hole {self.current_hole}/{self.holes_total}  |  Around: {'On' if self.around else 'Off'}"
 
-        # Draw piles
-        self.foundation.draw(screen)
-        labf = C.FONT_SMALL.render("Foundation", True, (245,245,245))
-        screen.blit(labf, (self.foundation.x + (C.CARD_W - labf.get_width())//2, self.foundation.y - 22))
-        self.stock_pile.draw(screen)
-        labs = C.FONT_SMALL.render("Stock", True, (245,245,245))
-        screen.blit(labs, (self.stock_pile.x + (C.CARD_W - labs.get_width())//2, self.stock_pile.y - 22))
+        # Dynamic layout calculations for panels (world coordinates)
+        gap_x = getattr(C, "CARD_GAP_X", max(18, C.CARD_W // 6))
+        top_bar_h = getattr(C, "TOP_BAR_H", 60)
+        top_y = max(90, top_bar_h + 22)
+        left_margin = 16
+        pad_score = 12
+        pad_tab = 18   # extra space inside tableau border
+        pad_bottom = 8
+        border_w = 4   # thicker borders
+        score_w = max(240, int(C.CARD_W * 2))
+        # Tableau geometry
+        tab_sep = 24   # more space between score and tableau
+        tab_left = left_margin + score_w + tab_sep   # border left of tableau panel
+        tab_width = 7 * C.CARD_W + 6 * gap_x         # content width of 7 columns
+        # Update tableau pile positions and overlap (50%), add inner padding from border
+        for i, t in enumerate(self.tableau):
+            t.x = tab_left + pad_tab + i * (C.CARD_W + gap_x)
+            t.y = top_y + pad_tab
+            t.fan_y = max(12, int(C.CARD_H * 0.5))
+        # Compute tallest tableau height (visible stack), include top/bottom padding
+        max_cards = max((len(t.cards) for t in self.tableau), default=1)
+        tab_height = (pad_tab * 2) + C.CARD_H + max(0, max_cards - 1) * self.tableau[0].fan_y
+
+        # Panel rects (ensure equal padding on all sides of tableau content)
+        tableau_rect = pygame.Rect(tab_left, top_y, tab_width + 2 * pad_tab, tab_height)
+        score_rect = pygame.Rect(left_margin, tableau_rect.y, score_w, tableau_rect.h)
+
+        # Stock/Foundation panel under tableau, matching horizontal span
+        bottom_gap = 22
+        bottom_h = C.CARD_H + 2 * pad_bottom
+        # Keep foundation anchored at right under tableau; bring stock close with a small gap
+        small_gap = max(12, int(gap_x * 0.9))
+        foundation_x = tableau_rect.right - pad_bottom - C.CARD_W
+        stock_x = foundation_x - small_gap - C.CARD_W
+        bottom_left = stock_x - pad_bottom
+        bottom_top = tableau_rect.bottom + bottom_gap
+        bottom_right = foundation_x + C.CARD_W + pad_bottom
+        bottom_rect = pygame.Rect(bottom_left, bottom_top, bottom_right - bottom_left, bottom_h)
+
+        # Store last geometry for scroll metrics
+        self._last_tableau_rect = tableau_rect.copy()
+        self._last_score_rect = score_rect.copy()
+        self._last_bottom_rect = bottom_rect.copy()
+
+        # Apply vertical scroll offset for drawing
+        sy = int(self.scroll_y)
+        sx = int(self.scroll_x)
+        tableau_rect_draw = tableau_rect.move(sx, sy)
+        score_rect_draw = score_rect.move(0, sy)
+        bottom_rect_draw = bottom_rect.move(sx, sy)
+
+        # Place stock (left) and foundation (right) inside bottom panel; switched positions horizontally
+        self.stock_pile.x = stock_x
+        self.stock_pile.y = bottom_rect.y + pad_bottom
+        self.foundation.x = foundation_x
+        self.foundation.y = bottom_rect.y + pad_bottom
+
+        # Draw panel outlines
+        for r in (score_rect_draw, tableau_rect_draw, bottom_rect_draw):
+            pygame.draw.rect(screen, C.WHITE, r, width=border_w, border_radius=14)
+
+        # Draw tableau piles within tableau panel
+        C.DRAW_OFFSET_X = sx
+        C.DRAW_OFFSET_Y = sy
         for t in self.tableau:
             t.draw(screen)
 
-        # Scores panel
-        self._draw_scores_table(screen)
+        # Draw stock and foundation in bottom panel (no labels)
+        self.stock_pile.draw(screen)
+        self.foundation.draw(screen)
+        C.DRAW_OFFSET_Y = 0
+
+        # Draw score grid in left panel
+        self._draw_score_grid(screen, score_rect_draw)
+
+        # Placeholder image in the lower-left of play area (bottom of score panel)
+        ph_w, ph_h = 86, 86
+        ph_rect = pygame.Rect(score_rect_draw.x + 12, bottom_rect_draw.bottom - ph_h - 8, ph_w, ph_h)
+        pygame.draw.rect(screen, (245,245,245), ph_rect, border_radius=10)
+        pygame.draw.rect(screen, (180,180,190), ph_rect, width=1, border_radius=10)
+        txt = C.FONT_SMALL.render("Golf img", True, (40,40,50))
+        screen.blit(txt, (ph_rect.centerx - txt.get_width()//2, ph_rect.centery - txt.get_height()//2))
 
         # Completion buttons
         if self._can_advance_hole():
@@ -534,6 +764,23 @@ class GolfGameScene(C.Scene):
         elif self.message:
             msg_s = C.FONT_UI.render(self.message, True, (255,255,180))
             screen.blit(msg_s, (C.SCREEN_W//2 - msg_s.get_width()//2, C.SCREEN_H - 60))
+
+        # Reset offsets for UI
+        C.DRAW_OFFSET_X = 0
+        C.DRAW_OFFSET_Y = 0
+
+        # Vertical scrollbar (if content extends beyond view)
+        vsb = self._vertical_scrollbar()
+        if vsb is not None:
+            track_rect, knob_rect, *_ = vsb
+            pygame.draw.rect(screen, (40,40,40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200,200,200), knob_rect, border_radius=3)
+        # Horizontal scrollbar (if content wider than view)
+        hsb = self._horizontal_scrollbar()
+        if hsb is not None:
+            track_rect, knob_rect, *_ = hsb
+            pygame.draw.rect(screen, (40,40,40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200,200,200), knob_rect, border_radius=3)
 
         # Top bar and toolbar
         C.Scene.draw_top_bar(self, screen, "Golf", extra)
@@ -581,4 +828,3 @@ class GolfScoresScene(C.Scene):
 
         mp = pygame.mouse.get_pos()
         self.b_back.draw(screen, hover=self.b_back.hovered(mp))
-
