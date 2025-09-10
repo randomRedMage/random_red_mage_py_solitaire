@@ -42,7 +42,8 @@ class MainMenuScene(C.Scene):
                 pygame.quit(); raise SystemExit
         elif e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
-                pygame.quit(); raise SystemExit
+                from solitaire.scenes.title import TitleScene
+                self.next_scene = TitleScene(self.app)
 
     def draw(self, screen):
         screen.fill(C.TABLE_BG)

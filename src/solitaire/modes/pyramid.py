@@ -583,6 +583,8 @@ class PyramidGameScene(C.Scene):
             return
         elif e.type == pygame.KEYDOWN and e.key == pygame.K_u:
             self.undo(); return
+        elif e.type == pygame.KEYDOWN and e.key == pygame.K_h:
+            self.show_hint(); return
 
         # Middle button drag to pan
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 2:

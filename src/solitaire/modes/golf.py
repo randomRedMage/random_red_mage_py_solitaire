@@ -193,6 +193,43 @@ class GolfGameScene(C.Scene):
         else:
             self.deal_new_hole()
 
+        # Lazy-load golf placeholder image
+        self._golf_img_raw: Optional[pygame.Surface] = None
+        self._golf_img_scaled: Optional[pygame.Surface] = None
+        self._golf_img_size: Tuple[int, int] = (0, 0)
+
+    def _ensure_golf_image(self, size: Tuple[int, int]):
+        """Load and scale the optional golf image if available.
+        Looks for assets/images/golf.png relative to the package directory.
+        """
+        try:
+            # Reload scale if size changed
+            if self._golf_img_scaled is not None and self._golf_img_size == size:
+                return
+            # Load raw if needed
+            if self._golf_img_raw is None:
+                base = os.path.dirname(C.__file__)
+                path = os.path.join(base, "assets", "images", "golf.png")
+                if os.path.isfile(path):
+                    s = pygame.image.load(path)
+                    self._golf_img_raw = s.convert_alpha() if s.get_alpha() else s.convert()
+                else:
+                    self._golf_img_raw = None
+            # Produce scaled variant
+            if self._golf_img_raw is not None:
+                if self._golf_img_raw.get_size() != size:
+                    self._golf_img_scaled = pygame.transform.smoothscale(self._golf_img_raw, size)
+                else:
+                    self._golf_img_scaled = self._golf_img_raw
+                self._golf_img_size = size
+            else:
+                self._golf_img_scaled = None
+                self._golf_img_size = (0, 0)
+        except Exception:
+            self._golf_img_raw = None
+            self._golf_img_scaled = None
+            self._golf_img_size = (0, 0)
+
     # ----- Scroll helpers -----
     def _content_bottom_y(self) -> int:
         if isinstance(self._last_bottom_rect, pygame.Rect):
@@ -683,17 +720,18 @@ class GolfGameScene(C.Scene):
         tableau_rect = pygame.Rect(tab_left, top_y, tab_width + 2 * pad_tab, tab_height)
         score_rect = pygame.Rect(left_margin, tableau_rect.y, score_w, tableau_rect.h)
 
-        # Stock/Foundation panel under tableau, matching horizontal span
+        # Stock/Foundation panel centered horizontally under tableau
         bottom_gap = 22
         bottom_h = C.CARD_H + 2 * pad_bottom
-        # Keep foundation anchored at right under tableau; bring stock close with a small gap
         small_gap = max(12, int(gap_x * 0.9))
-        foundation_x = tableau_rect.right - pad_bottom - C.CARD_W
-        stock_x = foundation_x - small_gap - C.CARD_W
-        bottom_left = stock_x - pad_bottom
+        # Compute total width needed to include stock, gap, foundation and padding
+        bottom_w = 2 * C.CARD_W + small_gap + 2 * pad_bottom
+        bottom_left = tableau_rect.centerx - bottom_w // 2
         bottom_top = tableau_rect.bottom + bottom_gap
-        bottom_right = foundation_x + C.CARD_W + pad_bottom
-        bottom_rect = pygame.Rect(bottom_left, bottom_top, bottom_right - bottom_left, bottom_h)
+        bottom_rect = pygame.Rect(bottom_left, bottom_top, bottom_w, bottom_h)
+        # Position piles inside the bottom panel (stock left, foundation right)
+        stock_x = bottom_left + pad_bottom
+        foundation_x = bottom_left + bottom_w - pad_bottom - C.CARD_W
 
         # Store last geometry for scroll metrics
         self._last_tableau_rect = tableau_rect.copy()
@@ -731,13 +769,25 @@ class GolfGameScene(C.Scene):
         # Draw score grid in left panel
         self._draw_score_grid(screen, score_rect_draw)
 
-        # Placeholder image in the lower-left of play area (bottom of score panel)
-        ph_w, ph_h = 86, 86
-        ph_rect = pygame.Rect(score_rect_draw.x + 12, bottom_rect_draw.bottom - ph_h - 8, ph_w, ph_h)
-        pygame.draw.rect(screen, (245,245,245), ph_rect, border_radius=10)
-        pygame.draw.rect(screen, (180,180,190), ph_rect, width=1, border_radius=10)
-        txt = C.FONT_SMALL.render("Golf img", True, (40,40,50))
-        screen.blit(txt, (ph_rect.centerx - txt.get_width()//2, ph_rect.centery - txt.get_height()//2))
+        # Golf image: fixed 256x256 square centered at the intersection of
+        #   - vertical center line of the score panel, and
+        #   - horizontal center line of the stock pile.
+        side = 200
+        center_x = score_rect_draw.centerx
+        center_y = self.stock_pile.y + C.CARD_H // 2 + sy
+        ph_rect = pygame.Rect(0, 0, side, side)
+        ph_rect.center = (int(center_x), int(center_y))
+
+        # Try to draw the provided image at assets/images/golf.png (transparent PNG; no border/background)
+        self._ensure_golf_image((side, side))
+        if self._golf_img_scaled is not None:
+            screen.blit(self._golf_img_scaled, ph_rect)
+        else:
+            # Fallback placeholder
+            pygame.draw.rect(screen, (245,245,245), ph_rect, border_radius=10)
+            pygame.draw.rect(screen, (180,180,190), ph_rect, width=1, border_radius=10)
+            txt = C.FONT_SMALL.render("Golf img", True, (40,40,50))
+            screen.blit(txt, (ph_rect.centerx - txt.get_width()//2, ph_rect.centery - txt.get_height()//2))
 
         # Completion buttons
         if self._can_advance_hole():
