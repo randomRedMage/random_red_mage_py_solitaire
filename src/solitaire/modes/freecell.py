@@ -50,6 +50,8 @@ class FreeCellGameScene(C.Scene):
         # Piles
         self.freecells: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
         self.foundations: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
+        # Dedicated foundation suits left-to-right: [Spades, Hearts, Diamonds, Clubs]
+        self.foundation_suits: List[int] = [0, 1, 2, 3]
         self.tableau: List[C.Pile] = [C.Pile(0, 0, fan_y=max(24, C.CARD_H // 5)) for _ in range(8)]
 
         # Drag state: (stack, src_kind, src_index)
@@ -90,6 +92,9 @@ class FreeCellGameScene(C.Scene):
         self.message = ""
         self.compute_layout()
         self.deal_new()
+        # Double-click tracking
+        self._last_click_time = 0
+        self._last_click_pos = (0, 0)
 
     # ----- Layout -----
     def compute_layout(self):
@@ -191,11 +196,62 @@ class FreeCellGameScene(C.Scene):
         return (is_red(upper.suit) != is_red(lower.suit)) and (upper.rank == lower.rank - 1)
 
     def _can_move_to_foundation(self, card: C.Card, fi: int) -> bool:
+        # Enforce dedicated suit per foundation index
+        required_suit = self.foundation_suits[fi]
+        if card.suit != required_suit:
+            return False
         f = self.foundations[fi]
         if not f.cards:
-            return card.rank == 1  # Ace
+            return card.rank == 1  # Ace of the required suit
         top = f.cards[-1]
         return (card.suit == top.suit) and (card.rank == top.rank + 1)
+
+    def _foundation_index_for_suit(self, suit: int) -> int:
+        try:
+            return self.foundation_suits.index(suit)
+        except ValueError:
+            return 0
+
+    def _maybe_handle_double_click(self, e, mx: int, myw: int) -> bool:
+        now = pygame.time.get_ticks()
+        double = (
+            now - getattr(self, "_last_click_time", 0) <= 350
+            and abs(e.pos[0] - getattr(self, "_last_click_pos", (0, 0))[0]) <= 6
+            and abs(e.pos[1] - getattr(self, "_last_click_pos", (0, 0))[1]) <= 6
+        )
+        handled = False
+        if double:
+            # Freecell tops
+            for ci, cell in enumerate(self.freecells):
+                if cell.cards and cell.top_rect().collidepoint((mx, myw)):
+                    c = cell.cards[-1]
+                    fi = self._foundation_index_for_suit(c.suit)
+                    if self._can_move_to_foundation(c, fi):
+                        self.push_undo()
+                        cell.cards.pop()
+                        self.foundations[fi].cards.append(c)
+                        handled = True
+                        break
+            # Tableau tops
+            if not handled:
+                for ti, t in enumerate(self.tableau):
+                    hi = t.hit((mx, myw))
+                    if hi is None:
+                        continue
+                    if hi == -1 and t.cards:
+                        hi = len(t.cards) - 1
+                    if hi == len(t.cards) - 1 and t.cards[hi].face_up:
+                        c = t.cards[-1]
+                        fi = self._foundation_index_for_suit(c.suit)
+                        if self._can_move_to_foundation(c, fi):
+                            self.push_undo()
+                            t.cards.pop()
+                            self.foundations[fi].cards.append(c)
+                            handled = True
+                            break
+        self._last_click_time = now
+        self._last_click_pos = e.pos
+        return handled
 
     def _is_valid_sequence(self, seq: List[C.Card]) -> bool:
         # Strictly descending by 1, alternating colors
@@ -279,6 +335,10 @@ class FreeCellGameScene(C.Scene):
             # Clicking cancels peek
             self.peek_overlay = None
             self._peek_candidate = None
+
+            # Double-click to auto-move to foundations from freecell/tableau tops
+            if self._maybe_handle_double_click(e, mx, myw):
+                return
 
             # Start drag from freecell
             for i, p in enumerate(self.freecells):
@@ -468,8 +528,14 @@ class FreeCellGameScene(C.Scene):
             screen.blit(lab, (p.x + (C.CARD_W - lab.get_width()) // 2, p.y - 22 + self.scroll_y))
         for i, p in enumerate(self.foundations):
             p.draw(screen)
-            lab = font_lbl.render("Foundation", True, (245, 245, 245))
-            screen.blit(lab, (p.x + (C.CARD_W - lab.get_width()) // 2, p.y - 22 + self.scroll_y))
+            # Draw suit character (plain white) on empty foundation placeholder
+            if not p.cards:
+                suit_i = self.foundation_suits[i]
+                suit_char = C.SUITS[suit_i]
+                txt = C.FONT_CENTER_SUIT.render(suit_char, True, C.WHITE)
+                cx = p.x + C.CARD_W // 2
+                cy = p.y + C.CARD_H // 2 + self.scroll_y
+                screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
         # Draw tableau
         for p in self.tableau:

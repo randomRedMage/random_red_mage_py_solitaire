@@ -76,6 +76,8 @@ class KlondikeGameScene(C.Scene):
         self.stock_cycles_used = 0
         # Piles (positions/fan set in compute_layout)
         self.foundations = [C.Pile(0, 0) for _ in range(4)]
+        # Dedicated foundation suits left-to-right: [Spades, Hearts, Diamonds, Clubs]
+        self.foundation_suits = [0, 1, 2, 3]
         self.stock_pile = C.Pile(0, 0)
         self.waste_pile = C.Pile(0, 0)
         self.tableau = [C.Pile(0, 0, fan_y=0) for _ in range(7)]
@@ -124,6 +126,9 @@ class KlondikeGameScene(C.Scene):
         self._peek_candidate = None  # (pile_id, index)
         self._peek_started_at = 0
         self._peek_pending = None
+        # Double-click tracking
+        self._last_click_time = 0
+        self._last_click_pos = (0, 0)
 
     # ---------- Layout ----------
     def compute_layout(self):
@@ -299,10 +304,63 @@ class KlondikeGameScene(C.Scene):
         return card.rank == 13  # King
 
     def can_move_to_foundation(self, card: C.Card, foundation_index: int):
+        # Enforce dedicated suit per foundation index
+        required_suit = self.foundation_suits[foundation_index]
+        if card.suit != required_suit:
+            return False
         f = self.foundations[foundation_index]
-        if not f.cards: return card.rank == 1
+        if not f.cards:
+            return card.rank == 1  # Ace of the required suit
         top = f.cards[-1]
         return (card.suit == top.suit) and (card.rank == top.rank + 1)
+
+    def _foundation_index_for_suit(self, suit: int) -> int:
+        try:
+            return self.foundation_suits.index(suit)
+        except ValueError:
+            return 0
+
+    def _maybe_handle_double_click(self, e, mxw: int, myw: int) -> bool:
+        now = pygame.time.get_ticks()
+        double = (
+            now - getattr(self, "_last_click_time", 0) <= 350
+            and abs(e.pos[0] - getattr(self, "_last_click_pos", (0, 0))[0]) <= 6
+            and abs(e.pos[1] - getattr(self, "_last_click_pos", (0, 0))[1]) <= 6
+        )
+        handled = False
+        if double:
+            # Waste top card
+            if self.waste_pile.cards and self.waste_pile.top_rect().collidepoint((mxw, myw)):
+                c = self.waste_pile.cards[-1]
+                fi = self._foundation_index_for_suit(c.suit)
+                if self.can_move_to_foundation(c, fi):
+                    self.push_undo()
+                    self.waste_pile.cards.pop()
+                    self.foundations[fi].cards.append(c)
+                    self.post_move_cleanup()
+                    handled = True
+            # Tableau top cards
+            if not handled:
+                for ti, t in enumerate(self.tableau):
+                    hi = t.hit((mxw, myw))
+                    if hi is None:
+                        continue
+                    if hi == -1 and t.cards:
+                        hi = len(t.cards) - 1
+                    if hi == len(t.cards) - 1 and t.cards[hi].face_up:
+                        c = t.cards[-1]
+                        fi = self._foundation_index_for_suit(c.suit)
+                        if self.can_move_to_foundation(c, fi):
+                            self.push_undo()
+                            t.cards.pop()
+                            self.foundations[fi].cards.append(c)
+                            self.post_move_cleanup()
+                            handled = True
+                            break
+        # Update click tracking (always)
+        self._last_click_time = now
+        self._last_click_pos = e.pos
+        return handled
 
     def drop_stack_on_tableau(self, stack, target_pile):
         if not stack: return False
@@ -480,6 +538,9 @@ class KlondikeGameScene(C.Scene):
             # Prevent interactions under top bar (content is visually behind it)
             if my < getattr(C, "TOP_BAR_H", 64):
                 return
+            # Double-click to auto-move to foundation (waste or tableau tops)
+            if self._maybe_handle_double_click(e, mxw, myw):
+                return
             # Stock
             if pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H).collidepoint((mxw,myw)):
                 self.push_undo(); self.draw_from_stock(); return
@@ -587,8 +648,14 @@ class KlondikeGameScene(C.Scene):
 
         for i,f in enumerate(self.foundations):
             f.draw(screen)
-            label = C.FONT_SMALL.render("Foundation", True, (245,245,245))
-            screen.blit(label, (f.x + (C.CARD_W - label.get_width())//2 + self.scroll_x, f.y - 22 + self.scroll_y))
+            # Draw suit character (plain white) on empty foundation placeholder
+            if not f.cards:
+                suit_i = self.foundation_suits[i]
+                suit_char = C.SUITS[suit_i]
+                txt = C.FONT_CENTER_SUIT.render(suit_char, True, C.WHITE)
+                cx = f.x + C.CARD_W // 2 + self.scroll_x
+                cy = f.y + C.CARD_H // 2 + self.scroll_y
+                screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
         self.stock_pile.draw(screen)
         lab = C.FONT_SMALL.render("Stock", True, (245,245,245))
