@@ -92,6 +92,9 @@ class FreeCellGameScene(C.Scene):
         self.message = ""
         self.compute_layout()
         self.deal_new()
+        # Double-click tracking
+        self._last_click_time = 0
+        self._last_click_pos = (0, 0)
 
     # ----- Layout -----
     def compute_layout(self):
@@ -203,6 +206,53 @@ class FreeCellGameScene(C.Scene):
         top = f.cards[-1]
         return (card.suit == top.suit) and (card.rank == top.rank + 1)
 
+    def _foundation_index_for_suit(self, suit: int) -> int:
+        try:
+            return self.foundation_suits.index(suit)
+        except ValueError:
+            return 0
+
+    def _maybe_handle_double_click(self, e, mx: int, myw: int) -> bool:
+        now = pygame.time.get_ticks()
+        double = (
+            now - getattr(self, "_last_click_time", 0) <= 350
+            and abs(e.pos[0] - getattr(self, "_last_click_pos", (0, 0))[0]) <= 6
+            and abs(e.pos[1] - getattr(self, "_last_click_pos", (0, 0))[1]) <= 6
+        )
+        handled = False
+        if double:
+            # Freecell tops
+            for ci, cell in enumerate(self.freecells):
+                if cell.cards and cell.top_rect().collidepoint((mx, myw)):
+                    c = cell.cards[-1]
+                    fi = self._foundation_index_for_suit(c.suit)
+                    if self._can_move_to_foundation(c, fi):
+                        self.push_undo()
+                        cell.cards.pop()
+                        self.foundations[fi].cards.append(c)
+                        handled = True
+                        break
+            # Tableau tops
+            if not handled:
+                for ti, t in enumerate(self.tableau):
+                    hi = t.hit((mx, myw))
+                    if hi is None:
+                        continue
+                    if hi == -1 and t.cards:
+                        hi = len(t.cards) - 1
+                    if hi == len(t.cards) - 1 and t.cards[hi].face_up:
+                        c = t.cards[-1]
+                        fi = self._foundation_index_for_suit(c.suit)
+                        if self._can_move_to_foundation(c, fi):
+                            self.push_undo()
+                            t.cards.pop()
+                            self.foundations[fi].cards.append(c)
+                            handled = True
+                            break
+        self._last_click_time = now
+        self._last_click_pos = e.pos
+        return handled
+
     def _is_valid_sequence(self, seq: List[C.Card]) -> bool:
         # Strictly descending by 1, alternating colors
         for i in range(len(seq) - 1):
@@ -285,6 +335,10 @@ class FreeCellGameScene(C.Scene):
             # Clicking cancels peek
             self.peek_overlay = None
             self._peek_candidate = None
+
+            # Double-click to auto-move to foundations from freecell/tableau tops
+            if self._maybe_handle_double_click(e, mx, myw):
+                return
 
             # Start drag from freecell
             for i, p in enumerate(self.freecells):

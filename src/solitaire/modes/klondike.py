@@ -126,6 +126,9 @@ class KlondikeGameScene(C.Scene):
         self._peek_candidate = None  # (pile_id, index)
         self._peek_started_at = 0
         self._peek_pending = None
+        # Double-click tracking
+        self._last_click_time = 0
+        self._last_click_pos = (0, 0)
 
     # ---------- Layout ----------
     def compute_layout(self):
@@ -311,6 +314,54 @@ class KlondikeGameScene(C.Scene):
         top = f.cards[-1]
         return (card.suit == top.suit) and (card.rank == top.rank + 1)
 
+    def _foundation_index_for_suit(self, suit: int) -> int:
+        try:
+            return self.foundation_suits.index(suit)
+        except ValueError:
+            return 0
+
+    def _maybe_handle_double_click(self, e, mxw: int, myw: int) -> bool:
+        now = pygame.time.get_ticks()
+        double = (
+            now - getattr(self, "_last_click_time", 0) <= 350
+            and abs(e.pos[0] - getattr(self, "_last_click_pos", (0, 0))[0]) <= 6
+            and abs(e.pos[1] - getattr(self, "_last_click_pos", (0, 0))[1]) <= 6
+        )
+        handled = False
+        if double:
+            # Waste top card
+            if self.waste_pile.cards and self.waste_pile.top_rect().collidepoint((mxw, myw)):
+                c = self.waste_pile.cards[-1]
+                fi = self._foundation_index_for_suit(c.suit)
+                if self.can_move_to_foundation(c, fi):
+                    self.push_undo()
+                    self.waste_pile.cards.pop()
+                    self.foundations[fi].cards.append(c)
+                    self.post_move_cleanup()
+                    handled = True
+            # Tableau top cards
+            if not handled:
+                for ti, t in enumerate(self.tableau):
+                    hi = t.hit((mxw, myw))
+                    if hi is None:
+                        continue
+                    if hi == -1 and t.cards:
+                        hi = len(t.cards) - 1
+                    if hi == len(t.cards) - 1 and t.cards[hi].face_up:
+                        c = t.cards[-1]
+                        fi = self._foundation_index_for_suit(c.suit)
+                        if self.can_move_to_foundation(c, fi):
+                            self.push_undo()
+                            t.cards.pop()
+                            self.foundations[fi].cards.append(c)
+                            self.post_move_cleanup()
+                            handled = True
+                            break
+        # Update click tracking (always)
+        self._last_click_time = now
+        self._last_click_pos = e.pos
+        return handled
+
     def drop_stack_on_tableau(self, stack, target_pile):
         if not stack: return False
         if not target_pile.cards:
@@ -486,6 +537,9 @@ class KlondikeGameScene(C.Scene):
             myw = my - self.scroll_y  # convert to world coords for hit-tests
             # Prevent interactions under top bar (content is visually behind it)
             if my < getattr(C, "TOP_BAR_H", 64):
+                return
+            # Double-click to auto-move to foundation (waste or tableau tops)
+            if self._maybe_handle_double_click(e, mxw, myw):
                 return
             # Stock
             if pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H).collidepoint((mxw,myw)):

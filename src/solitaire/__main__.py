@@ -25,7 +25,9 @@ def main():
     pygame.display.set_caption("Solitaire Suite")
     C.setup_fonts()
     clock = pygame.time.Clock()
-    scene = MainMenuScene(app=None)
+    # Start at Title screen
+    from solitaire.scenes.title import TitleScene
+    scene = TitleScene(app=None)
 
     running = True
     while running:
