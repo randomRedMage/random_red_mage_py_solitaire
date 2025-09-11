@@ -197,6 +197,8 @@ class GolfGameScene(C.Scene):
         self._golf_img_raw: Optional[pygame.Surface] = None
         self._golf_img_scaled: Optional[pygame.Surface] = None
         self._golf_img_size: Tuple[int, int] = (0, 0)
+        # Fix panel height: Golf tableau starts with 5 rows; keep layout stable per hole
+        self._tableau_rows_nominal: int = 5
 
     def _ensure_golf_image(self, size: Tuple[int, int]):
         """Load and scale the optional golf image if available.
@@ -346,6 +348,8 @@ class GolfGameScene(C.Scene):
         self.holes_total = int(state.get("holes_total", 1))
         self.current_hole = int(state.get("current_hole", 1))
         self.scores = [int(x) for x in state.get("scores", [])]
+        # Keep panels from shrinking on load; Golf deals 5 tableau rows
+        self._tableau_rows_nominal = 5
 
         def mk(seq):
             return [C.Card(int(s), int(r), bool(f)) for (s, r, f) in seq]
@@ -376,6 +380,8 @@ class GolfGameScene(C.Scene):
                 c = deck.pop()
                 c.face_up = True
                 self.tableau[col].cards.append(c)
+        # Freeze tableau panel height for this hole (prevents shrink as cards are removed)
+        self._tableau_rows_nominal = 5
         # Stock: remaining deck, face-down
         for c in deck:
             c.face_up = False
@@ -712,9 +718,9 @@ class GolfGameScene(C.Scene):
             t.x = tab_left + pad_tab + i * (C.CARD_W + gap_x)
             t.y = top_y + pad_tab
             t.fan_y = max(12, int(C.CARD_H * 0.5))
-        # Compute tallest tableau height (visible stack), include top/bottom padding
-        max_cards = max((len(t.cards) for t in self.tableau), default=1)
-        tab_height = (pad_tab * 2) + C.CARD_H + max(0, max_cards - 1) * self.tableau[0].fan_y
+        # Compute tableau panel height from nominal rows, not current cards
+        rows_nominal = max(1, getattr(self, "_tableau_rows_nominal", 5))
+        tab_height = (pad_tab * 2) + C.CARD_H + max(0, rows_nominal - 1) * self.tableau[0].fan_y
 
         # Panel rects (ensure equal padding on all sides of tableau content)
         tableau_rect = pygame.Rect(tab_left, top_y, tab_width + 2 * pad_tab, tab_height)
