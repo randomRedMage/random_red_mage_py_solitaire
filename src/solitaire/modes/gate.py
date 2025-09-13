@@ -85,6 +85,7 @@ class GateGameScene(C.Scene):
             "New":     {"on_click": self.deal_new},
             "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
             "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            "Auto":    {"on_click": self.start_auto_complete, "enabled": self.can_autocomplete, "tooltip": "Auto-finish to foundations"},
         }
         self.toolbar = make_toolbar(
             actions,
@@ -110,6 +111,13 @@ class GateGameScene(C.Scene):
         self._peek_pending: Optional[List[Tuple[C.Card, int, int]]] = None
         # Auto-fill animation state
         self._anim: Optional[dict] = None
+        # Auto-complete state
+        self._auto_complete_active = False
+        # Vertical scrolling
+        self.scroll_y = 0
+        self._drag_vscroll = False
+        self._vscroll_drag_dy = 0
+        self._vscroll_geom: Optional[Tuple[int, int, int, int, int]] = None
 
     # ----- Layout -----
     def compute_layout(self):
@@ -119,20 +127,28 @@ class GateGameScene(C.Scene):
         top_bar_h = getattr(C, "TOP_BAR_H", 60)
         top_y = max(90, top_bar_h + 24)
 
-        # 4 foundations centered over the 4 top center piles
+        # 4 center columns remain centered
         cols = 4
         center_block_w = cols * C.CARD_W + (cols - 1) * gap_x
         center_left = (C.SCREEN_W - center_block_w) // 2
 
-        # Rows for center piles
-        row1_y = top_y + C.CARD_H + gap_y  # under foundations
-        # Increase vertical separation to accommodate stacked cards on the top row
-        row2_y = row1_y + C.CARD_H + max(gap_y, int(C.CARD_H * 1.25))
+        # Top middle tableaus move up to previous foundation row (top_y)
+        row1_y = top_y
+        # Bottom middle tableaus at original spacing, lowered ~0.25 card height
+        row2_y = row1_y + C.CARD_H + max(gap_y, int(C.CARD_H * 1.25)) + (C.CARD_H // 4)
 
-        # Position foundations over row1
+        # Foundations: single column on the right side, Spades->Clubs top to bottom
+        # Make spacing from right reserve to foundations equal to stock-to-left-reserve spacing
+        reserve_gap = max(gap_x * 2, int(C.CARD_W * 0.6))
+        center_block_w = cols * C.CARD_W + (cols - 1) * gap_x
+        center_left = (C.SCREEN_W - center_block_w) // 2
+        right_res_x = center_left + center_block_w + reserve_gap
+        # We'll compute stock gap next; use a default for now and adjust after stock_x is known
+        # Temporarily set foundation_x; will be recomputed after stock_x
+        foundation_x = right_res_x + C.CARD_W + max(16, gap_x * 2)
         for i in range(4):
-            x = center_left + i * (C.CARD_W + gap_x)
-            self.foundations[i].x, self.foundations[i].y = x, top_y
+            fy = top_y + i * (C.CARD_H + gap_y)
+            self.foundations[i].x, self.foundations[i].y = foundation_x, fy
 
         # Center piles (2 rows x 4 columns)
         for i in range(4):
@@ -143,12 +159,15 @@ class GateGameScene(C.Scene):
             self.center[i].fan_y = max(18, int(C.CARD_H * 0.28))
             self.center[4 + i].fan_y = max(18, int(C.CARD_H * 0.28))
 
-        # Reserves to left and right of the 8 center piles, vertically centered between the two rows
-        reserve_gap = max(gap_x * 2, int(C.CARD_W * 0.6))
-        # Place reserves near top row and nudge them down a bit for spacing
-        res_y = row1_y + 20
+        # Reserves to left and right of the 8 center piles
+        # Reserve Y so the center of the middle card (index 2 of 5) sits on the midline
         left_res_x = center_left - reserve_gap - C.CARD_W
-        right_res_x = center_left + center_block_w + reserve_gap
+        hearts_mid_y = self.foundations[1].y + (C.CARD_H // 2)
+        diamonds_mid_y = self.foundations[2].y + (C.CARD_H // 2)
+        mid_y = (hearts_mid_y + diamonds_mid_y) // 2
+        reserve_middle_index = 2  # for initial 5-card reserve
+        reserve_fan_y = max(C.CARD_H // 2, 24)
+        res_y = mid_y - (reserve_middle_index * reserve_fan_y + C.CARD_H // 2)
         self.reserves[0].x, self.reserves[0].y = left_res_x, res_y
         self.reserves[1].x, self.reserves[1].y = right_res_x, res_y
         # Reinforce reserve fan so underlying rank/suit remain visible
@@ -156,14 +175,20 @@ class GateGameScene(C.Scene):
         self.reserves[1].fan_y = max(C.CARD_H // 2, self.reserves[1].fan_y)
 
         # Stock/Waste on the far left, stock above waste
-        # Bring stock/waste closer to the left reserve and center vertically (extra space ~2x)
         stock_gap = max(16, gap_x * 2)
         stock_x = max(10, left_res_x - (C.CARD_W + stock_gap))
-        # Center between stock and waste around the middle of the space between the two center rows
-        space_center_y = (row1_y + C.CARD_H + row2_y) / 2.0
-        stock_y = int(space_center_y - C.CARD_H - (gap_y / 2))
+        # Align stock with Hearts foundation (index 1), waste with Diamonds (index 2)
+        stock_y = self.foundations[1].y
+        waste_y = self.foundations[2].y
         self.stock_pile.x, self.stock_pile.y = stock_x, stock_y
-        self.waste_pile.x, self.waste_pile.y = stock_x, stock_y + C.CARD_H + gap_y
+        self.waste_pile.x, self.waste_pile.y = stock_x, waste_y
+
+        # Now that stock_x is known, set foundations X so gap to right reserve equals stock gap
+        foundation_x = right_res_x + C.CARD_W + stock_gap
+        # Keep on screen
+        foundation_x = min(foundation_x, C.SCREEN_W - C.CARD_W - 10)
+        for i in range(4):
+            self.foundations[i].x = foundation_x
 
     # ----- Deal / Restart -----
     def _clear(self):
@@ -468,30 +493,69 @@ class GateGameScene(C.Scene):
         # Update dynamic fan spacing for center piles
         self._update_center_fans()
 
+        # Mouse wheel vertical scroll
+        if e.type == pygame.MOUSEWHEEL:
+            self.scroll_y += e.y * 60
+            self._clamp_scroll()
+            return
+
+        # Vertical scrollbar interactions
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            vsb = self._vertical_scrollbar()
+            if vsb is not None:
+                track_rect, knob_rect, min_sy, max_sy, track_y, track_h, knob_h = vsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_vscroll = True
+                    self._vscroll_drag_dy = e.pos[1] - knob_rect.y
+                    self._vscroll_geom = (min_sy, max_sy, track_y, track_h, knob_h)
+                    return
+                elif track_rect.collidepoint(e.pos):
+                    y = min(max(e.pos[1] - knob_h//2, track_y), track_y + track_h - knob_h)
+                    t_knob = (y - track_y) / max(1, (track_h - knob_h))
+                    # Map knob pos to scroll
+                    self.scroll_y = min_sy + (1.0 - t_knob) * (max_sy - min_sy)
+                    self._clamp_scroll()
+                    return
+        elif e.type == pygame.MOUSEMOTION and self._drag_vscroll:
+            if self._vscroll_geom is not None:
+                min_sy, max_sy, track_y, track_h, knob_h = self._vscroll_geom
+                y = min(max(e.pos[1] - self._vscroll_drag_dy, track_y), track_y + track_h - knob_h)
+                t_knob = (y - track_y) / max(1, (track_h - knob_h))
+                self.scroll_y = min_sy + (1.0 - t_knob) * (max_sy - min_sy)
+                self._clamp_scroll()
+            return
+        elif e.type == pygame.MOUSEBUTTONUP and e.button == 1 and self._drag_vscroll:
+            self._drag_vscroll = False
+            self._vscroll_geom = None
+            return
+
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             # Clear message on click
             self.message = ""
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
+            # Convert to world coordinates for pile interactions
+            myw = my - self.scroll_y
+            mxw = mx
             # Prevent interactions under the top bar
             if my < getattr(C, "TOP_BAR_H", 60):
                 return
-            if self._maybe_handle_double_click(e, mx, my):
+            if self._maybe_handle_double_click(e, mxw, myw):
                 self._post_move_checks()
                 return
             # Stock click -> draw 1
-            if pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H).collidepoint((mx, my)):
+            if pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H).collidepoint((mxw, myw)):
                 self.push_undo(); self.draw_from_stock(); return
             # Waste drag (top only)
-            wi = self.waste_pile.hit((mx, my))
+            wi = self.waste_pile.hit((mxw, myw))
             if wi is not None and wi == len(self.waste_pile.cards) - 1:
                 c = self.waste_pile.cards.pop()
                 self.drag_stack = ([c], "waste", -1)
                 return
             # Reserve drag (top only)
             for ri, r in enumerate(self.reserves):
-                hi = r.hit((mx, my))
+                hi = r.hit((mxw, myw))
                 if hi is not None and hi == len(r.cards) - 1:
                     c = r.cards.pop()
                     self.drag_stack = ([c], "reserve", ri)
@@ -499,7 +563,7 @@ class GateGameScene(C.Scene):
             # Foundations: cannot remove cards in Gate
             # Center drag: any face-up run starting at clicked index
             for ti, t in enumerate(self.center):
-                hi = t.hit((mx, my))
+                hi = t.hit((mxw, myw))
                 if hi is None:
                     continue
                 if hi == len(t.cards) - 1 and not t.cards[hi].face_up:
@@ -515,12 +579,14 @@ class GateGameScene(C.Scene):
         # Hover peek (like Klondike)
         if e.type == pygame.MOUSEMOTION and not self.drag_stack:
             mx, my = e.pos
+            myw = my - self.scroll_y
+            mxw = mx
             self.peek_overlay = None
             self.peek_mask_rect = None
             candidate = None
             pending = None
             for t in self.center:
-                hi = t.hit((mx, my))
+                hi = t.hit((mxw, myw))
                 if hi is None or hi == -1:
                     continue
                 if hi < len(t.cards) - 1 and t.cards[hi].face_up:
@@ -554,11 +620,13 @@ class GateGameScene(C.Scene):
             stack, src_kind, src_idx = self.drag_stack
             self.drag_stack = None
             mx, my = e.pos
+            myw = my - self.scroll_y
+            mxw = mx
 
             # Try foundations first (only single card allowed)
             if len(stack) == 1:
                 for fi, f in enumerate(self.foundations):
-                    if f.top_rect().collidepoint((mx, my)):
+                    if f.top_rect().collidepoint((mxw, myw)):
                         if self._can_move_to_foundation(stack[0], fi):
                             self.push_undo()
                             f.cards.append(stack[0])
@@ -569,7 +637,7 @@ class GateGameScene(C.Scene):
             # Try center piles
             for ti, t in enumerate(self.center):
                 r = t.top_rect()
-                if r.collidepoint((mx, my)):
+                if r.collidepoint((mxw, myw)):
                     # Empty target: only allow when stock and waste are empty and source is reserve (single card)
                     if not t.cards:
                         if not self.stock_pile.cards and not self.waste_pile.cards and src_kind == "reserve" and len(stack) == 1:
@@ -615,6 +683,9 @@ class GateGameScene(C.Scene):
         screen.fill(C.TABLE_BG)
         # Keep center stacks compact if they grow tall
         self._update_center_fans()
+        # Apply draw offset for piles
+        C.DRAW_OFFSET_X = 0
+        C.DRAW_OFFSET_Y = self.scroll_y
         # Draw piles
         for i, f in enumerate(self.foundations):
             f.draw(screen)
@@ -623,7 +694,7 @@ class GateGameScene(C.Scene):
                 suit_char = C.SUITS[suit_i]
                 txt = C.FONT_CENTER_SUIT.render(suit_char, True, C.WHITE)
                 cx = f.x + C.CARD_W // 2
-                cy = f.y + C.CARD_H // 2
+                cy = f.y + C.CARD_H // 2 + self.scroll_y
                 screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
         # Stock/Waste (no labels)
@@ -649,11 +720,11 @@ class GateGameScene(C.Scene):
             # Hide cards above the hover point by repainting table background over that strip
             if self.peek_mask_rect is not None:
                 x, y, w, h = self.peek_mask_rect
-                pygame.draw.rect(screen, C.TABLE_BG, (x, y, w, h))
+                pygame.draw.rect(screen, C.TABLE_BG, (x, y + self.scroll_y, w, h))
             # Draw the substack from hover point down on top
             for c, rx, ry in self.peek_overlay:
                 surf = C.get_card_surface(c)
-                screen.blit(surf, (rx, ry))
+                screen.blit(surf, (rx, ry + self.scroll_y))
 
         # Auto-fill animation overlay
         if self._anim is not None:
@@ -685,22 +756,38 @@ class GateGameScene(C.Scene):
                         self._anim['flipped'] = True
                     if t < 0.5:
                         bs = C.get_back_surface()
-                        screen.blit(bs, (x, y))
+                        screen.blit(bs, (x, y + self.scroll_y))
                     else:
                         surf = C.get_card_surface(card)
-                        screen.blit(surf, (x, y))
+                        screen.blit(surf, (x, y + self.scroll_y))
                 else:
                     surf = C.get_card_surface(card)
-                    screen.blit(surf, (x, y))
+                    screen.blit(surf, (x, y + self.scroll_y))
 
         # Message
         if self.message:
             msg = C.FONT_UI.render(self.message, True, (255, 255, 180))
             screen.blit(msg, (C.SCREEN_W // 2 - msg.get_width() // 2, C.SCREEN_H - 40))
 
-        # Top bar and toolbar
+        # Reset draw offsets for UI, then Top bar and toolbar
+        C.DRAW_OFFSET_X = 0
+        C.DRAW_OFFSET_Y = 0
         C.Scene.draw_top_bar(self, screen, "Gate")
         self.toolbar.draw(screen)
+
+        # Vertical scrollbar when content extends beyond view
+        vsb = self._vertical_scrollbar()
+        if vsb is not None:
+            track_rect, knob_rect, *_ = vsb
+            pygame.draw.rect(screen, (40, 40, 40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200, 200, 200), knob_rect, border_radius=3)
+
+        # Auto-complete driver: when active and idle, start next move
+        if self._auto_complete_active and self._anim is None:
+            if not self._step_auto_complete():
+                self._auto_complete_active = False
+                if all(len(f.cards) == 13 for f in self.foundations):
+                    self.message = "Congratulations! You won!"
 
     def _update_center_fans(self):
         # Compact stacks with more than 3 cards so only 5-10px of each underneath shows
@@ -730,3 +817,98 @@ class GateGameScene(C.Scene):
                     'foundation_index': fi,
                 }
                 return
+
+    # ----- Auto-complete (center -> foundations) -----
+    def can_autocomplete(self) -> bool:
+        if self.stock_pile.cards or self.waste_pile.cards:
+            return False
+        # All reserve piles must be empty
+        for r in self.reserves:
+            if r.cards:
+                return False
+        return True
+
+    def start_auto_complete(self):
+        if not self.can_autocomplete():
+            return
+        self._auto_complete_active = True
+
+    def _find_next_autocomplete_move(self):
+        for ti, t in enumerate(self.center):
+            if not t.cards:
+                continue
+            c = t.cards[-1]
+            fi = self._foundation_index_for_suit(c.suit)
+            if self._can_move_to_foundation(c, fi):
+                return (ti, fi)
+        return None
+
+    def _step_auto_complete(self) -> bool:
+        """Start animation for the next center->foundation move. Returns True if a move was started."""
+        nxt = self._find_next_autocomplete_move()
+        if not nxt:
+            return False
+        ti, fi = nxt
+        src = self.center[ti]
+        # Capture source card and its on-table rect before popping
+        c = src.cards[-1]
+        r = src.rect_for_index(len(src.cards) - 1)
+        src.cards.pop()
+        self._anim = {
+            'card': c,
+            'from': (r.x, r.y),
+            'to': (self.foundations[fi].x, self.foundations[fi].y),
+            'start': pygame.time.get_ticks(),
+            'dur': 240,
+            'source': 'center',
+            'flipped': True,
+            'dest': 'foundation',
+            'foundation_index': fi,
+        }
+        return True
+
+    # ----- Scrolling helpers -----
+    def _content_bottom_y(self) -> int:
+        bottoms = []
+        # Foundations column
+        for f in self.foundations:
+            bottoms.append(f.y + C.CARD_H)
+        # Stock/Waste
+        bottoms.append(self.stock_pile.y + C.CARD_H)
+        bottoms.append(self.waste_pile.y + C.CARD_H)
+        # Reserves
+        for r in self.reserves:
+            n = max(1, len(r.cards))
+            bottoms.append(r.y + (n - 1) * r.fan_y + C.CARD_H)
+        # Center piles
+        for t in self.center:
+            n = max(1, len(t.cards))
+            bottoms.append(t.y + (n - 1) * t.fan_y + C.CARD_H)
+        return max(bottoms) if bottoms else C.SCREEN_H
+
+    def _clamp_scroll(self):
+        bottom = self._content_bottom_y()
+        min_scroll = min(0, C.SCREEN_H - bottom - 20)
+        if self.scroll_y < min_scroll:
+            self.scroll_y = min_scroll
+        if self.scroll_y > 0:
+            self.scroll_y = 0
+
+    def _vertical_scrollbar(self):
+        bottom = self._content_bottom_y()
+        if bottom <= C.SCREEN_H:
+            return None
+        track_x = C.SCREEN_W - 12
+        track_y = getattr(C, "TOP_BAR_H", 64)
+        track_h = C.SCREEN_H - track_y - 10
+        track_rect = pygame.Rect(track_x, track_y, 6, track_h)
+        view_h = C.SCREEN_H
+        content_h = bottom
+        knob_h = max(30, int(track_h * (view_h / content_h)))
+        max_scroll = 0
+        min_scroll = C.SCREEN_H - bottom - 20
+        denom = (max_scroll - min_scroll)
+        t = (self.scroll_y - min_scroll) / denom if denom != 0 else 1.0
+        knob_y = int(track_y + (track_h - knob_h) * (1.0 - t))
+        knob_rect = pygame.Rect(track_x, knob_y, 6, knob_h)
+        return track_rect, knob_rect, min_scroll, max_scroll, track_y, track_h, knob_h
