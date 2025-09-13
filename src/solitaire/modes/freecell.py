@@ -2,7 +2,7 @@
 import pygame
 from typing import List, Optional, Tuple
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT
+from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
 
 
 def is_red(suit: int) -> bool:
@@ -79,6 +79,7 @@ class FreeCellGameScene(C.Scene):
             "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
             "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
             "Auto":    {"on_click": self.auto_to_foundations, "tooltip": "Auto-move available cards to foundations"},
+            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         }
         self.toolbar = make_toolbar(
             actions,
@@ -95,6 +96,21 @@ class FreeCellGameScene(C.Scene):
         # Double-click tracking
         self._last_click_time = 0
         self._last_click_pos = (0, 0)
+
+        # Help overlay
+        self.help = ModalHelp(
+            "FreeCell — How to Play",
+            [
+                "Goal: Build up four foundations A→K by suit.",
+                "Tableau: Build down by rank with alternating colors.",
+                "Empty column accepts any card or a valid descending run.",
+                "Free cells: Four cells each hold one card to help maneuver.",
+                "You can drag runs; movable length depends on empty cells and columns.",
+                "Double-click a safe top card to move to a foundation.",
+                "Use Auto to move obvious cards to foundations. Undo/Restart available.",
+                "Press H to close this help.",
+            ],
+        )
 
     # ----- Layout -----
     def compute_layout(self):
@@ -318,6 +334,20 @@ class FreeCellGameScene(C.Scene):
 
     # ----- Events -----
     def handle_event(self, e):
+        # Help overlay intercept
+        if getattr(self, "help", None) and self.help.visible:
+            if self.help.handle_event(e):
+                return
+            if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
+                return
+        # Toggle help via keyboard
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_h:
+            if getattr(self, "help", None):
+                if self.help.visible:
+                    self.help.close()
+                else:
+                    self.help.open()
+                return
         if self.toolbar.handle_event(e):
             return
 
@@ -571,3 +601,5 @@ class FreeCellGameScene(C.Scene):
         # Title bar and toolbar
         C.Scene.draw_top_bar(self, screen, "FreeCell")
         self.toolbar.draw(screen)
+        if getattr(self, "help", None) and self.help.visible:
+            self.help.draw(screen)

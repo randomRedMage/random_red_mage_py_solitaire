@@ -4,7 +4,7 @@ import pygame
 import os
 from typing import List, Optional, Tuple
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT
+from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
 
 # Helper value rules
 def card_value(card: C.Card) -> int:
@@ -107,6 +107,7 @@ class PyramidGameScene(C.Scene):
             "Restart": {"on_click": self.restart_deal, "tooltip": "Restart current deal"},
             "Undo":    {"on_click": lambda: self.undo(), "enabled": _can_undo, "tooltip": "Undo last move"},
             "Hint":    {"on_click": lambda: self.show_hint(), "enabled": self.any_moves_available, "tooltip": "Highlight a possible move"},
+            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         }
         self.toolbar = make_toolbar(
             _actions,
@@ -139,6 +140,21 @@ class PyramidGameScene(C.Scene):
         # Initialize undo stack with starting state
         self.undo_mgr = C.UndoManager()
         self.push_undo()
+
+        # Help overlay
+        self.help = ModalHelp(
+            "Pyramid — How to Play",
+            [
+                "Goal: Remove all cards by making pairs that sum to 13.",
+                "Kings (13) remove by themselves.",
+                "Only uncovered (exposed) cards can be paired.",
+                "Use the two waste piles under the stock; pair with wastes when possible.",
+                "Stock: Click to deal to waste. Resets allowed depend on difficulty:",
+                "Easy=unlimited, Normal=2, Hard=1.",
+                "Use Hint to highlight a possible pair. Undo/Restart available.",
+                "Press H to close this help.",
+            ],
+        )
 
     # ---------- Scrolling helpers ----------
     def _content_bottom_y(self) -> int:
@@ -459,6 +475,8 @@ class PyramidGameScene(C.Scene):
         # Draw top bar and toolbar last so content scrolls behind
         C.Scene.draw_top_bar(self, screen, "Pyramid", resets_txt)
         self.toolbar.draw(screen)
+        if getattr(self, "help", None) and self.help.visible:
+            self.help.draw(screen)
 
     # ---------- Scrollbar geometry helpers ----------
     def _vertical_scrollbar(self):
@@ -509,6 +527,12 @@ class PyramidGameScene(C.Scene):
 
     # ---------- Input ----------
     def handle_event(self, e):
+        # Help overlay intercept (swallow inputs while open)
+        if getattr(self, "help", None) and self.help.visible:
+            if self.help.handle_event(e):
+                return
+            if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
+                return
         # Toolbar first
         if self.toolbar.handle_event(e):
             return

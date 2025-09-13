@@ -14,7 +14,7 @@ Rules (implemented):
 from typing import List, Optional, Tuple
 import pygame
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT
+from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
 
 
 def rank_adjacent(a: int, b: int) -> bool:
@@ -112,6 +112,7 @@ class TriPeaksGameScene(C.Scene):
             "Restart": {"on_click": self.restart_deal, "tooltip": "Restart current deal"},
             "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
             "Hint":    {"on_click": self.show_hint, "enabled": can_hint, "tooltip": "Show a playable card"},
+            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         }
         self.toolbar = make_toolbar(
             actions,
@@ -132,6 +133,20 @@ class TriPeaksGameScene(C.Scene):
         self._initial_order: List[Tuple[int, int]] = self._deck_order_snapshot[:]
         self.undo_mgr = C.UndoManager()
         self.push_undo()
+
+        # Help overlay
+        self.help = ModalHelp(
+            "TriPeaks — How to Play",
+            [
+                "Goal: Clear all tableau cards.",
+                "Move any exposed card that is one rank higher or lower",
+                "than the waste top (suit does not matter).",
+                "Wrap A↔K is controlled by the Wrap option on the options screen.",
+                "Click stock to deal the next card to waste; no redeals.",
+                "Use Hint to highlight a playable card. Undo/Restart available.",
+                "Press Esc or Close to dismiss this help.",
+            ],
+        )
 
     # ---------- Layout ----------
     def compute_layout(self):
@@ -493,9 +508,17 @@ class TriPeaksGameScene(C.Scene):
         # Tooling: top bar + toolbar (draw last)
         C.Scene.draw_top_bar(self, screen, "TriPeaks")
         self.toolbar.draw(screen)
+        if getattr(self, "help", None) and self.help.visible:
+            self.help.draw(screen)
 
     # ---------- Events ----------
     def handle_event(self, e):
+        # Help overlay first
+        if getattr(self, "help", None) and self.help.visible:
+            if self.help.handle_event(e):
+                return
+            if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
+                return
         # Toolbar first
         if hasattr(self, "toolbar") and self.toolbar.handle_event(e):
             return

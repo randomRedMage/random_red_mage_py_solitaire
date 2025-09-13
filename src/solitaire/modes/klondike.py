@@ -1,7 +1,7 @@
 # klondike.py - Klondike scenes with flip-on-click, auto-finish, and win message
 import pygame
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT
+from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
 
 def is_red(suit): return suit in (1,2)
 
@@ -101,6 +101,7 @@ class KlondikeGameScene(C.Scene):
                 "Auto":    {"on_click": self.start_auto_finish,
                 "enabled": self.can_autofinish,
                 "tooltip": "Auto-finish to foundations"},
+                "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         }
 
 # NEW: align='right', tell toolbar how wide the screen is, and set top-bar margins
@@ -122,6 +123,22 @@ class KlondikeGameScene(C.Scene):
         self.compute_layout()
         self.deal_new()
         # Hover peek for face-up cards within a pile
+
+        # Help overlay
+        self.help = ModalHelp(
+            "Klondike — How to Play",
+            [
+                "Goal: Build up four foundations A→K by suit.",
+                "Tableau: Build down by rank with alternating colors.",
+                "You may drag sequences that follow alternating colors.",
+                "Empty column: Only a King or a stack starting with King.",
+                "Stock/Waste: Click stock to deal 1 or 3 cards depending on Draw setting.",
+                "Redeals depend on Difficulty: Easy=unlimited, Medium=2, Hard=1.",
+                "Double-click a top card to auto-move to a foundation if legal.",
+                "Use Auto to auto-finish when eligible. Undo/Restart from toolbar.",
+                "Press H to close this help.",
+            ],
+        )
         self.peek_overlay = None  # (card, world_x, world_y)
         self._peek_candidate = None  # (pile_id, index)
         self._peek_started_at = 0
@@ -421,6 +438,21 @@ class KlondikeGameScene(C.Scene):
 
     # ---------- Events ----------
     def handle_event(self, e):
+        # Help overlay intercepts input when visible
+        if getattr(self, "help", None) and self.help.visible:
+            if self.help.handle_event(e):
+                return
+            # Swallow other input while help is open
+            if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
+                return
+        # Toggle help via keyboard
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_h:
+            if getattr(self, "help", None):
+                if self.help.visible:
+                    self.help.close()
+                else:
+                    self.help.open()
+                return
         if self.toolbar.handle_event(e):
             return
 
@@ -702,6 +734,9 @@ class KlondikeGameScene(C.Scene):
         # Draw top bar and toolbar last so content scrolls behind
         C.Scene.draw_top_bar(self, screen, "Klondike", extra)
         self.toolbar.draw(screen)
+        # Help overlay on top
+        if getattr(self, "help", None) and self.help.visible:
+            self.help.draw(screen)
 
     # ---------- Scrollbar geometry helpers ----------
     def _vertical_scrollbar(self):

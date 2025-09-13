@@ -5,7 +5,7 @@ import pygame
 from typing import List, Optional, Tuple, Dict, Any
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT
+from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
 
 
 def _golf_dir() -> str:
@@ -176,6 +176,7 @@ class GolfGameScene(C.Scene):
             "Restart": {"on_click": self.restart_hole, "tooltip": "Restart current hole"},
             "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
             "Save&Exit": {"on_click": save_and_exit, "tooltip": "Save game and exit to menu"},
+            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         }
         self.toolbar = make_toolbar(
             actions,
@@ -192,6 +193,21 @@ class GolfGameScene(C.Scene):
             self._load_from_state(load_state)
         else:
             self.deal_new_hole()
+
+        # Help overlay
+        self.help = ModalHelp(
+            "Golf — How to Play",
+            [
+                "Goal: Clear tableau piles across 1/3/9/18 holes for a low total score.",
+                "Play: Move the top card of any tableau pile to the foundation",
+                "if it is one rank higher or lower than the foundation top (suit doesn't matter).",
+                "Wrap A↔K is controlled by the Around-the-Corner option on the options screen.",
+                "Stock: Flip one to the foundation to start, and when stuck. No redeals.",
+                "Scoring: If tableau is cleared, score = -remaining stock; else = remaining tableau count.",
+                "Save&Exit lets you continue later; recent totals shown in Scores.",
+                "Undo/Restart available from the toolbar. Press Esc/Close to dismiss help.",
+            ],
+        )
 
         # Lazy-load golf placeholder image
         self._golf_img_raw: Optional[pygame.Surface] = None
@@ -522,6 +538,12 @@ class GolfGameScene(C.Scene):
 
     # ----- Events -----
     def handle_event(self, e):
+        # Help overlay intercepts input
+        if getattr(self, "help", None) and self.help.visible:
+            if self.help.handle_event(e):
+                return
+            if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
+                return
         if self.toolbar.handle_event(e):
             return
         # Scroll wheel for content
@@ -841,6 +863,8 @@ class GolfGameScene(C.Scene):
         # Top bar and toolbar
         C.Scene.draw_top_bar(self, screen, "Golf", extra)
         self.toolbar.draw(screen)
+        if getattr(self, "help", None) and self.help.visible:
+            self.help.draw(screen)
 
 
 class GolfScoresScene(C.Scene):
