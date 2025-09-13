@@ -2,7 +2,7 @@ import pygame
 from typing import List, Optional, Tuple
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT
+from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
 
 
 def is_red(suit: int) -> bool:
@@ -86,6 +86,7 @@ class GateGameScene(C.Scene):
             "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
             "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
             "Auto":    {"on_click": self.start_auto_complete, "enabled": self.can_autocomplete, "tooltip": "Auto-finish to foundations"},
+            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         }
         self.toolbar = make_toolbar(
             actions,
@@ -98,6 +99,21 @@ class GateGameScene(C.Scene):
 
         self.compute_layout()
         self.deal_new()
+        # Help overlay
+        self.help = ModalHelp(
+            "Gate — How to Play",
+            [
+                "Goal: Build four foundations A→K by suit.",
+                "Layout: 8 center tableau piles (2×4) build down with alternating colors.",
+                "Reserves: Two side reserves start with 5 face-up cards; you cannot place onto reserves.",
+                "You may move a reserve top card to a center pile or to its foundation.",
+                "Stock/Waste: Click stock to draw 1 to waste (no redeals).",
+                "When a center pile is emptied it auto-fills from Stock, else from Waste.",
+                "If both are empty it stays empty; you may fill it from a reserve.",
+                "Double-click eligible tops to foundations. Auto-finish available.",
+                "Press H/Esc to close this help.",
+            ],
+        )
 
         # Double-click tracking (to foundations)
         self._last_click_time = 0
@@ -483,6 +499,12 @@ class GateGameScene(C.Scene):
 
     # ----- Events -----
     def handle_event(self, e):
+        # Help overlay intercept
+        if getattr(self, "help", None) and self.help.visible:
+            if self.help.handle_event(e):
+                return
+            if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
+                return
         if self.toolbar.handle_event(e):
             return
 
@@ -774,6 +796,8 @@ class GateGameScene(C.Scene):
         C.DRAW_OFFSET_Y = 0
         C.Scene.draw_top_bar(self, screen, "Gate")
         self.toolbar.draw(screen)
+        if getattr(self, "help", None) and self.help.visible:
+            self.help.draw(screen)
 
         # Vertical scrollbar when content extends beyond view
         vsb = self._vertical_scrollbar()
