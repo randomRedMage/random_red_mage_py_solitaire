@@ -191,18 +191,25 @@ class YukonGameScene(C.Scene):
     def compute_layout(self):
         gap_x = getattr(C, "CARD_GAP_X", max(18, C.CARD_W // 6))
         gap_y = getattr(C, "CARD_GAP_Y", max(20, C.CARD_H // 6))
-        left_margin = 20
         top_bar_h = getattr(C, "TOP_BAR_H", 64)
         top_y = max(80, top_bar_h + 26)
 
-        # Foundations: single column on the right side, Spades->Clubs top to bottom
-        foundation_x = C.SCREEN_W - C.CARD_W - 20
+        # Compute a centered layout block consisting of 7 tableau columns,
+        # a comfortable gap, and the single foundations column on the right.
+        tableau_cols = 7
+        tableau_block_w = tableau_cols * C.CARD_W + (tableau_cols - 1) * gap_x
+        gap_tf = max(gap_x * 2, int(C.CARD_W * 0.6))
+        total_block_w = tableau_block_w + gap_tf + C.CARD_W
+        left_edge = max(10, (C.SCREEN_W - total_block_w) // 2)
+
+        # Foundations: single column on the right side of the centered block
+        foundation_x = left_edge + tableau_block_w + gap_tf
         for i, f in enumerate(self.foundations):
             f.x = foundation_x
             f.y = top_y + i * (C.CARD_H + gap_y)
 
-        # Tableau: 7 columns to the left
-        tab_left = left_margin
+        # Tableau: centered block to the left of foundations
+        tab_left = left_edge
         fan_y = max(18, int(C.CARD_H * 0.28))
         row_y = top_y
         for i, t in enumerate(self.tableau):
