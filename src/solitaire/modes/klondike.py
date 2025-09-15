@@ -2,6 +2,7 @@
 import pygame
 from solitaire import common as C
 from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire import mechanics as M
 
 def is_red(suit): return suit in (1,2)
 
@@ -139,10 +140,8 @@ class KlondikeGameScene(C.Scene):
                 "Press H to close this help.",
             ],
         )
-        self.peek_overlay = None  # (card, world_x, world_y)
-        self._peek_candidate = None  # (pile_id, index)
-        self._peek_started_at = 0
-        self._peek_pending = None
+        # Klondike-style delayed single-card peek (shared across modes)
+        self.peek = M.PeekController(delay_ms=2000)
         # Double-click tracking
         self._last_click_time = 0
         self._last_click_pos = (0, 0)
@@ -466,8 +465,7 @@ class KlondikeGameScene(C.Scene):
                 pass
             self._clamp_scroll_xy()
             # Scrolling cancels peek state
-            self.peek_overlay = None
-            self._peek_candidate = None
+            self.peek.cancel()
             return
 
         # Scrollbar interactions (mouse)
@@ -512,32 +510,7 @@ class KlondikeGameScene(C.Scene):
             mx, my = e.pos
             mxw = mx - self.scroll_x
             myw = my - self.scroll_y
-            self.peek_overlay = None
-            candidate = None
-            pending = None
-            for t in self.tableau:
-                hi = t.hit((mxw, myw))
-                if hi is None or hi == -1:
-                    continue
-                # Only peek if not fully exposed (not the top card)
-                if hi < len(t.cards) - 1 and t.cards[hi].face_up:
-                    r = t.rect_for_index(hi)
-                    candidate = (id(t), hi)
-                    pending = (t.cards[hi], r.x, r.y)
-                    break
-
-            now = pygame.time.get_ticks()
-            if candidate is None:
-                self._peek_candidate = None
-                self._peek_pending = None
-                return
-            if candidate != self._peek_candidate:
-                self._peek_candidate = candidate
-                self._peek_started_at = now
-                self._peek_pending = pending
-                return
-            if now - self._peek_started_at >= 2000 and self._peek_pending is not None:
-                self.peek_overlay = self._peek_pending
+            self.peek.on_motion_over_piles(self.tableau, (mxw, myw))
 
         if e.type == pygame.MOUSEBUTTONUP and e.button == 1:
             self._drag_vscroll = False
@@ -562,8 +535,7 @@ class KlondikeGameScene(C.Scene):
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             # Any click clears peek state
-            self.peek_overlay = None
-            self._peek_candidate = None
+            self.peek.cancel()
             mx, my = e.pos
             mxw = mx - self.scroll_x
             myw = my - self.scroll_y  # convert to world coords for hit-tests
@@ -669,14 +641,7 @@ class KlondikeGameScene(C.Scene):
         C.DRAW_OFFSET_Y = self.scroll_y
 
         # If a peek is pending and delay elapsed, activate it even without mouse movement
-        now2 = pygame.time.get_ticks()
-        if (
-            self.peek_overlay is None
-            and getattr(self, "_peek_candidate", None) is not None
-            and getattr(self, "_peek_pending", None) is not None
-            and now2 - getattr(self, "_peek_started_at", 0) >= 2000
-        ):
-            self.peek_overlay = self._peek_pending
+        self.peek.maybe_activate(pygame.time.get_ticks())
 
         for i,f in enumerate(self.foundations):
             f.draw(screen)
@@ -704,8 +669,8 @@ class KlondikeGameScene(C.Scene):
             for i,c in enumerate(stack):
                 surf = C.get_card_surface(c)
                 screen.blit(surf, (mx - C.CARD_W//2, my - C.CARD_H//2 + i*28))
-        elif self.peek_overlay:
-            c, rx, ry = self.peek_overlay
+        elif getattr(self, 'peek', None) and self.peek.overlay:
+            c, rx, ry = self.peek.overlay
             surf = C.get_card_surface(c)
             sx = rx + self.scroll_x
             sy = ry + self.scroll_y
