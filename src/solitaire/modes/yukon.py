@@ -6,6 +6,7 @@ import pygame
 
 from solitaire import common as C
 from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire import mechanics as M
 
 
 def is_red(suit: int) -> bool:
@@ -114,8 +115,8 @@ class YukonGameScene(C.Scene):
         self.undo_mgr = C.UndoManager()
         self.message = ""
 
-        # Animation for foundation moves (reuse Gate's style)
-        self._anim: Optional[dict] = None
+        # Shared animator for card moves
+        self.anim: M.CardAnimator = M.CardAnimator()
 
         # Scrolling (both axes)
         self.scroll_x = 0
@@ -224,7 +225,7 @@ class YukonGameScene(C.Scene):
         for p in self.foundations:
             p.cards.clear()
         self.drag_stack = None
-        self._anim = None
+        self.anim.cancel()
         self.message = ""
 
     def deal_new(self):
@@ -255,7 +256,7 @@ class YukonGameScene(C.Scene):
         if getattr(self, "_initial_snapshot", None):
             self.restore_snapshot(self._initial_snapshot)
             self.drag_stack = None
-            self._anim = None
+            self.anim.cancel()
             self.message = ""
             self.undo_mgr = C.UndoManager()
             self.push_undo()
@@ -312,7 +313,7 @@ class YukonGameScene(C.Scene):
     def undo(self):
         if self.undo_mgr.can_undo():
             self.undo_mgr.undo()
-            self._anim = None
+            self.anim.cancel()
             self._auto_active = False
 
     # ----- Rules helpers -----
@@ -338,16 +339,7 @@ class YukonGameScene(C.Scene):
         return (is_red(moving_bottom.suit) != is_red(target_top.suit)) and (moving_bottom.rank == target_top.rank - 1)
 
     # ----- Animation helpers -----
-    def _start_anim_to_foundation(self, c: C.Card, from_pos: Tuple[int, int], fi: int, on_complete=None):
-        self._anim = {
-            'card': c,
-            'from': from_pos,
-            'to': (self.foundations[fi].x, self.foundations[fi].y),
-            'start': pygame.time.get_ticks(),
-            'dur': 260,
-            'foundation_index': fi,
-            'on_complete': on_complete,
-        }
+    # (centralized in mechanics via CardAnimator)
 
     # ----- Auto helpers -----
     def can_autocomplete(self) -> bool:
@@ -398,7 +390,10 @@ class YukonGameScene(C.Scene):
                         r = t.rect_for_index(len(t.cards) - 1)
                         self.push_undo()
                         t.cards.pop()
-                        self._start_anim_to_foundation(c, (r.x, r.y), fi)
+                        def _done(ci=c, ffi=fi):
+                            self.foundations[ffi].cards.append(ci)
+                            self._post_move_cleanup()
+                        self.anim.start_move(c, (r.x, r.y), (self.foundations[fi].x, self.foundations[fi].y), dur_ms=260, on_complete=_done)
                         handled = True
                         break
         self._last_click_time = now
@@ -417,7 +412,7 @@ class YukonGameScene(C.Scene):
             return
 
         # Do not interact while animation is running
-        if self._anim is not None:
+        if self.anim.active:
             return
 
         # Mouse wheel scroll
@@ -543,19 +538,9 @@ class YukonGameScene(C.Scene):
         for p in self.tableau:
             if p.cards and not p.cards[-1].face_up:
                 p.cards[-1].face_up = True
-        # Auto-move Aces when exposed at top
-        if self._anim is None:
-            for ti, t in enumerate(self.tableau):
-                if not t.cards:
-                    continue
-                top = t.cards[-1]
-                if top.face_up and top.rank == 1:
-                    # Move Ace to its foundation with animation
-                    r = t.rect_for_index(len(t.cards) - 1)
-                    fi = self._foundation_index_for_suit(top.suit)
-                    t.cards.pop()
-                    self._start_anim_to_foundation(top, (r.x, r.y), fi)
-                    break
+        # Auto-move exposed aces using shared helper
+        if not self.anim.active:
+            M.auto_move_first_ace(self.tableau, self.foundations, self.foundation_suits, self.anim)
         # Check win
         if all(len(f.cards) == 13 for f in self.foundations):
             self.message = "Congratulations! You won!"
@@ -635,7 +620,7 @@ class YukonGameScene(C.Scene):
     # ----- Update/Draw -----
     def update(self, dt):
         # Drive auto-complete with animation steps
-        if self._auto_active and self._anim is None:
+        if self._auto_active and not self.anim.active:
             nxt = self._find_next_auto_move()
             if not nxt:
                 self._auto_active = False
@@ -647,7 +632,9 @@ class YukonGameScene(C.Scene):
                 c = src.cards[-1]
                 r = src.rect_for_index(len(src.cards) - 1)
                 src.cards.pop()
-                self._start_anim_to_foundation(c, (r.x, r.y), fi)
+                def _done(ci=c, ffi=fi):
+                    self.foundations[ffi].cards.append(ci)
+                self.anim.start_move(c, (r.x, r.y), (self.foundations[fi].x, self.foundations[fi].y), dur_ms=240, on_complete=_done)
 
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
@@ -680,30 +667,7 @@ class YukonGameScene(C.Scene):
                 screen.blit(surf, (mx - C.CARD_W // 2, my - C.CARD_H // 2 + i * 28))
 
         # Animation overlay
-        if self._anim is not None:
-            now = pygame.time.get_ticks()
-            t = (now - self._anim['start']) / max(1, self._anim['dur'])
-            if t >= 1.0:
-                c = self._anim['card']
-                fi = self._anim['foundation_index']
-                self.foundations[fi].cards.append(c)
-                cb = self._anim.get('on_complete')
-                self._anim = None
-                if cb:
-                    try:
-                        cb()
-                    except Exception:
-                        pass
-                # Chain any ace auto-moves
-                self._post_move_cleanup()
-            else:
-                sx, sy = self._anim['from']
-                tx, ty = self._anim['to']
-                x = int(sx + (tx - sx) * t)
-                y = int(sy + (ty - sy) * t)
-                card = self._anim['card']
-                surf = C.get_card_surface(card)
-                screen.blit(surf, (x + self.scroll_x, y + self.scroll_y))
+        self.anim.draw(screen, scroll_x=self.scroll_x, scroll_y=self.scroll_y)
 
         # Message
         if self.message:
@@ -731,7 +695,7 @@ class YukonGameScene(C.Scene):
             pygame.draw.rect(screen, (200, 200, 200), knob_rect, border_radius=3)
 
         # Auto-complete driver
-        if self._auto_active and self._anim is None:
+        if self._auto_active and not self.anim.active:
             nxt = self._find_next_auto_move()
             if not nxt:
                 self._auto_active = False
@@ -743,4 +707,6 @@ class YukonGameScene(C.Scene):
                 c = src.cards[-1]
                 r = src.rect_for_index(len(src.cards) - 1)
                 src.cards.pop()
-                self._start_anim_to_foundation(c, (r.x, r.y), fi)
+                def _done(ci=c, ffi=fi):
+                    self.foundations[ffi].cards.append(ci)
+                self.anim.start_move(c, (r.x, r.y), (self.foundations[fi].x, self.foundations[fi].y), dur_ms=240, on_complete=_done)
