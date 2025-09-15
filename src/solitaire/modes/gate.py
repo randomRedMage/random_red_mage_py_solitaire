@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple
 
 from solitaire import common as C
 from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire import mechanics as M
 
 
 def is_red(suit: int) -> bool:
@@ -118,15 +119,10 @@ class GateGameScene(C.Scene):
         # Double-click tracking (to foundations)
         self._last_click_time = 0
         self._last_click_pos = (0, 0)
-        # Hover peek (like Klondike) — but show substack from hover card down
-        # Stores list of (card, x, y) to draw, and an optional mask rect to hide cards above
-        self.peek_overlay: Optional[List[Tuple[C.Card, int, int]]] = None
-        self.peek_mask_rect: Optional[Tuple[int, int, int, int]] = None
-        self._peek_candidate: Optional[Tuple[int, int]] = None
-        self._peek_started_at: int = 0
-        self._peek_pending: Optional[List[Tuple[C.Card, int, int]]] = None
-        # Auto-fill animation state
-        self._anim: Optional[dict] = None
+        # Klondike-style peek controller (shows single hovered face-up card under delay)
+        self.peek = M.PeekController(delay_ms=2000)
+        # Shared animator for single-card moves
+        self.anim: M.CardAnimator = M.CardAnimator()
         # Auto-complete state
         self._auto_complete_active = False
         # Vertical scrolling
@@ -315,7 +311,7 @@ class GateGameScene(C.Scene):
         """Start an animation to fill the next empty center pile from Stock, else Waste.
         If both are empty, leave as-is. Only one auto-fill animation runs at a time.
         If an Ace is drawn from stock here, animate it to its foundation first."""
-        if self._anim is not None:
+        if self.anim.active:
             return
         for ti, p in enumerate(self.center):
             if p.cards:
@@ -325,45 +321,29 @@ class GateGameScene(C.Scene):
                 # If it's an Ace, route to foundation instead
                 if card.rank == 1:
                     fi = self._foundation_index_for_suit(card.suit)
-                    self._anim = {
-                        'card': card,
-                        'from': (self.stock_pile.x, self.stock_pile.y),
-                        'to': (self.foundations[fi].x, self.foundations[fi].y),
-                        'start': pygame.time.get_ticks(),
-                        'dur': 320,
-                        'source': 'stock',
-                        'flipped': False,
-                        'dest': 'foundation',
-                        'foundation_index': fi,
-                    }
+                    card.face_up = True
+                    def _done(ci=card, ffi=fi):
+                        self.foundations[ffi].cards.append(ci)
+                        # Chain next fill and auto-move aces
+                        self._fill_center_vacancies()
+                        self._maybe_auto_move_revealed_aces()
+                    self.anim.start_move(card, (self.stock_pile.x, self.stock_pile.y), (self.foundations[fi].x, self.foundations[fi].y), dur_ms=320, on_complete=_done)
                 else:
-                    # Flip mid animation; starts face down
-                    self._anim = {
-                        'card': card,
-                        'from': (self.stock_pile.x, self.stock_pile.y),
-                        'to': (p.x, p.y),
-                        'start': pygame.time.get_ticks(),
-                        'dur': 350,
-                        'source': 'stock',
-                        'flipped': False,
-                        'dest': 'center',
-                        'target_index': ti,
-                    }
+                    # Flip mid animation from back to face-up
+                    def _done(ci=card, t_index=ti):
+                        self.center[t_index].cards.append(ci)
+                        self._fill_center_vacancies()
+                        self._maybe_auto_move_revealed_aces()
+                    self.anim.start_move(card, (self.stock_pile.x, self.stock_pile.y), (p.x, p.y), dur_ms=350, on_complete=_done, flip_mid=True)
                 return
             elif self.waste_pile.cards:
                 card = self.waste_pile.cards.pop()
                 card.face_up = True
-                self._anim = {
-                    'card': card,
-                    'from': (self.waste_pile.x, self.waste_pile.y),
-                    'to': (p.x, p.y),
-                    'start': pygame.time.get_ticks(),
-                    'dur': 300,
-                    'source': 'waste',
-                    'flipped': True,
-                    'dest': 'center',
-                    'target_index': ti,
-                }
+                def _done(ci=card, t_index=ti):
+                    self.center[t_index].cards.append(ci)
+                    self._fill_center_vacancies()
+                    self._maybe_auto_move_revealed_aces()
+                self.anim.start_move(card, (self.waste_pile.x, self.waste_pile.y), (p.x, p.y), dur_ms=300, on_complete=_done)
                 return
             else:
                 return
@@ -426,21 +406,15 @@ class GateGameScene(C.Scene):
         self.waste_pile.cards.append(c)
         self.message = ""
         # Auto-move Ace from waste to foundation with animation
-        if c.rank == 1 and self._anim is None:
+        if c.rank == 1 and not self.anim.active:
             # Remove back from waste and animate to foundation
             self.waste_pile.cards.pop()
             fi = self._foundation_index_for_suit(c.suit)
-            self._anim = {
-                'card': c,
-                'from': (self.waste_pile.x, self.waste_pile.y),
-                'to': (self.foundations[fi].x, self.foundations[fi].y),
-                'start': pygame.time.get_ticks(),
-                'dur': 300,
-                'source': 'waste',
-                'flipped': True,
-                'dest': 'foundation',
-                'foundation_index': fi,
-            }
+            c.face_up = True
+            def _done(ci=c, ffi=fi):
+                self.foundations[ffi].cards.append(ci)
+                self._fill_center_vacancies()
+            self.anim.start_move(c, (self.waste_pile.x, self.waste_pile.y), (self.foundations[fi].x, self.foundations[fi].y), dur_ms=300, on_complete=_done)
 
     # ----- Double-click helper -----
     def _maybe_handle_double_click(self, e, mx: int, my: int) -> bool:
@@ -509,7 +483,7 @@ class GateGameScene(C.Scene):
             return
 
         # Avoid interactions while auto-fill animation is running
-        if self._anim is not None:
+        if self.anim.active:
             return
 
         # Update dynamic fan spacing for center piles
@@ -519,6 +493,8 @@ class GateGameScene(C.Scene):
         if e.type == pygame.MOUSEWHEEL:
             self.scroll_y += e.y * 60
             self._clamp_scroll()
+            # Cancel any peek while scrolling
+            self.peek.cancel()
             return
 
         # Vertical scrollbar interactions
@@ -554,6 +530,8 @@ class GateGameScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             # Clear message on click
             self.message = ""
+            # Cancel any pending peek on click
+            self.peek.cancel()
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
@@ -598,43 +576,13 @@ class GateGameScene(C.Scene):
                     self.drag_stack = (seq, "center", ti)
                     return
 
-        # Hover peek (like Klondike)
+        # Hover peek (standard Klondike-style)
         if e.type == pygame.MOUSEMOTION and not self.drag_stack:
             mx, my = e.pos
             myw = my - self.scroll_y
             mxw = mx
-            self.peek_overlay = None
-            self.peek_mask_rect = None
-            candidate = None
-            pending = None
-            for t in self.center:
-                hi = t.hit((mxw, myw))
-                if hi is None or hi == -1:
-                    continue
-                if hi < len(t.cards) - 1 and t.cards[hi].face_up:
-                    r = t.rect_for_index(hi)
-                    candidate = (id(t), hi)
-                    # Build substack from hover index down
-                    sub = []
-                    for j in range(hi, len(t.cards)):
-                        rj = t.rect_for_index(j)
-                        sub.append((t.cards[j], rj.x, rj.y))
-                    pending = sub
-                    # Mask region above the hover card to hide cards above
-                    self.peek_mask_rect = (t.x, t.y, C.CARD_W, max(0, r.y - t.y))
-                    break
-            now = pygame.time.get_ticks()
-            if candidate is None:
-                self._peek_candidate = None
-                self._peek_pending = None
-                self.peek_mask_rect = None
-            else:
-                if candidate != self._peek_candidate:
-                    self._peek_candidate = candidate
-                    self._peek_started_at = now
-                    self._peek_pending = pending
-                elif now - self._peek_started_at >= 2000 and self._peek_pending is not None:
-                    self.peek_overlay = self._peek_pending
+            # Build peek state from center piles
+            self.peek.on_motion_over_piles(self.center, (mxw, myw))
 
         elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
             if not self.drag_stack:
@@ -738,53 +686,14 @@ class GateGameScene(C.Scene):
             for i, c in enumerate(stack):
                 surf = C.get_card_surface(c)
                 screen.blit(surf, (mx - C.CARD_W // 2, my - C.CARD_H // 2 + i * 28))
-        elif self.peek_overlay:
-            # Hide cards above the hover point by repainting table background over that strip
-            if self.peek_mask_rect is not None:
-                x, y, w, h = self.peek_mask_rect
-                pygame.draw.rect(screen, C.TABLE_BG, (x, y + self.scroll_y, w, h))
-            # Draw the substack from hover point down on top
-            for c, rx, ry in self.peek_overlay:
-                surf = C.get_card_surface(c)
-                screen.blit(surf, (rx, ry + self.scroll_y))
+        elif self.peek.overlay:
+            # Draw single-card peek overlay at world position
+            card, rx, ry = self.peek.overlay
+            surf = C.get_card_surface(card)
+            screen.blit(surf, (rx, ry + self.scroll_y))
 
         # Auto-fill animation overlay
-        if self._anim is not None:
-            now = pygame.time.get_ticks()
-            t = (now - self._anim['start']) / max(1, self._anim['dur'])
-            if t >= 1.0:
-                card = self._anim['card']
-                if self._anim['source'] == 'stock' and not self._anim.get('flipped', False):
-                    card.face_up = True
-                if self._anim.get('dest') == 'center':
-                    ti = self._anim['target_index']
-                    self.center[ti].cards.append(card)
-                else:
-                    fi = self._anim.get('foundation_index', 0)
-                    self.foundations[fi].cards.append(card)
-                self._anim = None
-                # Start next fill if other empties or auto ace moves exist
-                self._fill_center_vacancies()
-                self._maybe_auto_move_revealed_aces()
-            else:
-                sx, sy = self._anim['from']
-                tx, ty = self._anim['to']
-                x = int(sx + (tx - sx) * t)
-                y = int(sy + (ty - sy) * t)
-                card = self._anim['card']
-                if self._anim['source'] == 'stock':
-                    if t >= 0.5 and not self._anim['flipped']:
-                        card.face_up = True
-                        self._anim['flipped'] = True
-                    if t < 0.5:
-                        bs = C.get_back_surface()
-                        screen.blit(bs, (x, y + self.scroll_y))
-                    else:
-                        surf = C.get_card_surface(card)
-                        screen.blit(surf, (x, y + self.scroll_y))
-                else:
-                    surf = C.get_card_surface(card)
-                    screen.blit(surf, (x, y + self.scroll_y))
+        self.anim.draw(screen, scroll_x=0, scroll_y=self.scroll_y)
 
         # Message
         if self.message:
@@ -799,6 +708,9 @@ class GateGameScene(C.Scene):
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
 
+        # Activate any pending peek by time
+        self.peek.maybe_activate(pygame.time.get_ticks())
+
         # Vertical scrollbar when content extends beyond view
         vsb = self._vertical_scrollbar()
         if vsb is not None:
@@ -807,40 +719,23 @@ class GateGameScene(C.Scene):
             pygame.draw.rect(screen, (200, 200, 200), knob_rect, border_radius=3)
 
         # Auto-complete driver: when active and idle, start next move
-        if self._auto_complete_active and self._anim is None:
+        if self._auto_complete_active and not self.anim.active:
             if not self._step_auto_complete():
                 self._auto_complete_active = False
                 if all(len(f.cards) == 13 for f in self.foundations):
                     self.message = "Congratulations! You won!"
 
     def _update_center_fans(self):
-        # Compact stacks with more than 3 cards so only 5-10px of each underneath shows
+        # Compact stacks with more than threshold cards
         for p in self.center:
-            p.fan_y = self._center_fan_default if len(p.cards) <= 3 else self._center_fan_compact
+            p.fan_y = M.compact_fan(len(p.cards), self._center_fan_default, self._center_fan_compact, threshold=3)
 
     def _maybe_auto_move_revealed_aces(self):
         # If a reserve top card is an Ace, animate it to its foundation
-        if self._anim is not None:
+        if self.anim.active:
             return
-        for r in self.reserves:
-            if not r.cards:
-                continue
-            top = r.cards[-1]
-            if top.rank == 1:
-                r.cards.pop()
-                fi = self._foundation_index_for_suit(top.suit)
-                self._anim = {
-                    'card': top,
-                    'from': (r.x, r.y),
-                    'to': (self.foundations[fi].x, self.foundations[fi].y),
-                    'start': pygame.time.get_ticks(),
-                    'dur': 280,
-                    'source': 'reserve',
-                    'flipped': True,
-                    'dest': 'foundation',
-                    'foundation_index': fi,
-                }
-                return
+        if M.auto_move_first_ace(self.reserves, self.foundations, self.foundation_suits, self.anim):
+            return
 
     # ----- Auto-complete (center -> foundations) -----
     def can_autocomplete(self) -> bool:
@@ -878,17 +773,9 @@ class GateGameScene(C.Scene):
         c = src.cards[-1]
         r = src.rect_for_index(len(src.cards) - 1)
         src.cards.pop()
-        self._anim = {
-            'card': c,
-            'from': (r.x, r.y),
-            'to': (self.foundations[fi].x, self.foundations[fi].y),
-            'start': pygame.time.get_ticks(),
-            'dur': 240,
-            'source': 'center',
-            'flipped': True,
-            'dest': 'foundation',
-            'foundation_index': fi,
-        }
+        def _done(ci=c, ffi=fi):
+            self.foundations[ffi].cards.append(ci)
+        self.anim.start_move(c, (r.x, r.y), (self.foundations[fi].x, self.foundations[fi].y), dur_ms=240, on_complete=_done)
         return True
 
     # ----- Scrolling helpers -----

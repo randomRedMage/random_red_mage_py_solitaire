@@ -3,6 +3,7 @@ import pygame
 from typing import List, Optional, Tuple
 from solitaire import common as C
 from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire import mechanics as M
 
 
 def is_red(suit: int) -> bool:
@@ -57,10 +58,7 @@ class FreeCellGameScene(C.Scene):
         # Drag state: (stack, src_kind, src_index)
         self.drag_stack: Optional[Tuple[List[C.Card], str, int]] = None
         self.drag_offset = (0, 0)
-        self.peek_overlay: Optional[Tuple[C.Card, int, int]] = None  # (card, world_x, world_y)
-        self._peek_candidate: Optional[Tuple[int, int]] = None       # (pile_id, index)
-        self._peek_started_at: int = 0
-        self._peek_pending: Optional[Tuple[C.Card, int, int]] = None
+        self.peek = M.PeekController(delay_ms=2000)
 
         # Undo manager
         self.undo_mgr = C.UndoManager()
@@ -355,16 +353,14 @@ class FreeCellGameScene(C.Scene):
             self.scroll_y += e.y * 60
             self._clamp_scroll()
             # Scrolling cancels peek
-            self.peek_overlay = None
-            self._peek_candidate = None
+            self.peek.cancel()
             return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
             myw = my - self.scroll_y
             # Clicking cancels peek
-            self.peek_overlay = None
-            self._peek_candidate = None
+            self.peek.cancel()
 
             # Double-click to auto-move to foundations from freecell/tableau tops
             if self._maybe_handle_double_click(e, mx, myw):
@@ -449,36 +445,10 @@ class FreeCellGameScene(C.Scene):
             return
 
         if e.type == pygame.MOUSEMOTION and not self.drag_stack:
-            # Compute peek overlay for face-up card under cursor in tableau
+            # Compute peek overlay using centralized Klondike-style logic
             mx, my = e.pos
             myw = my - self.scroll_y
-            self.peek_overlay = None
-            candidate = None
-            pending = None
-            for p in self.tableau:
-                hi = p.hit((mx, myw))
-                if hi is None or hi == -1:
-                    continue
-                # Only peek if the card is not already fully exposed (not the top card)
-                if hi < len(p.cards) - 1 and p.cards[hi].face_up:
-                    r = p.rect_for_index(hi)
-                    candidate = (id(p), hi)
-                    pending = (p.cards[hi], r.x, r.y)
-                    break
-
-            now = pygame.time.get_ticks()
-            if candidate is None:
-                self._peek_candidate = None
-                self._peek_pending = None
-                return
-            if candidate != self._peek_candidate:
-                self._peek_candidate = candidate
-                self._peek_started_at = now
-                self._peek_pending = pending
-                return
-            # Same candidate; check delay
-            if now - self._peek_started_at >= 2000 and self._peek_pending is not None:
-                self.peek_overlay = self._peek_pending
+            self.peek.on_motion_over_piles(self.tableau, (mx, myw))
 
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_r:
@@ -542,13 +512,7 @@ class FreeCellGameScene(C.Scene):
 
         # If a peek is pending and delay elapsed, activate it even without mouse movement
         now = pygame.time.get_ticks()
-        if (
-            self.peek_overlay is None
-            and self._peek_candidate is not None
-            and self._peek_pending is not None
-            and now - self._peek_started_at >= 2000
-        ):
-            self.peek_overlay = self._peek_pending
+        self.peek.maybe_activate(now)
 
         # Draw top placeholders
         font_lbl = C.FONT_SMALL
@@ -579,9 +543,9 @@ class FreeCellGameScene(C.Scene):
             for i, c in enumerate(stack):
                 surf = C.get_card_surface(c)
                 screen.blit(surf, (mx - C.CARD_W // 2, my - C.CARD_H // 2 + i * max(24, C.CARD_H // 5)))
-        elif self.peek_overlay:
+        elif self.peek.overlay:
             # Show a full preview of the hovered face-up, partially covered card, in-place
-            card, rx, ry = self.peek_overlay
+            card, rx, ry = self.peek.overlay
             surf = C.get_card_surface(card)
             sx = rx
             sy = ry + self.scroll_y
