@@ -187,6 +187,8 @@ class YukonGameScene(C.Scene):
         self._last_click_pos = (0, 0)
         # Auto-complete flag
         self._auto_active = False
+        # Klondike-style peek
+        self.peek = M.PeekController(delay_ms=2000)
 
     # ----- Layout -----
     def compute_layout(self):
@@ -423,6 +425,7 @@ class YukonGameScene(C.Scene):
             except Exception:
                 pass
             self._clamp_scroll_xy()
+            self.peek.cancel()
             return
 
         # Scrollbar interactions (vertical)
@@ -495,6 +498,9 @@ class YukonGameScene(C.Scene):
                 self._post_move_cleanup()
                 return
 
+            # Cancel peek on click
+            self.peek.cancel()
+
             # Tableau drag: any face-up substack starting at clicked index
             for ti, t in enumerate(self.tableau):
                 hi = t.hit((mxw, myw))
@@ -532,6 +538,13 @@ class YukonGameScene(C.Scene):
                 self.tableau[src_i].cards.extend(stack)
             self.drag_stack = None
             self._post_move_cleanup()
+
+        # Hover peek (Klondike-style)
+        if e.type == pygame.MOUSEMOTION and not self.drag_stack and not self._drag_vscroll and not self._drag_hscroll:
+            mx, my = e.pos
+            mxw = mx - self.scroll_x
+            myw = my - self.scroll_y
+            self.peek.on_motion_over_piles(self.tableau, (mxw, myw))
 
     def _post_move_cleanup(self):
         # Flip newly exposed cards
@@ -665,6 +678,11 @@ class YukonGameScene(C.Scene):
             for i, c in enumerate(stack):
                 surf = C.get_card_surface(c)
                 screen.blit(surf, (mx - C.CARD_W // 2, my - C.CARD_H // 2 + i * 28))
+        elif self.peek.overlay:
+            # Draw peek overlay before animation/UI
+            card, rx, ry = self.peek.overlay
+            surf = C.get_card_surface(card)
+            screen.blit(surf, (rx + self.scroll_x, ry + self.scroll_y))
 
         # Animation overlay
         self.anim.draw(screen, scroll_x=self.scroll_x, scroll_y=self.scroll_y)
@@ -710,3 +728,6 @@ class YukonGameScene(C.Scene):
                 def _done(ci=c, ffi=fi):
                     self.foundations[ffi].cards.append(ci)
                 self.anim.start_move(c, (r.x, r.y), (self.foundations[fi].x, self.foundations[fi].y), dur_ms=240, on_complete=_done)
+
+        # Activate pending peek by time
+        self.peek.maybe_activate(pygame.time.get_ticks())

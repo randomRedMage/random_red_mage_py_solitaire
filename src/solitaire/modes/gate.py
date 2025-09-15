@@ -119,13 +119,8 @@ class GateGameScene(C.Scene):
         # Double-click tracking (to foundations)
         self._last_click_time = 0
         self._last_click_pos = (0, 0)
-        # Hover peek (like Klondike) — but show substack from hover card down
-        # Stores list of (card, x, y) to draw, and an optional mask rect to hide cards above
-        self.peek_overlay: Optional[List[Tuple[C.Card, int, int]]] = None
-        self.peek_mask_rect: Optional[Tuple[int, int, int, int]] = None
-        self._peek_candidate: Optional[Tuple[int, int]] = None
-        self._peek_started_at: int = 0
-        self._peek_pending: Optional[List[Tuple[C.Card, int, int]]] = None
+        # Klondike-style peek controller (shows single hovered face-up card under delay)
+        self.peek = M.PeekController(delay_ms=2000)
         # Shared animator for single-card moves
         self.anim: M.CardAnimator = M.CardAnimator()
         # Auto-complete state
@@ -498,6 +493,8 @@ class GateGameScene(C.Scene):
         if e.type == pygame.MOUSEWHEEL:
             self.scroll_y += e.y * 60
             self._clamp_scroll()
+            # Cancel any peek while scrolling
+            self.peek.cancel()
             return
 
         # Vertical scrollbar interactions
@@ -533,6 +530,8 @@ class GateGameScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             # Clear message on click
             self.message = ""
+            # Cancel any pending peek on click
+            self.peek.cancel()
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
@@ -577,37 +576,13 @@ class GateGameScene(C.Scene):
                     self.drag_stack = (seq, "center", ti)
                     return
 
-        # Hover peek (like Klondike)
+        # Hover peek (standard Klondike-style)
         if e.type == pygame.MOUSEMOTION and not self.drag_stack:
             mx, my = e.pos
             myw = my - self.scroll_y
             mxw = mx
-            self.peek_overlay = None
-            self.peek_mask_rect = None
-            candidate = None
-            pending = None
-            for t in self.center:
-                hi = t.hit((mxw, myw))
-                if hi is None or hi == -1:
-                    continue
-                if hi < len(t.cards) - 1 and t.cards[hi].face_up:
-                    candidate = (id(t), hi)
-                    sub, mask = M.build_hover_overlay(t, hi)
-                    pending = sub
-                    self.peek_mask_rect = mask
-                    break
-            now = pygame.time.get_ticks()
-            if candidate is None:
-                self._peek_candidate = None
-                self._peek_pending = None
-                self.peek_mask_rect = None
-            else:
-                if candidate != self._peek_candidate:
-                    self._peek_candidate = candidate
-                    self._peek_started_at = now
-                    self._peek_pending = pending
-                elif now - self._peek_started_at >= 2000 and self._peek_pending is not None:
-                    self.peek_overlay = self._peek_pending
+            # Build peek state from center piles
+            self.peek.on_motion_over_piles(self.center, (mxw, myw))
 
         elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
             if not self.drag_stack:
@@ -711,15 +686,11 @@ class GateGameScene(C.Scene):
             for i, c in enumerate(stack):
                 surf = C.get_card_surface(c)
                 screen.blit(surf, (mx - C.CARD_W // 2, my - C.CARD_H // 2 + i * 28))
-        elif self.peek_overlay:
-            # Hide cards above the hover point by repainting table background over that strip
-            if self.peek_mask_rect is not None:
-                x, y, w, h = self.peek_mask_rect
-                pygame.draw.rect(screen, C.TABLE_BG, (x, y + self.scroll_y, w, h))
-            # Draw the substack from hover point down on top
-            for c, rx, ry in self.peek_overlay:
-                surf = C.get_card_surface(c)
-                screen.blit(surf, (rx, ry + self.scroll_y))
+        elif self.peek.overlay:
+            # Draw single-card peek overlay at world position
+            card, rx, ry = self.peek.overlay
+            surf = C.get_card_surface(card)
+            screen.blit(surf, (rx, ry + self.scroll_y))
 
         # Auto-fill animation overlay
         self.anim.draw(screen, scroll_x=0, scroll_y=self.scroll_y)
@@ -736,6 +707,9 @@ class GateGameScene(C.Scene):
         self.toolbar.draw(screen)
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+
+        # Activate any pending peek by time
+        self.peek.maybe_activate(pygame.time.get_ticks())
 
         # Vertical scrollbar when content extends beyond view
         vsb = self._vertical_scrollbar()

@@ -142,3 +142,66 @@ def compact_fan(current_len: int, default_fan: int, compact_fan: int, threshold:
     """Return a fan_y value that compacts when stack is tall."""
     return default_fan if current_len <= threshold else compact_fan
 
+
+class PeekController:
+    """
+    Klondike-style peek:
+    - When hovering over a face-up card that is not the top card of a pile,
+      after a short delay show a full overlay of just that card at its pile position.
+    Scenes should:
+      - call cancel() on scroll/clicks
+      - call on_motion_over_piles(piles, world_pos)
+      - call maybe_activate(now_ms) before draw
+      - draw overlay if present, adding their scroll offsets
+    """
+
+    def __init__(self, delay_ms: int = 2000):
+        self.delay_ms = delay_ms
+        self.overlay: Optional[Tuple[C.Card, int, int]] = None  # (card, world_x, world_y)
+        self._candidate: Optional[Tuple[int, int]] = None  # (pile_id, index)
+        self._started_at: int = 0
+        self._pending: Optional[Tuple[C.Card, int, int]] = None
+
+    def cancel(self):
+        self.overlay = None
+        self._candidate = None
+        self._pending = None
+        self._started_at = 0
+
+    def on_motion_over_piles(self, piles: List[C.Pile], world_pos: Tuple[int, int]):
+        mxw, myw = world_pos
+        candidate = None
+        pending = None
+        for p in piles:
+            hi = p.hit((mxw, myw))
+            if hi is None or hi == -1:
+                continue
+            # Only peek if not the top card and it is face-up
+            if hi < len(p.cards) - 1 and p.cards[hi].face_up:
+                r = p.rect_for_index(hi)
+                candidate = (id(p), hi)
+                pending = (p.cards[hi], r.x, r.y)
+                break
+        now = pygame.time.get_ticks()
+        if candidate is None:
+            self._candidate = None
+            self._pending = None
+            self.overlay = None
+            return
+        if candidate != self._candidate:
+            self._candidate = candidate
+            self._started_at = now
+            self._pending = pending
+            self.overlay = None
+        else:
+            if now - self._started_at >= self.delay_ms and self._pending is not None:
+                self.overlay = self._pending
+
+    def maybe_activate(self, now_ms: int):
+        if (
+            self.overlay is None
+            and self._candidate is not None
+            and self._pending is not None
+            and now_ms - self._started_at >= self.delay_ms
+        ):
+            self.overlay = self._pending
