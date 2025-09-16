@@ -32,7 +32,7 @@ a = Analysis(
     hiddenimports=hidden,
     hookspath=[],
     runtime_hooks=[],
-    excludes=[],
+    excludes=['tests', 'pytest'],
     noarchive=False,
 )
 

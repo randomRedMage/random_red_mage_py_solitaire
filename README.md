@@ -107,6 +107,8 @@ Packaging
   - macOS (Terminal): `bash ./scripts/package_macos_pyinstaller.sh`
   - Outputs to `dist/SolitaireSuite` (onedir). One‑file builds are supported by toggling the script flag but start slower.
 - Notes:
+  - Packaging scripts run `python -m pytest` before building and will abort if any test fails.
+  - Test modules are excluded from the PyInstaller bundle to keep the distributable lean.
   - Assets (`src/solitaire/assets`) are bundled via the spec. If you add new files, they will be included automatically.
   - Pygame DLLs/frameworks are handled by PyInstaller hooks; no extra steps usually needed.
   - To set a custom icon, edit `packaging/pyinstaller/solitaire.spec` and set `icon` to a `.ico` (Windows) or `.icns` (macOS) path.
