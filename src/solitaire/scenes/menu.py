@@ -13,6 +13,7 @@ class MainMenuScene(C.Scene):
         self.b_pyr  = C.Button("Play Pyramid",  cx, y, center=True); y += 60
         self.b_tri  = C.Button("Play TriPeaks", cx, y, center=True); y += 60
         self.b_gate = C.Button("Play Gate", cx, y, center=True); y += 60
+        self.b_castle = C.Button("Play Beleaguered Castle", cx, y, center=True); y += 60
         self.b_golf = C.Button("Play Golf", cx, y, center=True); y += 60
         self.b_yukon = C.Button("Play Yukon", cx, y, center=True); y += 60
         self.b_settings = C.Button("Settings", cx, y, center=True); y += 60
@@ -37,6 +38,9 @@ class MainMenuScene(C.Scene):
             elif self.b_gate.hovered((mx,my)):
                 from solitaire.modes.gate import GateOptionsScene
                 self.next_scene = GateOptionsScene(self.app)
+            elif self.b_castle.hovered((mx,my)):
+                from solitaire.modes.beleaguered_castle import BeleagueredCastleOptionsScene
+                self.next_scene = BeleagueredCastleOptionsScene(self.app)
             elif self.b_golf.hovered((mx,my)):
                 from solitaire.modes.golf import GolfOptionsScene
                 self.next_scene = GolfOptionsScene(self.app)
@@ -58,5 +62,5 @@ class MainMenuScene(C.Scene):
         title = C.FONT_TITLE.render("Solitaire Suite", True, C.WHITE)
         screen.blit(title, (C.SCREEN_W//2 - title.get_width()//2, 120))
         mp = pygame.mouse.get_pos()
-        for b in [self.b_klon, self.b_free, self.b_pyr, self.b_tri, self.b_gate, self.b_golf, self.b_yukon, self.b_settings, self.b_quit]:
+        for b in [self.b_klon, self.b_free, self.b_pyr, self.b_tri, self.b_gate, self.b_castle, self.b_golf, self.b_yukon, self.b_settings, self.b_quit]:
             b.draw(screen, hover=b.hovered(mp))

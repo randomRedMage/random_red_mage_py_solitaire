@@ -27,6 +27,12 @@ def _verify_gate(scene):
     assert len(scene.reserves) == 2
 
 
+def _verify_beleaguered(scene):
+    assert len(scene.foundations) == 4
+    assert all(f.cards and f.cards[0].rank == 1 for f in scene.foundations)
+    assert len(scene.tableau) == 8
+    assert all(len(t.cards) == 6 for t in scene.tableau)
+
 def _verify_golf(scene):
     assert scene.holes_total == 1
     assert scene.around is True
@@ -95,8 +101,19 @@ MODES = [
         "verify": _verify_gate,
     },
     {
-        "key": "golf",
+        "key": "beleaguered_castle",
         "menu_index": 5,
+        "module": "solitaire.modes.beleaguered_castle",
+        "options_class": "BeleagueredCastleOptionsScene",
+        "game_class": "BeleagueredCastleGameScene",
+        "start_attr": "b_start",
+        "back_attr": "b_back",
+        "returns_to_options": True,
+        "verify": _verify_beleaguered,
+    },
+    {
+        "key": "golf",
+        "menu_index": 6,
         "module": "solitaire.modes.golf",
         "options_class": "GolfOptionsScene",
         "game_class": "GolfGameScene",
@@ -107,7 +124,7 @@ MODES = [
     },
     {
         "key": "yukon",
-        "menu_index": 6,
+        "menu_index": 7,
         "module": "solitaire.modes.yukon",
         "options_class": "YukonOptionsScene",
         "game_class": "YukonGameScene",
