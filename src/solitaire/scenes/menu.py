@@ -1,4 +1,4 @@
-# menu.py - Main menu
+﻿# menu.py - Main menu
 import os
 import pygame
 from math import ceil
@@ -22,9 +22,6 @@ class _GameEntry:
 class MainMenuScene(C.Scene):
     ICON_SIZE = 128
     ICON_GAP = 24
-    ICON_BORDER_RADIUS = 18
-    ICON_BORDER = (60, 60, 70)
-    ICON_BORDER_HOVER = (255, 215, 80)
     LABEL_MARGIN = 10
 
     SECTION_PADDING = 28
@@ -53,7 +50,7 @@ class MainMenuScene(C.Scene):
                     _GameEntry("Klondike", "icon_klondike.png", "solitaire.modes.klondike", "KlondikeOptionsScene"),
                     _GameEntry("FreeCell", "icon_freecell.png", "solitaire.modes.freecell", "FreeCellOptionsScene"),
                     _GameEntry("Gate", "icon_gate.png", "solitaire.modes.gate", "GateOptionsScene"),
-                    _GameEntry("Beleaguered Castle", "icon_bleagured_castle.png", "solitaire.modes.beleaguered_castle", "BeleagueredCastleOptionsScene"),
+                    _GameEntry("Beleaguered\nCastle", "icon_beleagured_castle.png", "solitaire.modes.beleaguered_castle", "BeleagueredCastleOptionsScene"),
                     _GameEntry("Yukon", "icon_yukon.png", "solitaire.modes.yukon", "YukonOptionsScene"),
                 ],
                 "rect": pygame.Rect(0, 0, 0, 0),
@@ -91,8 +88,20 @@ class MainMenuScene(C.Scene):
             section["title_surf"] = section_font.render(section["title"], True, (40, 40, 40))
             for entry in section["entries"]:
                 entry.surface = self._load_icon(entry.icon_filename)
-                entry.label_surf = font.render(entry.name, True, (35, 35, 40))
+                entry.label_surf = self._render_label(font, entry.name)
                 entry.label_rect = entry.label_surf.get_rect()
+
+    def _render_label(self, font: pygame.font.Font, text: str) -> pygame.Surface:
+        lines = text.split("\n")
+        surfaces = [font.render(line, True, (35, 35, 40)) for line in lines]
+        max_w = max((surf.get_width() for surf in surfaces), default=0)
+        total_h = sum(surf.get_height() for surf in surfaces) + max(0, len(surfaces) - 1) * 4
+        label = pygame.Surface((max_w, total_h), pygame.SRCALPHA)
+        y = 0
+        for surf in surfaces:
+            label.blit(surf, ((max_w - surf.get_width()) // 2, y))
+            y += surf.get_height() + 4
+        return label
 
     def _load_icon(self, filename: str) -> pygame.Surface:
         icon_path = os.path.join(self._icon_dir, filename)
@@ -104,7 +113,6 @@ class MainMenuScene(C.Scene):
         except Exception:
             surf = None
         if surf is None:
-            # Placeholder surface if icon missing
             surf = pygame.Surface((self.ICON_SIZE, self.ICON_SIZE), pygame.SRCALPHA)
             surf.fill((120, 120, 130))
             pygame.draw.line(surf, (200, 200, 210), (0, 0), (self.ICON_SIZE, self.ICON_SIZE), 4)
@@ -119,14 +127,23 @@ class MainMenuScene(C.Scene):
         margin_x = min(self.SECTION_OUTER_MARGIN_X, max(20, (C.SCREEN_W - 640) // 4))
         available_width = max(self.ICON_SIZE, C.SCREEN_W - margin_x * 2)
         top = 210
-        label_height = (C.FONT_UI.get_height() if C.FONT_UI else 26)
-        row_height = self.ICON_SIZE + self.LABEL_MARGIN + label_height
+        label_height = max(
+            (entry.label_surf.get_height() if entry.label_surf else 0)
+            for section in self._sections
+            for entry in section["entries"]
+        )
+        if not label_height:
+            label_height = C.FONT_UI.get_height() if C.FONT_UI else 26
 
         for section in self._sections:
             entries = section["entries"]
             columns = max(1, min(len(entries), (available_width + self.ICON_GAP) // (self.ICON_SIZE + self.ICON_GAP)))
             rows = ceil(len(entries) / columns)
             content_width = columns * self.ICON_SIZE + (columns - 1) * self.ICON_GAP
+            row_height = self.ICON_SIZE + self.LABEL_MARGIN + max(
+                (entry.label_surf.get_height() if entry.label_surf else label_height)
+                for entry in entries
+            )
             content_height = rows * row_height + (rows - 1) * self.ICON_GAP
             title_surf: pygame.Surface = section["title_surf"]
             title_height = title_surf.get_height()
@@ -138,13 +155,15 @@ class MainMenuScene(C.Scene):
             rect.centerx = C.SCREEN_W // 2
             rect.top = top
 
-            # Layout title inside section
             title_rect = title_surf.get_rect()
             title_rect.centerx = rect.centerx
             title_rect.top = rect.top + self.SECTION_PADDING
             section["title_rect"] = title_rect
 
-            grid_left = rect.left + self.SECTION_PADDING + (content_width - (columns * self.ICON_SIZE + (columns - 1) * self.ICON_GAP)) // 2
+            grid_left = rect.left + self.SECTION_PADDING + max(
+                0,
+                (content_width - (columns * self.ICON_SIZE + (columns - 1) * self.ICON_GAP)) // 2,
+            )
             grid_top = title_rect.bottom + self.SECTION_TITLE_GAP
 
             for index, entry in enumerate(entries):
@@ -158,7 +177,6 @@ class MainMenuScene(C.Scene):
 
             top = rect.bottom + self.SECTION_VERTICAL_GAP
 
-        # Position modal and hamburger after sections computed
         margin_x, margin_y = self._menu_margin
         self._menu_button_rect.topright = (C.SCREEN_W - margin_x, margin_y)
         self._modal_rect.center = (C.SCREEN_W // 2, C.SCREEN_H // 2)
@@ -186,7 +204,6 @@ class MainMenuScene(C.Scene):
             scene_cls = getattr(module, entry.scene_cls)
             self.next_scene = scene_cls(self.app)
         except Exception:
-            # Fallback: ignore failure gracefully
             pass
 
     def _handle_modal_event(self, event):
@@ -264,11 +281,9 @@ class MainMenuScene(C.Scene):
             pygame.draw.rect(screen, self.SECTION_BORDER, rect, width=2, border_radius=self.SECTION_BORDER_RADIUS)
             title_surf: pygame.Surface = section["title_surf"]
             title_rect = section["title_rect"]
-            screen.blit(title_surf, (title_rect.x, title_rect.y))
+            screen.blit(title_surf, title_rect.topleft)
             for entry in section["entries"]:
                 screen.blit(entry.surface, entry.rect.topleft)
-                border_color = self.ICON_BORDER_HOVER if (not self._modal_open and entry is self._hover_entry) else self.ICON_BORDER
-                pygame.draw.rect(screen, border_color, entry.rect, width=3, border_radius=self.ICON_BORDER_RADIUS)
                 if entry.label_surf is not None:
                     screen.blit(entry.label_surf, entry.label_rect.topleft)
 
