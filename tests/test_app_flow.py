@@ -1,4 +1,4 @@
-import importlib
+﻿import importlib
 import types
 
 import pytest
@@ -268,12 +268,18 @@ def test_application_flow(monkeypatch, mode):
                 return _click_pos(rect.center)
         raise AssertionError("Menu button not found on toolbar")
 
-    menu_y = 260 + mode["menu_index"] * 60
-    menu_pos = (target_size[0] // 2, menu_y)
+    def _click_menu_entry():
+        scene = captured.get("menu_scene")
+        assert scene is not None, f"menu_scene should be available for {mode['key']}"
+        getter = getattr(scene, "get_entry_rect", None)
+        assert callable(getter), "Main menu does not expose get_entry_rect"
+        rect = getter(mode["key"])
+        assert rect is not None, f"No entry rect for {mode['key']}"
+        return _click_pos(rect.center)
 
     event_steps = [
         lambda: [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_RETURN, "mod": 0})],
-        lambda: _click_pos(menu_pos),
+        _click_menu_entry,
         lambda: _click_button("options_scene", mode["start_attr"]),
         _click_toolbar_menu,
     ]
@@ -329,3 +335,7 @@ def test_application_flow(monkeypatch, mode):
     game_scene = captured.get("game_scene")
     assert game_scene is not None, "Game scene should be captured"
     mode["verify"](game_scene)
+
+
+
+
