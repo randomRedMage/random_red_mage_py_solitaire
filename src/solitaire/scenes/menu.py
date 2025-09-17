@@ -6,10 +6,11 @@ from solitaire import common as C
 
 
 class _GameEntry:
-    __slots__ = ("name", "icon_filename", "module", "scene_cls", "surface", "rect", "label_surf", "label_rect")
+    __slots__ = ("key", "label", "icon_filename", "module", "scene_cls", "surface", "rect", "label_surf", "label_rect")
 
-    def __init__(self, name: str, icon_filename: str, module: str, scene_cls: str):
-        self.name = name
+    def __init__(self, key: str, label: str, icon_filename: str, module: str, scene_cls: str):
+        self.key = key
+        self.label = label
         self.icon_filename = icon_filename
         self.module = module
         self.scene_cls = scene_cls
@@ -52,11 +53,11 @@ class MainMenuScene(C.Scene):
             {
                 "title": "Packers",
                 "entries": [
-                    _GameEntry("Klondike", "icon_klondike.png", "solitaire.modes.klondike", "KlondikeOptionsScene"),
-                    _GameEntry("FreeCell", "icon_freecell.png", "solitaire.modes.freecell", "FreeCellOptionsScene"),
-                    _GameEntry("Gate", "icon_gate.png", "solitaire.modes.gate", "GateOptionsScene"),
-                    _GameEntry("Beleaguered\nCastle", "icon_beleagured_castle.png", "solitaire.modes.beleaguered_castle", "BeleagueredCastleOptionsScene"),
-                    _GameEntry("Yukon", "icon_yukon.png", "solitaire.modes.yukon", "YukonOptionsScene"),
+                    _GameEntry("klondike", "Klondike", "icon_klondike.png", "solitaire.modes.klondike", "KlondikeOptionsScene"),
+                    _GameEntry("freecell", "FreeCell", "icon_freecell.png", "solitaire.modes.freecell", "FreeCellOptionsScene"),
+                    _GameEntry("gate", "Gate", "icon_gate.png", "solitaire.modes.gate", "GateOptionsScene"),
+                    _GameEntry("beleaguered_castle", "Beleaguered\nCastle", "icon_beleagured_castle.png", "solitaire.modes.beleaguered_castle", "BeleagueredCastleOptionsScene"),
+                    _GameEntry("yukon", "Yukon", "icon_yukon.png", "solitaire.modes.yukon", "YukonOptionsScene"),
                 ],
                 "rect": pygame.Rect(0, 0, 0, 0),
                 "title_surf": None,
@@ -65,15 +66,20 @@ class MainMenuScene(C.Scene):
             {
                 "title": "Builders",
                 "entries": [
-                    _GameEntry("Golf", "icon_golf.png", "solitaire.modes.golf", "GolfOptionsScene"),
-                    _GameEntry("Pyramid", "icon_pyramid.png", "solitaire.modes.pyramid", "PyramidOptionsScene"),
-                    _GameEntry("TriPeaks", "icon_tripeaks.png", "solitaire.modes.tripeaks", "TriPeaksOptionsScene"),
+                    _GameEntry("golf", "Golf", "icon_golf.png", "solitaire.modes.golf", "GolfOptionsScene"),
+                    _GameEntry("pyramid", "Pyramid", "icon_pyramid.png", "solitaire.modes.pyramid", "PyramidOptionsScene"),
+                    _GameEntry("tripeaks", "TriPeaks", "icon_tripeaks.png", "solitaire.modes.tripeaks", "TriPeaksOptionsScene"),
                 ],
                 "rect": pygame.Rect(0, 0, 0, 0),
                 "title_surf": None,
                 "title_rect": pygame.Rect(0, 0, 0, 0),
             },
         ]
+
+        self._entry_lookup = {}
+        for section in self._sections:
+            for entry in section["entries"]:
+                self._entry_lookup[entry.key] = entry
 
         self._modal_rect = pygame.Rect(0, 0, 520, 360)
         self._modal_padding_top = 130
@@ -107,7 +113,7 @@ class MainMenuScene(C.Scene):
             section["title_surf"] = section_font.render(section["title"], True, (40, 40, 40))
             for entry in section["entries"]:
                 entry.surface = self._load_icon(entry.icon_filename)
-                entry.label_surf = self._render_label(font, entry.name)
+                entry.label_surf = self._render_label(font, entry.label)
                 entry.label_rect = entry.label_surf.get_rect()
 
     def _render_label(self, font: pygame.font.Font, text: str) -> pygame.Surface:
@@ -265,6 +271,14 @@ class MainMenuScene(C.Scene):
     def _to_content_pos(self, pos):
         return pos[0], pos[1] + self._scroll_offset
 
+    def get_entry_rect(self, key: str):
+        entry = self._entry_lookup.get(key)
+        if entry is None:
+            return None
+        rect = entry.rect.copy()
+        rect.y -= self._scroll_offset
+        return rect
+
     # --- interaction ---------------------------------------------------
     def _activate_entry(self, entry: _GameEntry):
         try:
@@ -417,3 +431,10 @@ class MainMenuScene(C.Scene):
         self._draw_menu_button(screen)
         if self._modal_open:
             self._draw_modal(screen)
+
+
+
+
+
+
+
