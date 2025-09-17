@@ -33,6 +33,15 @@ def _verify_beleaguered(scene):
     assert len(scene.tableau) == 8
     assert all(len(t.cards) == 6 for t in scene.tableau)
 
+def _verify_big_ben(scene):
+    assert len(scene.foundations) == 12
+    assert [f.cards[-1].rank for f in scene.foundations] == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    assert len(scene.tableau) == 12
+    assert all(len(t.cards) == 3 for t in scene.tableau)
+    assert len(scene.stock.cards) == 56
+    assert len(scene.waste.cards) == 0
+
+
 def _verify_golf(scene):
     assert scene.holes_total == 1
     assert scene.around is True
@@ -112,8 +121,19 @@ MODES = [
         "verify": _verify_beleaguered,
     },
     {
-        "key": "golf",
+        "key": "big_ben",
         "menu_index": 6,
+        "module": "solitaire.modes.big_ben",
+        "options_class": "BigBenOptionsScene",
+        "game_class": "BigBenGameScene",
+        "start_attr": "b_start",
+        "back_attr": "b_back",
+        "returns_to_options": True,
+        "verify": _verify_big_ben,
+    },
+    {
+        "key": "golf",
+        "menu_index": 7,
         "module": "solitaire.modes.golf",
         "options_class": "GolfOptionsScene",
         "game_class": "GolfGameScene",
@@ -124,7 +144,7 @@ MODES = [
     },
     {
         "key": "yukon",
-        "menu_index": 7,
+        "menu_index": 8,
         "module": "solitaire.modes.yukon",
         "options_class": "YukonOptionsScene",
         "game_class": "YukonGameScene",

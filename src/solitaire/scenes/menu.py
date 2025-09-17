@@ -66,6 +66,7 @@ class MainMenuScene(C.Scene):
             {
                 "title": "Builders",
                 "entries": [
+                    _GameEntry("big_ben", "Big Ben", "icon_big_ben.png", "solitaire.modes.big_ben", "BigBenOptionsScene"),
                     _GameEntry("golf", "Golf", "icon_golf.png", "solitaire.modes.golf", "GolfOptionsScene"),
                     _GameEntry("pyramid", "Pyramid", "icon_pyramid.png", "solitaire.modes.pyramid", "PyramidOptionsScene"),
                     _GameEntry("tripeaks", "TriPeaks", "icon_tripeaks.png", "solitaire.modes.tripeaks", "TriPeaksOptionsScene"),
