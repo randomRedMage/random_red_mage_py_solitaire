@@ -297,3 +297,46 @@ class EdgePanDuringDrag:
         # Convert to per-frame pixel deltas
         dt = dt_ms / 1000.0
         return (int(dx * dt), int(dy * dt))
+
+
+def debug_prepare_edge_pan_test(scene):
+    """
+    Developer-only helper. If a scene has common pile attributes, rearrange
+    cards to create an intentionally large stack or row to force scrollbars so
+    edge panning can be verified quickly. Does nothing if attributes unknown.
+
+    Safe to call after a scene has been constructed and dealt.
+    """
+    try:
+        # Prefer tableau-style merging into first pile
+        if hasattr(scene, "tableau") and isinstance(scene.tableau, list) and scene.tableau:
+            all_cards = []
+            for p in scene.tableau:
+                all_cards.extend(p.cards)
+                p.cards = []
+            for c in all_cards:
+                c.face_up = True
+            scene.tableau[0].cards = all_cards
+        # Gate uses 'center' and 'reserves'
+        elif hasattr(scene, "center") and isinstance(scene.center, list) and scene.center:
+            all_cards = []
+            for p in scene.center:
+                all_cards.extend(p.cards)
+                p.cards = []
+            # include reserves if present
+            if hasattr(scene, "reserves") and isinstance(scene.reserves, list):
+                for r in scene.reserves:
+                    all_cards.extend(r.cards)
+                    r.cards = []
+            for c in all_cards:
+                c.face_up = True
+            scene.center[0].cards = all_cards
+        # Nothing to do for radial modes like Big Ben
+        # Clamp scroll if supported
+        if hasattr(scene, "_clamp_scroll_xy") and callable(scene._clamp_scroll_xy):
+            scene._clamp_scroll_xy()
+        elif hasattr(scene, "_clamp_scroll") and callable(scene._clamp_scroll):
+            scene._clamp_scroll()
+    except Exception:
+        # Best-effort only; never crash in debug helper
+        pass

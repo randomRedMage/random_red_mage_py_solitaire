@@ -4,6 +4,7 @@ import os
 import pygame
 from solitaire import common as C
 from solitaire.scenes.menu import MainMenuScene
+from solitaire import mechanics as M
 
 def _initial_window_size():
     info = pygame.display.Info()
@@ -25,9 +26,51 @@ def main():
     pygame.display.set_caption("Solitaire Suite")
     C.setup_fonts()
     clock = pygame.time.Clock()
-    # Start at Title screen
-    from solitaire.scenes.title import TitleScene
-    scene = TitleScene(app=None)
+    # Developer debug: launch a specific scene via environment
+    debug_scene = os.environ.get("SOLI_DEBUG_SCENE", "").strip().lower()
+    debug_tall = os.environ.get("SOLI_DEBUG_TALL", "").strip() in ("1", "true", "yes")
+    debug_card_size = os.environ.get("SOLI_CARD_SIZE", "").strip().capitalize()
+
+    if debug_card_size in ("Small", "Medium", "Large"):
+        try:
+            C.apply_card_settings(size_name=debug_card_size)
+        except Exception:
+            pass
+
+    scene = None
+    if debug_scene:
+        try:
+            if debug_scene in ("klondike", "k"):
+                from solitaire.modes.klondike import KlondikeGameScene
+                scene = KlondikeGameScene(app=None)
+            elif debug_scene in ("freecell", "fc"):
+                from solitaire.modes.freecell import FreeCellGameScene
+                scene = FreeCellGameScene(app=None)
+            elif debug_scene in ("yukon", "y"):
+                from solitaire.modes.yukon import YukonGameScene
+                scene = YukonGameScene(app=None)
+            elif debug_scene in ("gate", "g"):
+                from solitaire.modes.gate import GateGameScene
+                scene = GateGameScene(app=None)
+            elif debug_scene in ("bigben", "big_ben", "bb"):
+                from solitaire.modes.big_ben import BigBenGameScene
+                scene = BigBenGameScene(app=None)
+            elif debug_scene in ("beleaguered", "beleaguered_castle", "bc"):
+                from solitaire.modes.beleaguered_castle import BeleagueredCastleGameScene
+                scene = BeleagueredCastleGameScene(app=None)
+        except Exception:
+            scene = None
+    if scene is None:
+        # Start at Title screen
+        from solitaire.scenes.title import TitleScene
+        scene = TitleScene(app=None)
+
+    # Optionally reshape piles for edge-pan testing
+    if debug_tall:
+        try:
+            M.debug_prepare_edge_pan_test(scene)
+        except Exception:
+            pass
 
     # Build a filter set of system/media keys to ignore
     def _system_keys_set():
