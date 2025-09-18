@@ -320,13 +320,14 @@ class BigBenGameScene(C.Scene):
         max_radius = max(max_radius, int(C.CARD_H * 2.6))
 
         angle_step = math.radians(30)
-        min_spacing_radius = (C.CARD_W + 18) / (2.0 * math.sin(angle_step / 2.0))
+        #[debug] (C.CARD_W + 18) to (C.CARD_W + 25)
+        min_spacing_radius = (C.CARD_W + 25) / (2.0 * math.sin(angle_step / 2.0))
         stock_gap = max(24, int(C.CARD_W * 0.25))
         min_stock_radius = C.CARD_W + stock_gap + 32
         base_min_radius = max(int(math.ceil(min_spacing_radius)), int(min_stock_radius), int(C.CARD_H * 1.4))
 
         fan_step = max(10, int(C.CARD_H * 0.2))
-             
+        #[debug] max(28, int(C.CARD_H * 0.2)) to max(20, int(C.CARD_H * 0.2))
         radial_pad = self._card_diag + max(28, int(C.CARD_H * 0.2))
 
         outer_buffer = radial_pad + (self.MAX_FAN_CARDS - 1) * fan_step + C.CARD_H // 2
