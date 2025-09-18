@@ -109,6 +109,8 @@ class FreeCellGameScene(C.Scene):
                 "Press H to close this help.",
             ],
         )
+        # Edge panning while dragging near screen edges
+        self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
 
     # ----- Layout -----
     def compute_layout(self):
@@ -332,6 +334,9 @@ class FreeCellGameScene(C.Scene):
 
     # ----- Events -----
     def handle_event(self, e):
+        # Track mouse for edge panning
+        if e.type == pygame.MOUSEMOTION:
+            self.edge_pan.on_mouse_pos(e.pos)
         # Help overlay intercept
         if getattr(self, "help", None) and self.help.visible:
             if self.help.handle_event(e):
@@ -372,6 +377,7 @@ class FreeCellGameScene(C.Scene):
                     c = p.cards.pop()
                     self.drag_stack = ([c], "free", i)
                     self.drag_offset = (mx - p.top_rect().x, myw - p.top_rect().y)
+                    self.edge_pan.set_active(True)
                     return
 
             # Start drag from tableau (allow valid sequences)
@@ -396,6 +402,7 @@ class FreeCellGameScene(C.Scene):
                 self.drag_stack = (picked, "tab", i)
                 top_r = p.rect_for_index(chosen_idx)
                 self.drag_offset = (mx - top_r.x, myw - top_r.y)
+                self.edge_pan.set_active(True)
                 return
 
             # Start drag from foundation? (disallow moving out to keep rules simple)
@@ -405,6 +412,7 @@ class FreeCellGameScene(C.Scene):
                 return
             stack, skind, sidx = self.drag_stack
             self.drag_stack = None
+            self.edge_pan.set_active(False)
 
             mx, my = e.pos
             myw = my - self.scroll_y
@@ -505,6 +513,15 @@ class FreeCellGameScene(C.Scene):
     # ----- Drawing -----
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
+
+        # Edge panning while dragging near edges (vertical only in FreeCell)
+        has_v = self._vertical_scrollbar() is not None
+        if has_v:
+            _, _ = 0, 0
+        dx, dy = self.edge_pan.step(has_h_scroll=False, has_v_scroll=has_v)
+        if dy:
+            self.scroll_y += dy
+            self._clamp_scroll()
 
         # Apply scroll for card content
         C.DRAW_OFFSET_X = 0
