@@ -639,6 +639,7 @@ class KlondikeGameScene(C.Scene):
                 self.auto_last_time = now
 
         # Edge panning while dragging near the screen edges
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
         has_v = self._vertical_scrollbar() is not None
         has_h = self._horizontal_scrollbar() is not None
         dx, dy = self.edge_pan.step(has_h_scroll=has_h, has_v_scroll=has_v)

@@ -50,8 +50,12 @@ def main():
                 from solitaire.modes.yukon import YukonGameScene
                 scene = YukonGameScene(app=None)
             elif debug_scene in ("gate", "g"):
-                from solitaire.modes.gate import GateGameScene
-                scene = GateGameScene(app=None)
+                from solitaire.modes.gate import GateGameScene, GateOptionsScene
+                try:
+                    scene = GateGameScene(app=None)
+                except Exception:
+                    # Fallback to options for easier debugging if game scene fails
+                    scene = GateOptionsScene(app=None)
             elif debug_scene in ("bigben", "big_ben", "bb"):
                 from solitaire.modes.big_ben import BigBenGameScene
                 scene = BigBenGameScene(app=None)

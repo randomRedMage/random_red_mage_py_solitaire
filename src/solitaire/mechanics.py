@@ -275,8 +275,8 @@ class EdgePanDuringDrag:
         dx = 0.0
         dy = 0.0
 
-        # Horizontal near-edges
-        if has_h_scroll and self.edge > 0:
+        # Horizontal near-edges (compute even if has_h_scroll is False; scene clamping will prevent movement)
+        if self.edge > 0:
             if mx <= self.edge:
                 t = (self.edge - mx) / float(self.edge)
                 dx = +self._axis_speed(t)
@@ -284,8 +284,8 @@ class EdgePanDuringDrag:
                 t = (mx - (W - self.edge)) / float(self.edge)
                 dx = -self._axis_speed(t)
 
-        # Vertical near-edges (respect top inset to avoid toolbars)
-        if has_v_scroll and self.edge > 0:
+        # Vertical near-edges (respect top inset to avoid toolbars; compute regardless of has_v_scroll)
+        if self.edge > 0:
             top_edge = self.top_inset + self.edge
             if my <= top_edge:
                 t = (top_edge - my) / float(self.edge)

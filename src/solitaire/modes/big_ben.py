@@ -849,6 +849,8 @@ class BigBenGameScene(C.Scene):
 
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
+        # Update mouse pos and edge pan while dragging near screen edges
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
         # Edge panning while dragging near screen edges
         has_v = self._vertical_scrollbar() is not None
         has_h = self._horizontal_scrollbar() is not None

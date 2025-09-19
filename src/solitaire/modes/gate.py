@@ -553,9 +553,9 @@ class GateGameScene(C.Scene):
             wi = self.waste_pile.hit((mxw, myw))
             if wi is not None and wi == len(self.waste_pile.cards) - 1:
                 c = self.waste_pile.cards.pop()
-                    self.drag_stack = ([c], "waste", -1)
-                    self.edge_pan.set_active(True)
-                    return
+                self.drag_stack = ([c], "waste", -1)
+                self.edge_pan.set_active(True)
+                return
             # Reserve drag (top only)
             for ri, r in enumerate(self.reserves):
                 hi = r.hit((mxw, myw))
