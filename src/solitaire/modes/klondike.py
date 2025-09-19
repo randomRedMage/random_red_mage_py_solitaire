@@ -36,8 +36,8 @@ class KlondikeGameScene(C.Scene):
 
         # Toolbar actions
         def goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+            from solitaire.scenes.game_options.klondike_options import KlondikeOptionsScene
+            self.next_scene = KlondikeOptionsScene(self.app)
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -573,8 +573,9 @@ class KlondikeGameScene(C.Scene):
                 if self.can_autofinish():
                     self.start_auto_finish()
             elif e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
+                from solitaire.scenes.game_options.klondike_options import KlondikeOptionsScene
+                self.next_scene = KlondikeOptionsScene(self.app)
+                return
 
     # ---------- Drawing ----------
     def draw(self, screen):
