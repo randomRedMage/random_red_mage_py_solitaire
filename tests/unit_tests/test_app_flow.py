@@ -1,4 +1,4 @@
-﻿import importlib
+import importlib
 import types
 
 import pytest
@@ -33,6 +33,7 @@ def _verify_beleaguered(scene):
     assert len(scene.tableau) == 8
     assert all(len(t.cards) == 6 for t in scene.tableau)
 
+
 def _verify_big_ben(scene):
     assert len(scene.foundations) == 12
     assert [f.cards[-1].rank for f in scene.foundations] == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
@@ -58,6 +59,7 @@ MODES = [
         "key": "klondike",
         "menu_index": 0,
         "module": "solitaire.modes.klondike",
+        "options_module": "solitaire.scenes.game_options.klondike_options",
         "options_class": "KlondikeOptionsScene",
         "game_class": "KlondikeGameScene",
         "start_attr": "b_start",
@@ -69,6 +71,7 @@ MODES = [
         "key": "freecell",
         "menu_index": 1,
         "module": "solitaire.modes.freecell",
+        "options_module": "solitaire.scenes.game_options.freecell_options",
         "options_class": "FreeCellOptionsScene",
         "game_class": "FreeCellGameScene",
         "start_attr": "b_start",
@@ -80,6 +83,7 @@ MODES = [
         "key": "pyramid",
         "menu_index": 2,
         "module": "solitaire.modes.pyramid",
+        "options_module": "solitaire.scenes.game_options.pyramid_options",
         "options_class": "PyramidOptionsScene",
         "game_class": "PyramidGameScene",
         "start_attr": "b_start",
@@ -91,6 +95,7 @@ MODES = [
         "key": "tripeaks",
         "menu_index": 3,
         "module": "solitaire.modes.tripeaks",
+        "options_module": "solitaire.scenes.game_options.tripeaks_options",
         "options_class": "TriPeaksOptionsScene",
         "game_class": "TriPeaksGameScene",
         "start_attr": "b_start",
@@ -102,6 +107,7 @@ MODES = [
         "key": "gate",
         "menu_index": 4,
         "module": "solitaire.modes.gate",
+        "options_module": "solitaire.scenes.game_options.gate_options",
         "options_class": "GateOptionsScene",
         "game_class": "GateGameScene",
         "start_attr": "b_start",
@@ -113,6 +119,7 @@ MODES = [
         "key": "beleaguered_castle",
         "menu_index": 5,
         "module": "solitaire.modes.beleaguered_castle",
+        "options_module": "solitaire.scenes.game_options.beleaguered_castle_options",
         "options_class": "BeleagueredCastleOptionsScene",
         "game_class": "BeleagueredCastleGameScene",
         "start_attr": "b_start",
@@ -124,6 +131,7 @@ MODES = [
         "key": "big_ben",
         "menu_index": 6,
         "module": "solitaire.modes.big_ben",
+        "options_module": "solitaire.scenes.game_options.big_ben_options",
         "options_class": "BigBenOptionsScene",
         "game_class": "BigBenGameScene",
         "start_attr": "b_start",
@@ -135,6 +143,7 @@ MODES = [
         "key": "golf",
         "menu_index": 7,
         "module": "solitaire.modes.golf",
+        "options_module": "solitaire.scenes.game_options.golf_options",
         "options_class": "GolfOptionsScene",
         "game_class": "GolfGameScene",
         "start_attr": "b_new1",
@@ -146,6 +155,7 @@ MODES = [
         "key": "yukon",
         "menu_index": 8,
         "module": "solitaire.modes.yukon",
+        "options_module": "solitaire.scenes.game_options.yukon_options",
         "options_class": "YukonOptionsScene",
         "game_class": "YukonGameScene",
         "start_attr": "b_start",
@@ -201,6 +211,13 @@ def test_application_flow(monkeypatch, mode):
     menu_module = importlib.import_module("solitaire.scenes.menu")
     target_module = importlib.import_module(mode["module"])
 
+    # Prefer new options module path; fall back to mode module if not yet refactored
+    options_module_name = mode.get("options_module", mode["module"])
+    try:
+        options_module = importlib.import_module(options_module_name)
+    except Exception:
+        options_module = target_module
+
     transitions = []
     captured = {}
 
@@ -237,7 +254,7 @@ def test_application_flow(monkeypatch, mode):
     monkeypatch.setattr(menu_module, "MainMenuScene", LoggedMainMenu)
     monkeypatch.setattr(entry, "MainMenuScene", LoggedMainMenu)
 
-    orig_options_cls = getattr(target_module, mode["options_class"])
+    orig_options_cls = getattr(options_module, mode["options_class"])
 
     class LoggedOptionsScene(orig_options_cls):
         def __init__(self, app):
@@ -245,7 +262,7 @@ def test_application_flow(monkeypatch, mode):
             transitions.append(mode["options_class"])
             captured["options_scene"] = self
 
-    monkeypatch.setattr(target_module, mode["options_class"], LoggedOptionsScene)
+    monkeypatch.setattr(options_module, mode["options_class"], LoggedOptionsScene)
 
     orig_game_cls = getattr(target_module, mode["game_class"])
 
@@ -355,7 +372,4 @@ def test_application_flow(monkeypatch, mode):
     game_scene = captured.get("game_scene")
     assert game_scene is not None, "Game scene should be captured"
     mode["verify"](game_scene)
-
-
-
 

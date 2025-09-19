@@ -53,10 +53,10 @@ class MainMenuScene(C.Scene):
             {
                 "title": "Packers",
                 "entries": [
-                    _GameEntry("klondike", "Klondike", "icon_klondike.png", "solitaire.modes.klondike", "KlondikeOptionsScene"),
+                    _GameEntry("klondike", "Klondike", "icon_klondike.png", "solitaire.scenes.game_options.klondike_options", "KlondikeOptionsScene"),
                     _GameEntry("freecell", "FreeCell", "icon_freecell.png", "solitaire.modes.freecell", "FreeCellOptionsScene"),
                     _GameEntry("gate", "Gate", "icon_gate.png", "solitaire.modes.gate", "GateOptionsScene"),
-                    _GameEntry("beleaguered_castle", "Beleaguered\nCastle", "icon_beleagured_castle.png", "solitaire.modes.beleaguered_castle", "BeleagueredCastleOptionsScene"),
+                    _GameEntry("beleaguered_castle", "Beleaguered\nCastle", "icon_beleagured_castle.png", "solitaire.scenes.game_options.beleaguered_castle_options", "BeleagueredCastleOptionsScene"),
                     _GameEntry("yukon", "Yukon", "icon_yukon.png", "solitaire.modes.yukon", "YukonOptionsScene"),
                 ],
                 "rect": pygame.Rect(0, 0, 0, 0),
