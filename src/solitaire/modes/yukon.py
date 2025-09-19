@@ -189,6 +189,8 @@ class YukonGameScene(C.Scene):
         self._auto_active = False
         # Klondike-style peek
         self.peek = M.PeekController(delay_ms=2000)
+        # Edge panning during drags (both axes)
+        self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 64))
 
     # ----- Layout -----
     def compute_layout(self):
@@ -429,6 +431,9 @@ class YukonGameScene(C.Scene):
             return
 
         # Scrollbar interactions (vertical)
+        # Track mouse for edge panning and handle clicks
+        if e.type == pygame.MOUSEMOTION:
+            self.edge_pan.on_mouse_pos(e.pos)
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             vsb = self._vertical_scrollbar()
             if vsb is not None:
@@ -515,6 +520,7 @@ class YukonGameScene(C.Scene):
                     seq = t.cards[hi:]
                     t.cards = t.cards[:hi]
                     self.drag_stack = (seq, ti)
+                    self.edge_pan.set_active(True)
                     return
 
         elif e.type == pygame.MOUSEBUTTONUP and e.button == 1 and self.drag_stack:
@@ -537,6 +543,7 @@ class YukonGameScene(C.Scene):
                 # Return to source
                 self.tableau[src_i].cards.extend(stack)
             self.drag_stack = None
+            self.edge_pan.set_active(False)
             self._post_move_cleanup()
 
         # Hover peek (Klondike-style)
@@ -651,6 +658,15 @@ class YukonGameScene(C.Scene):
 
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
+        # Edge panning while dragging near edges
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
+        has_v = self._vertical_scrollbar() is not None
+        has_h = self._horizontal_scrollbar() is not None
+        dx, dy = self.edge_pan.step(has_h_scroll=has_h, has_v_scroll=has_v)
+        if dx or dy:
+            self.scroll_x += dx
+            self.scroll_y += dy
+            self._clamp_scroll_xy()
 
         # Apply scroll offsets for pile drawing
         C.DRAW_OFFSET_X = self.scroll_x

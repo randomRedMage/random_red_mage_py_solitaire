@@ -130,6 +130,8 @@ class GateGameScene(C.Scene):
         self._drag_vscroll = False
         self._vscroll_drag_dy = 0
         self._vscroll_geom: Optional[Tuple[int, int, int, int, int]] = None
+        # Edge panning while dragging (vertical only in Gate)
+        self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 64))
 
     # ----- Layout -----
     def compute_layout(self):
@@ -552,6 +554,7 @@ class GateGameScene(C.Scene):
             if wi is not None and wi == len(self.waste_pile.cards) - 1:
                 c = self.waste_pile.cards.pop()
                 self.drag_stack = ([c], "waste", -1)
+                self.edge_pan.set_active(True)
                 return
             # Reserve drag (top only)
             for ri, r in enumerate(self.reserves):
@@ -589,6 +592,7 @@ class GateGameScene(C.Scene):
                 return
             stack, src_kind, src_idx = self.drag_stack
             self.drag_stack = None
+            self.edge_pan.set_active(False)
             mx, my = e.pos
             myw = my - self.scroll_y
             mxw = mx
@@ -678,6 +682,14 @@ class GateGameScene(C.Scene):
         # Center piles
         for t in self.center:
             t.draw(screen)
+
+        # Edge panning while dragging (use current mouse position)
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
+        has_v = self._vertical_scrollbar() is not None
+        dx, dy = self.edge_pan.step(has_h_scroll=False, has_v_scroll=has_v)
+        if dy:
+            self.scroll_y += dy
+            self._clamp_scroll()
 
         # Dragging stack follows mouse
         if self.drag_stack:

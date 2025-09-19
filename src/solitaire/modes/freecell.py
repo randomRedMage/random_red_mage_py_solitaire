@@ -44,9 +44,13 @@ class FreeCellGameScene(C.Scene):
     def __init__(self, app):
         super().__init__(app)
 
-        # Scrolling (vertical; FreeCell can build tall columns)
+        # Scrolling (support tall columns and wide layouts)
+        self.scroll_x = 0
         self.scroll_y = 0
         self._drag_vscroll = False
+        self._drag_hscroll = False
+        self._hscroll_drag_dx = 0
+        self._hscroll_geom = None
 
         # Piles
         self.freecells: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
@@ -109,6 +113,8 @@ class FreeCellGameScene(C.Scene):
                 "Press H to close this help.",
             ],
         )
+        # Edge panning while dragging near screen edges
+        self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
 
     # ----- Layout -----
     def compute_layout(self):
@@ -332,6 +338,9 @@ class FreeCellGameScene(C.Scene):
 
     # ----- Events -----
     def handle_event(self, e):
+        # Track mouse for edge panning
+        if e.type == pygame.MOUSEMOTION:
+            self.edge_pan.on_mouse_pos(e.pos)
         # Help overlay intercept
         if getattr(self, "help", None) and self.help.visible:
             if self.help.handle_event(e):
@@ -351,27 +360,33 @@ class FreeCellGameScene(C.Scene):
 
         if e.type == pygame.MOUSEWHEEL:
             self.scroll_y += e.y * 60
-            self._clamp_scroll()
+            try:
+                self.scroll_x += e.x * 60
+            except Exception:
+                pass
+            self._clamp_scroll_xy()
             # Scrolling cancels peek
             self.peek.cancel()
             return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
+            mxw = mx - self.scroll_x
             myw = my - self.scroll_y
             # Clicking cancels peek
             self.peek.cancel()
 
             # Double-click to auto-move to foundations from freecell/tableau tops
-            if self._maybe_handle_double_click(e, mx, myw):
+            if self._maybe_handle_double_click(e, mxw, myw):
                 return
 
             # Start drag from freecell
             for i, p in enumerate(self.freecells):
-                if p.top_rect().collidepoint((mx, myw)) and p.cards:
+                if p.top_rect().collidepoint((mxw, myw)) and p.cards:
                     c = p.cards.pop()
                     self.drag_stack = ([c], "free", i)
-                    self.drag_offset = (mx - p.top_rect().x, myw - p.top_rect().y)
+                    self.drag_offset = (mxw - p.top_rect().x, myw - p.top_rect().y)
+                    self.edge_pan.set_active(True)
                     return
 
             # Start drag from tableau (allow valid sequences)
@@ -379,7 +394,7 @@ class FreeCellGameScene(C.Scene):
                 if not p.cards:
                     continue
                 # Find clicked index (within tableau pile considering fan)
-                idx = p.hit((mx, myw))
+                idx = p.hit((mxw, myw))
                 if idx is None:
                     continue
                 if idx == -1 and p.cards:
@@ -395,7 +410,8 @@ class FreeCellGameScene(C.Scene):
                 p.cards = p.cards[:chosen_idx]
                 self.drag_stack = (picked, "tab", i)
                 top_r = p.rect_for_index(chosen_idx)
-                self.drag_offset = (mx - top_r.x, myw - top_r.y)
+                self.drag_offset = (mxw - top_r.x, myw - top_r.y)
+                self.edge_pan.set_active(True)
                 return
 
             # Start drag from foundation? (disallow moving out to keep rules simple)
@@ -405,14 +421,16 @@ class FreeCellGameScene(C.Scene):
                 return
             stack, skind, sidx = self.drag_stack
             self.drag_stack = None
+            self.edge_pan.set_active(False)
 
             mx, my = e.pos
+            mxw = mx - self.scroll_x
             myw = my - self.scroll_y
 
             # Try drop on foundations (only single card)
             if len(stack) == 1:
                 for fi, f in enumerate(self.foundations):
-                    if f.top_rect().collidepoint((mx, myw)) and self._can_move_to_foundation(stack[0], fi):
+                    if f.top_rect().collidepoint((mxw, myw)) and self._can_move_to_foundation(stack[0], fi):
                         self.push_undo()
                         f.cards.append(stack[0])
                         return
@@ -420,14 +438,14 @@ class FreeCellGameScene(C.Scene):
             # Try drop on freecells (only single card)
             if len(stack) == 1:
                 for ci, cell in enumerate(self.freecells):
-                    if cell.top_rect().collidepoint((mx, myw)) and not cell.cards:
+                    if cell.top_rect().collidepoint((mxw, myw)) and not cell.cards:
                         self.push_undo()
                         cell.cards.append(stack[0])
                         return
 
             # Try drop on tableau
             for ti, t in enumerate(self.tableau):
-                if t.top_rect().collidepoint((mx, myw)):
+                if t.top_rect().collidepoint((mxw, myw)):
                     target_top = t.cards[-1] if t.cards else None
                     if self._can_stack_tableau(stack[0], target_top):
                         # Capacity check for sequences
@@ -447,8 +465,38 @@ class FreeCellGameScene(C.Scene):
         if e.type == pygame.MOUSEMOTION and not self.drag_stack:
             # Compute peek overlay using centralized Klondike-style logic
             mx, my = e.pos
+            mxw = mx - self.scroll_x
             myw = my - self.scroll_y
-            self.peek.on_motion_over_piles(self.tableau, (mx, myw))
+            self.peek.on_motion_over_piles(self.tableau, (mxw, myw))
+
+        # Horizontal scrollbar interactions
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            hsb = self._horizontal_scrollbar()
+            if hsb is not None:
+                track_rect, knob_rect, min_sx, max_sx, track_x, track_w, knob_w = hsb
+                if knob_rect.collidepoint(e.pos):
+                    self._drag_hscroll = True
+                    self._hscroll_drag_dx = e.pos[0] - knob_rect.x
+                    self._hscroll_geom = (min_sx, max_sx, track_x, track_w, knob_w)
+                    return
+                elif track_rect.collidepoint(e.pos):
+                    x = min(max(e.pos[0] - knob_w // 2, track_x), track_x + track_w - knob_w)
+                    t_knob = (x - track_x) / max(1, (track_w - knob_w))
+                    self.scroll_x = min_sx + t_knob * (max_sx - min_sx)
+                    self._clamp_scroll_xy()
+                    return
+        if e.type == pygame.MOUSEMOTION and self._drag_hscroll:
+            if self._hscroll_geom is not None:
+                min_sx, max_sx, track_x, track_w, knob_w = self._hscroll_geom
+                x = min(max(e.pos[0] - self._hscroll_drag_dx, track_x), track_x + track_w - knob_w)
+                t_knob = (x - track_x) / max(1, (track_w - knob_w))
+                self.scroll_x = min_sx + t_knob * (max_sx - min_sx)
+                self._clamp_scroll_xy()
+            return
+        if e.type == pygame.MOUSEBUTTONUP and e.button == 1 and self._drag_hscroll:
+            self._drag_hscroll = False
+            self._hscroll_geom = None
+            return
 
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_r:
@@ -475,13 +523,21 @@ class FreeCellGameScene(C.Scene):
                 bottoms.append(p.y + C.CARD_H)
         return max(bottoms) if bottoms else C.SCREEN_H
 
-    def _clamp_scroll(self):
+    def _clamp_scroll_xy(self):
         bottom = self._content_bottom_y()
         min_scroll = min(0, C.SCREEN_H - bottom - 20)
         if self.scroll_y > 0:
             self.scroll_y = 0
         if self.scroll_y < min_scroll:
             self.scroll_y = min_scroll
+        # Horizontal bounds
+        left, right = self._content_bounds_x()
+        max_scroll_x = 20 - left
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        if self.scroll_x > max_scroll_x:
+            self.scroll_x = max_scroll_x
+        if self.scroll_x < min_scroll_x:
+            self.scroll_x = min_scroll_x
 
     def _vertical_scrollbar(self):
         bottom = self._content_bottom_y()
@@ -502,12 +558,50 @@ class FreeCellGameScene(C.Scene):
         knob_rect = pygame.Rect(track_x, knob_y, 6, knob_h)
         return track_rect, knob_rect, min_scroll, max_scroll, track_y, track_h, knob_h
 
+    def _content_bounds_x(self):
+        lefts = []
+        rights = []
+        piles = list(self.freecells) + list(self.foundations) + list(self.tableau)
+        for p in piles:
+            lefts.append(p.x)
+            rights.append(p.x + C.CARD_W)
+        return (min(lefts) if lefts else 0, max(rights) if rights else C.SCREEN_W)
+
+    def _horizontal_scrollbar(self):
+        left, right = self._content_bounds_x()
+        if right - left <= C.SCREEN_W - 40:
+            return None
+        track_x = 10
+        track_w = C.SCREEN_W - 20
+        track_y = C.SCREEN_H - 10
+        track_rect = pygame.Rect(track_x, track_y - 6, track_w, 6)
+        view_w = C.SCREEN_W
+        content_w = right - left + 40
+        knob_w = max(30, int(track_w * (view_w / max(view_w, content_w))))
+        max_scroll_x = 20 - left
+        min_scroll_x = min(0, C.SCREEN_W - right - 20)
+        denom = (max_scroll_x - min_scroll_x)
+        t = (self.scroll_x - min_scroll_x) / denom if denom != 0 else 1.0
+        knob_x = int(track_x + (track_w - knob_w) * t)
+        knob_rect = pygame.Rect(knob_x, track_y - 6, knob_w, 6)
+        return track_rect, knob_rect, min_scroll_x, max_scroll_x, track_x, track_w, knob_w
+
     # ----- Drawing -----
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
 
+        # Edge panning while dragging near edges
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
+        has_v = self._vertical_scrollbar() is not None
+        has_h = self._horizontal_scrollbar() is not None
+        dx, dy = self.edge_pan.step(has_h_scroll=has_h, has_v_scroll=has_v)
+        if dx or dy:
+            self.scroll_x += dx
+            self.scroll_y += dy
+            self._clamp_scroll_xy()
+
         # Apply scroll for card content
-        C.DRAW_OFFSET_X = 0
+        C.DRAW_OFFSET_X = self.scroll_x
         C.DRAW_OFFSET_Y = self.scroll_y
 
         # If a peek is pending and delay elapsed, activate it even without mouse movement
@@ -519,7 +613,7 @@ class FreeCellGameScene(C.Scene):
         for i, p in enumerate(self.freecells):
             p.draw(screen)
             lab = font_lbl.render("Free", True, (245, 245, 245))
-            screen.blit(lab, (p.x + (C.CARD_W - lab.get_width()) // 2, p.y - 22 + self.scroll_y))
+            screen.blit(lab, (p.x + (C.CARD_W - lab.get_width()) // 2 + self.scroll_x, p.y - 22 + self.scroll_y))
         for i, p in enumerate(self.foundations):
             p.draw(screen)
             # Draw suit character (plain white) on empty foundation placeholder
@@ -527,7 +621,7 @@ class FreeCellGameScene(C.Scene):
                 suit_i = self.foundation_suits[i]
                 suit_char = C.SUITS[suit_i]
                 txt = C.FONT_CENTER_SUIT.render(suit_char, True, C.WHITE)
-                cx = p.x + C.CARD_W // 2
+                cx = p.x + C.CARD_W // 2 + self.scroll_x
                 cy = p.y + C.CARD_H // 2 + self.scroll_y
                 screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
@@ -547,7 +641,7 @@ class FreeCellGameScene(C.Scene):
             # Show a full preview of the hovered face-up, partially covered card, in-place
             card, rx, ry = self.peek.overlay
             surf = C.get_card_surface(card)
-            sx = rx
+            sx = rx + self.scroll_x
             sy = ry + self.scroll_y
             screen.blit(surf, (sx, sy))
 
@@ -555,10 +649,15 @@ class FreeCellGameScene(C.Scene):
         C.DRAW_OFFSET_X = 0
         C.DRAW_OFFSET_Y = 0
 
-        # Scrollbar
+        # Scrollbars
         vsb = self._vertical_scrollbar()
         if vsb is not None:
             track_rect, knob_rect, *_ = vsb
+            pygame.draw.rect(screen, (40, 40, 40), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (200, 200, 200), knob_rect, border_radius=3)
+        hsb = self._horizontal_scrollbar()
+        if hsb is not None:
+            track_rect, knob_rect, *_ = hsb
             pygame.draw.rect(screen, (40, 40, 40), track_rect, border_radius=3)
             pygame.draw.rect(screen, (200, 200, 200), knob_rect, border_radius=3)
 

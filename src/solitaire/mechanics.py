@@ -205,3 +205,138 @@ class PeekController:
             and now_ms - self._started_at >= self.delay_ms
         ):
             self.overlay = self._pending
+
+
+class EdgePanDuringDrag:
+    """
+    Edge panning while dragging cards.
+
+    Scenes create one instance and wire it as follows:
+      - call on_mouse_pos((mx, my)) on every MOUSEMOTION
+      - call set_active(True) when a card/stack drag starts; set_active(False) when it ends
+      - call step(has_h_scroll, has_v_scroll) once per frame (e.g., in draw)
+        and apply returned (dx, dy) to scroll_x/scroll_y, then clamp
+
+    Behavior:
+      - When the cursor is within `edge_margin_px` of a screen edge, produce a
+        scroll delta in that direction. Speed scales with proximity to the edge
+        between min_speed and max_speed (pixels/second).
+      - Top edge respects a configurable `top_inset_px` so UI toolbars don't
+        accidentally trigger vertical panning.
+    """
+
+    def __init__(
+        self,
+        edge_margin_px: int = 28,
+        min_speed_pps: int = 220,
+        max_speed_pps: int = 900,
+        top_inset_px: int = 0,
+    ):
+        self.edge = int(edge_margin_px)
+        self.vmin = float(max(0, min_speed_pps))
+        self.vmax = float(max(min_speed_pps, max_speed_pps))
+        self.top_inset = int(max(0, top_inset_px))
+        self._active = False
+        self._mx = 0
+        self._my = 0
+        self._last_ms: Optional[int] = None
+
+    def set_active(self, active: bool):
+        self._active = bool(active)
+        # Reset timing on activation to avoid a large first dt
+        self._last_ms = pygame.time.get_ticks() if self._active else None
+
+    def on_mouse_pos(self, pos: Tuple[int, int]):
+        self._mx, self._my = int(pos[0]), int(pos[1])
+
+    def _axis_speed(self, t: float) -> float:
+        # t in [0,1]; ease with a quadratic curve for smoother start
+        if t <= 0.0:
+            return 0.0
+        t = min(1.0, t)
+        eased = t * t  # ease-in
+        return self.vmin + (self.vmax - self.vmin) * eased
+
+    def step(self, has_h_scroll: bool, has_v_scroll: bool) -> Tuple[int, int]:
+        if not self._active:
+            self._last_ms = pygame.time.get_ticks()
+            return (0, 0)
+        now = pygame.time.get_ticks()
+        if self._last_ms is None:
+            self._last_ms = now
+            return (0, 0)
+        dt_ms = max(0, now - self._last_ms)
+        self._last_ms = now
+        if dt_ms == 0:
+            return (0, 0)
+
+        mx, my = self._mx, self._my
+        W, H = C.SCREEN_W, C.SCREEN_H
+        dx = 0.0
+        dy = 0.0
+
+        # Horizontal near-edges (compute even if has_h_scroll is False; scene clamping will prevent movement)
+        if self.edge > 0:
+            if mx <= self.edge:
+                t = (self.edge - mx) / float(self.edge)
+                dx = +self._axis_speed(t)
+            elif mx >= W - self.edge:
+                t = (mx - (W - self.edge)) / float(self.edge)
+                dx = -self._axis_speed(t)
+
+        # Vertical near-edges (respect top inset to avoid toolbars; compute regardless of has_v_scroll)
+        if self.edge > 0:
+            top_edge = self.top_inset + self.edge
+            if my <= top_edge:
+                t = (top_edge - my) / float(self.edge)
+                dy = +self._axis_speed(t)  # top edge pans upward (toward top content)
+            elif my >= H - self.edge:
+                t = (my - (H - self.edge)) / float(self.edge)
+                dy = -self._axis_speed(t)
+
+        # Convert to per-frame pixel deltas
+        dt = dt_ms / 1000.0
+        return (int(dx * dt), int(dy * dt))
+
+
+def debug_prepare_edge_pan_test(scene):
+    """
+    Developer-only helper. If a scene has common pile attributes, rearrange
+    cards to create an intentionally large stack or row to force scrollbars so
+    edge panning can be verified quickly. Does nothing if attributes unknown.
+
+    Safe to call after a scene has been constructed and dealt.
+    """
+    try:
+        # Prefer tableau-style merging into first pile
+        if hasattr(scene, "tableau") and isinstance(scene.tableau, list) and scene.tableau:
+            all_cards = []
+            for p in scene.tableau:
+                all_cards.extend(p.cards)
+                p.cards = []
+            for c in all_cards:
+                c.face_up = True
+            scene.tableau[0].cards = all_cards
+        # Gate uses 'center' and 'reserves'
+        elif hasattr(scene, "center") and isinstance(scene.center, list) and scene.center:
+            all_cards = []
+            for p in scene.center:
+                all_cards.extend(p.cards)
+                p.cards = []
+            # include reserves if present
+            if hasattr(scene, "reserves") and isinstance(scene.reserves, list):
+                for r in scene.reserves:
+                    all_cards.extend(r.cards)
+                    r.cards = []
+            for c in all_cards:
+                c.face_up = True
+            scene.center[0].cards = all_cards
+        # Nothing to do for radial modes like Big Ben
+        # Clamp scroll if supported
+        if hasattr(scene, "_clamp_scroll_xy") and callable(scene._clamp_scroll_xy):
+            scene._clamp_scroll_xy()
+        elif hasattr(scene, "_clamp_scroll") and callable(scene._clamp_scroll):
+            scene._clamp_scroll()
+    except Exception:
+        # Best-effort only; never crash in debug helper
+        pass

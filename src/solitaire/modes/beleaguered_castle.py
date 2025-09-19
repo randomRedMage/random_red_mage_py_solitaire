@@ -134,6 +134,8 @@ class BeleagueredCastleGameScene(C.Scene):
             ],
             max_width=860,
         )
+        # Edge panning while dragging (both axes)
+        self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
 
         def goto_menu():
             from solitaire.modes.beleaguered_castle import BeleagueredCastleOptionsScene
@@ -679,6 +681,7 @@ class BeleagueredCastleGameScene(C.Scene):
                     card = t.cards.pop()
                     self.drag_card = (card, ti)
                     self._drag_offset = (mx - (r.x + self.scroll_x), my - (r.y + self.scroll_y))
+                    self.edge_pan.set_active(True)
                     return
             return
 
@@ -710,6 +713,7 @@ class BeleagueredCastleGameScene(C.Scene):
             else:
                 self._post_move_cleanup()
             self.drag_card = None
+            self.edge_pan.set_active(False)
             return
 
         if e.type == pygame.MOUSEMOTION and self.drag_card:
@@ -724,6 +728,15 @@ class BeleagueredCastleGameScene(C.Scene):
 
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
+        # Edge panning while dragging near edges
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
+        has_v = self._vertical_scrollbar() is not None
+        has_h = self._horizontal_scrollbar() is not None
+        dx, dy = self.edge_pan.step(has_h_scroll=has_h, has_v_scroll=has_v)
+        if dx or dy:
+            self.scroll_x += dx
+            self.scroll_y += dy
+            self._clamp_scroll_xy()
 
         # Apply scroll offsets for piles
         C.DRAW_OFFSET_X = self.scroll_x

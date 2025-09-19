@@ -142,6 +142,8 @@ class KlondikeGameScene(C.Scene):
         )
         # Klondike-style delayed single-card peek (shared across modes)
         self.peek = M.PeekController(delay_ms=2000)
+        # Central edge-panning controller for drag-to-edge auto-scroll
+        self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 64))
         # Double-click tracking
         self._last_click_time = 0
         self._last_click_pos = (0, 0)
@@ -437,6 +439,9 @@ class KlondikeGameScene(C.Scene):
 
     # ---------- Events ----------
     def handle_event(self, e):
+        # Always track mouse position for edge panning
+        if e.type == pygame.MOUSEMOTION:
+            self.edge_pan.on_mouse_pos(e.pos)
         # Help overlay intercepts input when visible
         if getattr(self, "help", None) and self.help.visible:
             if self.help.handle_event(e):
@@ -552,13 +557,13 @@ class KlondikeGameScene(C.Scene):
             wi = self.waste_pile.hit((mxw,myw))
             if wi is not None and wi == len(self.waste_pile.cards)-1:
                 c = self.waste_pile.cards.pop()
-                self.drag_stack = ([c], ("waste", None)); return
+                self.drag_stack = ([c], ("waste", None)); self.edge_pan.set_active(True); return
             # Foundations
             for fi,f in enumerate(self.foundations):
                 hi = f.hit((mxw,myw))
                 if hi is not None and hi == len(f.cards)-1 and f.cards:
                     c = f.cards.pop()
-                    self.drag_stack = ([c], ("foundation", fi)); return
+                    self.drag_stack = ([c], ("foundation", fi)); self.edge_pan.set_active(True); return
             # Tableau
             for ti,t in enumerate(self.tableau):
                 hi = t.hit((mxw,myw))
@@ -568,7 +573,7 @@ class KlondikeGameScene(C.Scene):
                     self.push_undo(); return
                 if hi != -1 and t.cards[hi].face_up:
                     seq = t.cards[hi:]; t.cards = t.cards[:hi]
-                    self.drag_stack = (seq, ("tableau", ti)); return
+                    self.drag_stack = (seq, ("tableau", ti)); self.edge_pan.set_active(True); return
 
         # Middle-button drag panning
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 2:
@@ -591,7 +596,7 @@ class KlondikeGameScene(C.Scene):
 
         elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
             if not self.drag_stack: return
-            stack, from_info = self.drag_stack; self.drag_stack = None
+            stack, from_info = self.drag_stack; self.drag_stack = None; self.edge_pan.set_active(False)
             mx, my = e.pos
             mxw = mx - self.scroll_x
             myw = my - self.scroll_y
@@ -632,6 +637,16 @@ class KlondikeGameScene(C.Scene):
             if now - self.auto_last_time >= self.auto_interval_ms:
                 self.step_auto_finish()
                 self.auto_last_time = now
+
+        # Edge panning while dragging near the screen edges
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
+        has_v = self._vertical_scrollbar() is not None
+        has_h = self._horizontal_scrollbar() is not None
+        dx, dy = self.edge_pan.step(has_h_scroll=has_h, has_v_scroll=has_v)
+        if dx or dy:
+            self.scroll_x += dx
+            self.scroll_y += dy
+            self._clamp_scroll_xy()
 
         extra = ("Stock cycles: unlimited" if self.stock_cycles_allowed is None
                  else f"Stock cycles used: {self.stock_cycles_used}/{self.stock_cycles_allowed}")

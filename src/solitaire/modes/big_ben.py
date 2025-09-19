@@ -205,6 +205,8 @@ class BigBenGameScene(C.Scene):
             max_width=880,
         )
         self.peek = M.PeekController(delay_ms=500)
+        # Central edge-panning controller (for drag-to-edge auto-scroll)
+        self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
 
         self.compute_layout()
 
@@ -320,13 +322,14 @@ class BigBenGameScene(C.Scene):
         max_radius = max(max_radius, int(C.CARD_H * 2.6))
 
         angle_step = math.radians(30)
-        min_spacing_radius = (C.CARD_W + 18) / (2.0 * math.sin(angle_step / 2.0))
+        #[debug] (C.CARD_W + 18) to (C.CARD_W + 25)
+        min_spacing_radius = (C.CARD_W + 25) / (2.0 * math.sin(angle_step / 2.0))
         stock_gap = max(24, int(C.CARD_W * 0.25))
         min_stock_radius = C.CARD_W + stock_gap + 32
         base_min_radius = max(int(math.ceil(min_spacing_radius)), int(min_stock_radius), int(C.CARD_H * 1.4))
 
         fan_step = max(10, int(C.CARD_H * 0.2))
-             
+        #[debug] max(28, int(C.CARD_H * 0.2)) to max(20, int(C.CARD_H * 0.2))
         radial_pad = self._card_diag + max(28, int(C.CARD_H * 0.2))
 
         outer_buffer = radial_pad + (self.MAX_FAN_CARDS - 1) * fan_step + C.CARD_H // 2
@@ -597,6 +600,7 @@ class BigBenGameScene(C.Scene):
         self._drag_snapshot = None
         self._clamp_scroll_xy()
         self.peek.cancel()
+        self.edge_pan.set_active(False)
 
     def _refill_from_stock(self):
         changed = False
@@ -657,6 +661,9 @@ class BigBenGameScene(C.Scene):
             self._blit_card_rotated(screen, card, (cx, cy))
 
     def handle_event(self, e):
+        # Track mouse for edge panning
+        if e.type == pygame.MOUSEMOTION:
+            self.edge_pan.on_mouse_pos(e.pos)
         if self.help.visible:
             if self.help.handle_event(e):
                 return
@@ -794,6 +801,7 @@ class BigBenGameScene(C.Scene):
                 self.drag_from = ("tableau", idx)
                 self.drag_offset = (mxw - rect.x, myw - rect.y)
                 self.drag_pos = (rect.x, rect.y)
+                self.edge_pan.set_active(True)
                 return
         if self.waste.cards:
             rect = pygame.Rect(self.waste.x, self.waste.y, C.CARD_W, C.CARD_H)
@@ -803,6 +811,7 @@ class BigBenGameScene(C.Scene):
                 self.drag_from = ("waste", 0)
                 self.drag_offset = (mxw - rect.x, myw - rect.y)
                 self.drag_pos = (rect.x, rect.y)
+                self.edge_pan.set_active(True)
 
     def _on_left_up(self, pos):
         if self.drag_card is None:
@@ -840,6 +849,16 @@ class BigBenGameScene(C.Scene):
 
     def draw(self, screen):
         screen.fill(C.TABLE_BG)
+        # Update mouse pos and edge pan while dragging near screen edges
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
+        # Edge panning while dragging near screen edges
+        has_v = self._vertical_scrollbar() is not None
+        has_h = self._horizontal_scrollbar() is not None
+        dx, dy = self.edge_pan.step(has_h_scroll=has_h, has_v_scroll=has_v)
+        if dx or dy:
+            self.scroll_x += dx
+            self.scroll_y += dy
+            self._clamp_scroll_xy()
                
         center_screen = (int(round(self._center[0] + self.scroll_x)), int(round(self._center[1] + self.scroll_y)))
         pygame.draw.circle(screen, (10, 80, 36), center_screen, 6)
