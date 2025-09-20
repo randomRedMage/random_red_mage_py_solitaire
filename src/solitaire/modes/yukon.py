@@ -6,7 +6,7 @@ import pygame
 
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import ModalHelp
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 
@@ -161,19 +161,7 @@ class YukonGameScene(C.Scene):
             self.deal_new()
 
         # Help overlay
-        self.help = ModalHelp(
-            "Yukon — How to Play",
-            [
-                "Goal: Build four foundations A→K by suit.",
-                "Layout: 7 tableau piles with counts 1,6,7,8,9,10,11 (top 5 face-up).",
-                "Move: Drag any face-up substack; it need not be ordered.",
-                "Target: Bottom card must be one rank lower and opposite color than the destination top.",
-                "Empty column: Only Kings (or stacks starting with King).",
-                "Aces auto-move to foundations when exposed. Double-click top to send to foundation.",
-                "Auto completes when all tableau cards are face-up.",
-                "Use Save&Exit to continue later.",
-            ],
-        )
+        self.help = create_modal_help("yukon")
 
         # Double-click tracking
         self._last_click_time = 0

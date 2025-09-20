@@ -8,7 +8,7 @@ import pygame
 
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import ModalHelp
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 
@@ -130,21 +130,7 @@ class BigBenGameScene(C.Scene):
             menu_tooltip="Return to Big Ben menu",
         )
 
-        self.help = ModalHelp(
-            "Big Ben - How to Play",
-            [
-                "Goal: Build each foundation to its clock value using cards of the same suit.",
-                "Setup: One copy of the highlighted cards forms the twelve foundations arranged like a clock (starting at the 9 o'clock position).",
-                "Tableau: Each foundation has an outward fan of up to three face-up cards. The outermost card of a fan is the only card that may move.",
-                "Tableau moves: Move a fan's top card onto another fan when it is exactly one rank lower (wrapping K->A) and the same suit.",
-                "Foundations: Build upward by suit from the starting card, wrapping K->A, until the foundation's clock rank is on top. Waste cards may also be played here.",
-                "Stock: Click the stock to refill every fan with fewer than three cards (starting at 12 o'clock clockwise). If no fan needs cards, the click moves the top stock card to the waste face-up.",
-                "Waste: Its top card can only be played to foundations. It never refills tableau fans.",
-                "End: Win when all foundations reach their clock rank. Lose when the stock is empty and there are no legal moves left.",
-                "Toolbar: Menu (return to Big Ben menu), New deal, Restart, Undo, Help, Save&Exit.",
-            ],
-            max_width=880,
-        )
+        self.help = create_modal_help("big_ben")
         self.peek = M.PeekController(delay_ms=500)
         # Central edge-panning controller (for drag-to-edge auto-scroll)
         self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))

@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple
 import pygame
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import ModalHelp
+from solitaire.help_data import create_modal_help
 
 
 def rank_adjacent(a: int, b: int) -> bool:
@@ -97,7 +97,7 @@ class TriPeaksGameScene(C.Scene):
         self.undo_mgr = C.UndoManager()
         self.message: str = ""
 
-        self.ui_helper = ModeUIHelper(self, game_id="tripeaks")
+        self.ui_helper = ModeUIHelper(self, game_id="tripeaks", return_to_options=False)
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -130,18 +130,7 @@ class TriPeaksGameScene(C.Scene):
         self.push_undo()
 
         # Help overlay
-        self.help = ModalHelp(
-            "TriPeaks — How to Play",
-            [
-                "Goal: Clear all tableau cards.",
-                "Move any exposed card that is one rank higher or lower",
-                "than the waste top (suit does not matter).",
-                "Wrap A↔K is controlled by the Wrap option on the options screen.",
-                "Click stock to deal the next card to waste; no redeals.",
-                "Use Hint to highlight a playable card. Undo/Restart available.",
-                "Press Esc or Close to dismiss this help.",
-            ],
-        )
+        self.help = create_modal_help("tripeaks")
 
     # ---------- Layout ----------
     def compute_layout(self):
