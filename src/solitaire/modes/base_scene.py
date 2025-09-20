@@ -38,7 +38,7 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         options_module="solitaire.scenes.game_options.klondike_options",
         options_class="KlondikeOptionsScene",
         section="Packers",
-        return_to_options=False,
+        return_to_options=True,
     ),
     GameMetadata(
         key="freecell",
@@ -47,7 +47,7 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         options_module="solitaire.scenes.game_options.freecell_options",
         options_class="FreeCellOptionsScene",
         section="Packers",
-        return_to_options=False,
+        return_to_options=True,
     ),
     GameMetadata(
         key="gate",
@@ -56,7 +56,7 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         options_module="solitaire.scenes.game_options.gate_options",
         options_class="GateOptionsScene",
         section="Packers",
-        return_to_options=False,
+        return_to_options=True,
     ),
     GameMetadata(
         key="beleaguered_castle",
@@ -97,7 +97,7 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         options_module="solitaire.scenes.game_options.pyramid_options",
         options_class="PyramidOptionsScene",
         section="Builders",
-        return_to_options=False,
+        return_to_options=True,
     ),
     GameMetadata(
         key="tripeaks",
@@ -106,7 +106,7 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         options_module="solitaire.scenes.game_options.tripeaks_options",
         options_class="TriPeaksOptionsScene",
         section="Builders",
-        return_to_options=False,
+        return_to_options=True,
     ),
 )
 
