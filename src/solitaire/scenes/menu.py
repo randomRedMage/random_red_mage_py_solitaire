@@ -3,17 +3,30 @@ import os
 import pygame
 from math import ceil
 from solitaire import common as C
+from solitaire.modes.base_scene import GAME_REGISTRY, GAME_SECTIONS, GameMetadata
 
 
 class _GameEntry:
-    __slots__ = ("key", "label", "icon_filename", "module", "scene_cls", "surface", "rect", "label_surf", "label_rect")
+    __slots__ = (
+        "metadata",
+        "key",
+        "label",
+        "icon_filename",
+        "module",
+        "scene_cls",
+        "surface",
+        "rect",
+        "label_surf",
+        "label_rect",
+    )
 
-    def __init__(self, key: str, label: str, icon_filename: str, module: str, scene_cls: str):
-        self.key = key
-        self.label = label
-        self.icon_filename = icon_filename
-        self.module = module
-        self.scene_cls = scene_cls
+    def __init__(self, metadata: GameMetadata):
+        self.metadata = metadata
+        self.key = metadata.key
+        self.label = metadata.label
+        self.icon_filename = metadata.icon_filename
+        self.module = metadata.options_module
+        self.scene_cls = metadata.options_class
         self.surface: pygame.Surface | None = None
         self.rect = pygame.Rect(0, 0, 128, 128)
         self.label_surf: pygame.Surface | None = None
@@ -49,33 +62,25 @@ class MainMenuScene(C.Scene):
         icon_dir = os.path.join(os.path.dirname(C.__file__), "assets", "images", "game_icons")
         self._icon_dir = icon_dir
 
-        self._sections = [
-            {
-                "title": "Packers",
-                "entries": [
-                    _GameEntry("klondike", "Klondike", "icon_klondike.png", "solitaire.scenes.game_options.klondike_options", "KlondikeOptionsScene"),
-                    _GameEntry("freecell", "FreeCell", "icon_freecell.png", "solitaire.scenes.game_options.freecell_options", "FreeCellOptionsScene"),
-                    _GameEntry("gate", "Gate", "icon_gate.png", "solitaire.scenes.game_options.gate_options", "GateOptionsScene"),
-                    _GameEntry("beleaguered_castle", "Beleaguered\nCastle", "icon_beleagured_castle.png", "solitaire.scenes.game_options.beleaguered_castle_options", "BeleagueredCastleOptionsScene"),
-                    _GameEntry("yukon", "Yukon", "icon_yukon.png", "solitaire.scenes.game_options.yukon_options", "YukonOptionsScene"),
-                ],
-                "rect": pygame.Rect(0, 0, 0, 0),
-                "title_surf": None,
-                "title_rect": pygame.Rect(0, 0, 0, 0),
-            },
-            {
-                "title": "Builders",
-                "entries": [
-                    _GameEntry("big_ben", "Big Ben", "icon_big_ben.png", "solitaire.scenes.game_options.big_ben_options", "BigBenOptionsScene"),
-                    _GameEntry("golf", "Golf", "icon_golf.png", "solitaire.scenes.game_options.golf_options", "GolfOptionsScene"),
-                    _GameEntry("pyramid", "Pyramid", "icon_pyramid.png", "solitaire.scenes.game_options.pyramid_options", "PyramidOptionsScene"),
-                    _GameEntry("tripeaks", "TriPeaks", "icon_tripeaks.png", "solitaire.scenes.game_options.tripeaks_options", "TriPeaksOptionsScene"),
-                ],
-                "rect": pygame.Rect(0, 0, 0, 0),
-                "title_surf": None,
-                "title_rect": pygame.Rect(0, 0, 0, 0),
-            },
-        ]
+        self._sections = []
+        for title, game_keys in GAME_SECTIONS:
+            entries: list[_GameEntry] = []
+            for key in game_keys:
+                meta = GAME_REGISTRY.get(key)
+                if meta is None:
+                    continue
+                entries.append(_GameEntry(meta))
+            if not entries:
+                continue
+            self._sections.append(
+                {
+                    "title": title,
+                    "entries": entries,
+                    "rect": pygame.Rect(0, 0, 0, 0),
+                    "title_surf": None,
+                    "title_rect": pygame.Rect(0, 0, 0, 0),
+                }
+            )
 
         self._entry_lookup = {}
         for section in self._sections:

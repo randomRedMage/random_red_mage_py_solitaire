@@ -14,7 +14,8 @@ Rules (implemented):
 from typing import List, Optional, Tuple
 import pygame
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.ui import ModalHelp
 
 
 def rank_adjacent(a: int, b: int) -> bool:
@@ -96,9 +97,7 @@ class TriPeaksGameScene(C.Scene):
         self.undo_mgr = C.UndoManager()
         self.message: str = ""
 
-        def goto_menu():
-            from solitaire.scenes.game_options.tripeaks_options import TriPeaksOptionsScene
-            self.next_scene = TriPeaksOptionsScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="tripeaks")
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -106,21 +105,17 @@ class TriPeaksGameScene(C.Scene):
         def can_hint():
             return self.any_moves_available()
 
-        actions = {
-            "Menu":    {"on_click": goto_menu},
-            "New":     {"on_click": self.new_game},
-            "Restart": {"on_click": self.restart_deal, "tooltip": "Restart current deal"},
-            "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Hint":    {"on_click": self.show_hint, "enabled": can_hint, "tooltip": "Show a playable card"},
-            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.new_game},
+            restart_action={"on_click": self.restart_deal, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            hint_action={
+                "on_click": self.show_hint,
+                "enabled": can_hint,
+                "tooltip": "Show a playable card",
+                "shortcut": pygame.K_h,
+            },
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         # Hint selection: store (row_index, idx) pairs
@@ -522,6 +517,8 @@ class TriPeaksGameScene(C.Scene):
         # Toolbar first
         if hasattr(self, "toolbar") and self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
 
         # Mouse wheel scrolling
         if e.type == pygame.MOUSEWHEEL:
@@ -570,17 +567,7 @@ class TriPeaksGameScene(C.Scene):
                 self._clamp_scroll()
 
         if e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.game_options.tripeaks_options import TriPeaksOptionsScene
-                self.next_scene = TriPeaksOptionsScene(self.app)
-            elif e.key == pygame.K_n:
-                self.new_game()
-            elif e.key == pygame.K_r:
-                self.restart_deal()
-            elif e.key == pygame.K_u:
-                self.undo()
-            elif e.key == pygame.K_h:
-                self.show_hint()
+            self.ui_helper.handle_shortcuts(e)
 
         elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos

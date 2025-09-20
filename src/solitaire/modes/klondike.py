@@ -1,7 +1,8 @@
 # klondike.py - Klondike scenes with flip-on-click, auto-finish, and win message
 import pygame
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.ui import ModalHelp
 from solitaire import mechanics as M
 
 def is_red(suit): return suit in (1,2)
@@ -34,33 +35,21 @@ class KlondikeGameScene(C.Scene):
         self.message = ""
         self.drag_stack = None
 
-        # Toolbar actions
-        def goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="klondike")
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-                "Menu":    {"on_click": goto_menu},
-                "New":     {"on_click": self.deal_new},
-                "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
-                "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-                "Auto":    {"on_click": self.start_auto_finish,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            auto_action={
+                "on_click": self.start_auto_finish,
                 "enabled": self.can_autofinish,
-                "tooltip": "Auto-finish to foundations"},
-                "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-
-# NEW: align='right', tell toolbar how wide the screen is, and set top-bar margins
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),                # (right/left pad when right-aligned, top pad)
-            gap=8,
-            align="right",                 # <-- key bit
-            width_provider=lambda: C.SCREEN_W
+                "tooltip": "Auto-finish to foundations",
+            },
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         # Auto-finish timing state
@@ -407,6 +396,8 @@ class KlondikeGameScene(C.Scene):
                 return
         if self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
 
         # Mouse wheel scrolling (supports trackpads: e.x horizontal, e.y vertical)
         if e.type == pygame.MOUSEWHEEL:
@@ -564,18 +555,6 @@ class KlondikeGameScene(C.Scene):
             if origin == "waste": self.waste_pile.cards.extend(stack)
             elif origin == "foundation": self.foundations[idx].cards.extend(stack)
             elif origin == "tableau": self.tableau[idx].cards.extend(stack)
-
-        elif e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_r: self.restart()
-            elif e.key == pygame.K_n: self.deal_new()
-            elif e.key == pygame.K_u: self.undo()
-            elif e.key == pygame.K_a:
-                if self.can_autofinish():
-                    self.start_auto_finish()
-            elif e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
-                return
 
     # ---------- Drawing ----------
     def draw(self, screen):
