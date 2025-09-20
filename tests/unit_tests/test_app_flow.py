@@ -302,7 +302,13 @@ def test_application_flow(monkeypatch, mode):
             if getattr(button, "label", "") == "Menu":
                 rect = getattr(button, "rect", None)
                 assert rect is not None, "Menu button missing rect"
-                return _click_pos(rect.center)
+                events = _click_pos(rect.center)
+                getter = getattr(button, "get_menu_item_rect", None)
+                if callable(getter):
+                    item_rect = getter("Menu")
+                    if item_rect is not None:
+                        events.extend(_click_pos(item_rect.center))
+                return events
         raise AssertionError("Menu button not found on toolbar")
 
     def _click_menu_entry():
