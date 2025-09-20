@@ -42,8 +42,8 @@ class FreeCellGameScene(C.Scene):
 
         # Toolbar
         def goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+            from solitaire.scenes.game_options.freecell_options import FreeCellOptionsScene
+            self.next_scene = FreeCellOptionsScene(self.app)
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -481,8 +481,8 @@ class FreeCellGameScene(C.Scene):
             elif e.key == pygame.K_a:
                 self.auto_to_foundations()
             elif e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
+                from solitaire.scenes.game_options.freecell_options import FreeCellOptionsScene
+                self.next_scene = FreeCellOptionsScene(self.app)
 
     # ----- Scroll helpers -----
     def _content_bottom_y(self) -> int:
