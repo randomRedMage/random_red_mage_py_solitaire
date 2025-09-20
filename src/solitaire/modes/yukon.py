@@ -129,7 +129,7 @@ class YukonGameScene(C.Scene):
         # Toolbar
         def goto_menu():
             # Offer return to options; progress not auto-saved unless Save&Exit used
-            from solitaire.modes.yukon import YukonOptionsScene
+            from solitaire.scenes.game_options.yukon_options import YukonOptionsScene
             self.next_scene = YukonOptionsScene(self.app)
 
         def can_undo():
@@ -270,7 +270,7 @@ class YukonGameScene(C.Scene):
         state = self._state_dict()
         _safe_write_json(_yukon_save_path(), state)
         if to_menu:
-            from solitaire.modes.yukon import YukonOptionsScene
+            from solitaire.scenes.game_options.yukon_options import YukonOptionsScene
             self.next_scene = YukonOptionsScene(self.app)
 
     def _state_dict(self):
@@ -417,6 +417,11 @@ class YukonGameScene(C.Scene):
 
         # Do not interact while animation is running
         if self.anim.active:
+            return
+
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+            from solitaire.scenes.game_options.yukon_options import YukonOptionsScene
+            self.next_scene = YukonOptionsScene(self.app)
             return
 
         # Mouse wheel scroll

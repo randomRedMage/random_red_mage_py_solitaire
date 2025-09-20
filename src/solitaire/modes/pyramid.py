@@ -95,8 +95,8 @@ class PyramidGameScene(C.Scene):
 
         # Toolbar (right-aligned)
         def _goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+            from solitaire.scenes.game_options.pyramid_options import PyramidOptionsScene
+            self.next_scene = PyramidOptionsScene(self.app)
 
         def _can_undo():
             return self.undo_mgr.can_undo()
@@ -602,8 +602,8 @@ class PyramidGameScene(C.Scene):
                 return
 
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+            from solitaire.scenes.game_options.pyramid_options import PyramidOptionsScene
+            self.next_scene = PyramidOptionsScene(self.app)
             return
         elif e.type == pygame.KEYDOWN and e.key == pygame.K_u:
             self.undo(); return
