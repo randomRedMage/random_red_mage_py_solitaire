@@ -97,8 +97,8 @@ class TriPeaksGameScene(C.Scene):
         self.message: str = ""
 
         def goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+            from solitaire.scenes.game_options.tripeaks_options import TriPeaksOptionsScene
+            self.next_scene = TriPeaksOptionsScene(self.app)
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -571,8 +571,8 @@ class TriPeaksGameScene(C.Scene):
 
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
+                from solitaire.scenes.game_options.tripeaks_options import TriPeaksOptionsScene
+                self.next_scene = TriPeaksOptionsScene(self.app)
             elif e.key == pygame.K_n:
                 self.new_game()
             elif e.key == pygame.K_r:

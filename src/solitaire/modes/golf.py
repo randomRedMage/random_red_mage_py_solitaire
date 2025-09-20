@@ -161,7 +161,7 @@ class GolfGameScene(C.Scene):
         # Toolbar
         def goto_menu():
             # Return without saving (discard progress)
-            from solitaire.modes.golf import GolfOptionsScene
+            from solitaire.scenes.game_options.golf_options import GolfOptionsScene
             self.next_scene = GolfOptionsScene(self.app)
 
         def can_undo():
@@ -356,7 +356,7 @@ class GolfGameScene(C.Scene):
         state = self._game_state()
         _safe_write_json(_golf_save_path(), state)
         if to_menu:
-            from solitaire.modes.golf import GolfOptionsScene
+            from solitaire.scenes.game_options.golf_options import GolfOptionsScene
             self.next_scene = GolfOptionsScene(self.app)
 
     def _load_from_state(self, state: Dict[str, Any]):
@@ -592,7 +592,7 @@ class GolfGameScene(C.Scene):
                 self._clamp_scroll()
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
             # ESC = back to options (no save)
-            from solitaire.modes.golf import GolfOptionsScene
+            from solitaire.scenes.game_options.golf_options import GolfOptionsScene
             self.next_scene = GolfOptionsScene(self.app)
             return
 
@@ -627,7 +627,7 @@ class GolfGameScene(C.Scene):
                 self._advance_to_next_hole()
                 return
             if self._is_game_complete() and self._finish_button_rect().collidepoint((mx, my)):
-                from solitaire.modes.golf import GolfOptionsScene
+                from solitaire.scenes.game_options.golf_options import GolfOptionsScene
                 self.next_scene = GolfOptionsScene(self.app)
                 return
 
@@ -879,10 +879,10 @@ class GolfScoresScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
             if self.b_back.hovered((mx, my)):
-                from solitaire.modes.golf import GolfOptionsScene
+                from solitaire.scenes.game_options.golf_options import GolfOptionsScene
                 self.next_scene = GolfOptionsScene(self.app)
         elif e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.modes.golf import GolfOptionsScene
+            from solitaire.scenes.game_options.golf_options import GolfOptionsScene
             self.next_scene = GolfOptionsScene(self.app)
 
     def draw(self, screen):
