@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple, Dict, Any
 
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import ModalHelp
+from solitaire.help_data import create_modal_help
 
 
 def _golf_dir() -> str:
@@ -183,19 +183,7 @@ class GolfGameScene(C.Scene):
             self.deal_new_hole()
 
         # Help overlay
-        self.help = ModalHelp(
-            "Golf — How to Play",
-            [
-                "Goal: Clear tableau piles across 1/3/9/18 holes for a low total score.",
-                "Play: Move the top card of any tableau pile to the foundation",
-                "if it is one rank higher or lower than the foundation top (suit doesn't matter).",
-                "Wrap A↔K is controlled by the Around-the-Corner option on the options screen.",
-                "Stock: Flip one to the foundation to start, and when stuck. No redeals.",
-                "Scoring: If tableau is cleared, score = -remaining stock; else = remaining tableau count.",
-                "Save&Exit lets you continue later; recent totals shown in Scores.",
-                "Undo/Restart available from the toolbar. Press Esc/Close to dismiss help.",
-            ],
-        )
+        self.help = create_modal_help("golf")
 
         # Lazy-load golf placeholder image
         self._golf_img_raw: Optional[pygame.Surface] = None

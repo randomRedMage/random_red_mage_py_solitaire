@@ -2,7 +2,7 @@
 import pygame
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import ModalHelp
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 def is_red(suit): return suit in (1,2)
@@ -35,7 +35,7 @@ class KlondikeGameScene(C.Scene):
         self.message = ""
         self.drag_stack = None
 
-        self.ui_helper = ModeUIHelper(self, game_id="klondike")
+        self.ui_helper = ModeUIHelper(self, game_id="klondike", return_to_options=False)
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -63,20 +63,7 @@ class KlondikeGameScene(C.Scene):
         # Hover peek for face-up cards within a pile
 
         # Help overlay
-        self.help = ModalHelp(
-            "Klondike — How to Play",
-            [
-                "Goal: Build up four foundations A→K by suit.",
-                "Tableau: Build down by rank with alternating colors.",
-                "You may drag sequences that follow alternating colors.",
-                "Empty column: Only a King or a stack starting with King.",
-                "Stock/Waste: Click stock to deal 1 or 3 cards depending on Draw setting.",
-                "Redeals depend on Difficulty: Easy=unlimited, Medium=2, Hard=1.",
-                "Double-click a top card to auto-move to a foundation if legal.",
-                "Use Auto to auto-finish when eligible. Undo/Restart from toolbar.",
-                "Press H to close this help.",
-            ],
-        )
+        self.help = create_modal_help("klondike")
         # Klondike-style delayed single-card peek (shared across modes)
         self.peek = M.PeekController(delay_ms=2000)
         # Central edge-panning controller for drag-to-edge auto-scroll

@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import ModalHelp
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 
@@ -48,7 +48,7 @@ class GateGameScene(C.Scene):
         self.message: str = ""
         self.undo_mgr = C.UndoManager()
 
-        self.ui_helper = ModeUIHelper(self, game_id="gate")
+        self.ui_helper = ModeUIHelper(self, game_id="gate", return_to_options=False)
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -68,20 +68,7 @@ class GateGameScene(C.Scene):
         self.compute_layout()
         self.deal_new()
         # Help overlay
-        self.help = ModalHelp(
-            "Gate — How to Play",
-            [
-                "Goal: Build four foundations A→K by suit.",
-                "Layout: 8 center tableau piles (2×4) build down with alternating colors.",
-                "Reserves: Two side reserves start with 5 face-up cards; you cannot place onto reserves.",
-                "You may move a reserve top card to a center pile or to its foundation.",
-                "Stock/Waste: Click stock to draw 1 to waste (no redeals).",
-                "When a center pile is emptied it auto-fills from Stock, else from Waste.",
-                "If both are empty it stays empty; you may fill it from a reserve.",
-                "Double-click eligible tops to foundations. Auto-finish available.",
-                "Press H/Esc to close this help.",
-            ],
-        )
+        self.help = create_modal_help("gate")
 
         # Double-click tracking (to foundations)
         self._last_click_time = 0

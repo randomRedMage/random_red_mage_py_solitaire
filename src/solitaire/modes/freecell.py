@@ -3,7 +3,7 @@ import pygame
 from typing import List, Optional, Tuple
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import ModalHelp
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 
@@ -41,7 +41,7 @@ class FreeCellGameScene(C.Scene):
         # Undo manager
         self.undo_mgr = C.UndoManager()
 
-        self.ui_helper = ModeUIHelper(self, game_id="freecell")
+        self.ui_helper = ModeUIHelper(self, game_id="freecell", return_to_options=False)
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -62,19 +62,7 @@ class FreeCellGameScene(C.Scene):
         self._last_click_pos = (0, 0)
 
         # Help overlay
-        self.help = ModalHelp(
-            "FreeCell — How to Play",
-            [
-                "Goal: Build up four foundations A→K by suit.",
-                "Tableau: Build down by rank with alternating colors.",
-                "Empty column accepts any card or a valid descending run.",
-                "Free cells: Four cells each hold one card to help maneuver.",
-                "You can drag runs; movable length depends on empty cells and columns.",
-                "Double-click a safe top card to move to a foundation.",
-                "Use Auto to move obvious cards to foundations. Undo/Restart available.",
-                "Press H to close this help.",
-            ],
-        )
+        self.help = create_modal_help("freecell")
         # Edge panning while dragging near screen edges
         self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
 

@@ -6,7 +6,7 @@ import pygame
 
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import ModalHelp
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 
@@ -79,17 +79,7 @@ class BeleagueredCastleGameScene(C.Scene):
         self._last_click_time = 0
         self._last_click_pos = (0, 0)
         # Help modal
-        self.help = ModalHelp(
-            "Beleaguered Castle - How to Play",
-            [
-                "Goal: Build each foundation from Ace to King in the same suit.",
-                "Setup: All four aces start on the central foundations. The remaining 48 cards are dealt face-up into eight rows of six cards that flank each foundation (left and right).",
-                "Moves: You may move only the exposed bottom card of any row. Place it onto another row when its rank is exactly one less than the target card, regardless of suit. Empty rows may be filled by any single card.",
-                "Foundations: When a top card is the next rank for its suited foundation, double-click it (or drag it) to build upward. Foundations build A->K and cannot move back to the tableau.",
-                "Controls: Toolbar buttons provide New Deal, Restart, Undo, Auto-complete, Help, Save & Exit, and return to the menu. Auto-complete becomes available when every tableau row is already in perfect descending order.",
-            ],
-            max_width=860,
-        )
+        self.help = create_modal_help("beleaguered_castle")
         # Edge panning while dragging (both axes)
         self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
 
