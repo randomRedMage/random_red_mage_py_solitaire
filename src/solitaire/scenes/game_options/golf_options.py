@@ -1,12 +1,7 @@
 import os
 import pygame
 from solitaire import common as C
-from solitaire.modes.golf import (
-    GolfGameScene,
-    GolfScoresScene,
-    _golf_save_path,
-    _safe_read_json,
-)
+from solitaire.modes import golf as golf_mode
 
 
 class GolfOptionsScene(C.Scene):
@@ -34,14 +29,20 @@ class GolfOptionsScene(C.Scene):
 
     def _start_new(self, holes: int):
         try:
-            if os.path.isfile(_golf_save_path()):
-                os.remove(_golf_save_path())
+            save_path = golf_mode._golf_save_path()
+            if os.path.isfile(save_path):
+                os.remove(save_path)
         except Exception:
             pass
-        self.next_scene = GolfGameScene(self.app, holes_total=holes, around=self.around, load_state=None)
+        self.next_scene = golf_mode.GolfGameScene(
+            self.app,
+            holes_total=holes,
+            around=self.around,
+            load_state=None,
+        )
 
     def _has_save(self) -> bool:
-        s = _safe_read_json(_golf_save_path())
+        s = golf_mode._safe_read_json(golf_mode._golf_save_path())
         return bool(s) and not s.get("completed", False)
 
     def handle_event(self, e):
@@ -59,10 +60,15 @@ class GolfOptionsScene(C.Scene):
                 self.around = not self.around
                 self.b_wrap.text = self._wrap_label()
             elif self.b_continue.hovered((mx, my)) and self._has_save():
-                load_state = _safe_read_json(_golf_save_path())
-                self.next_scene = GolfGameScene(self.app, holes_total=load_state.get("holes_total", 1), around=bool(load_state.get("around", False)), load_state=load_state)
+                load_state = golf_mode._safe_read_json(golf_mode._golf_save_path())
+                self.next_scene = golf_mode.GolfGameScene(
+                    self.app,
+                    holes_total=load_state.get("holes_total", 1),
+                    around=bool(load_state.get("around", False)),
+                    load_state=load_state,
+                )
             elif self.b_scores.hovered((mx, my)):
-                self.next_scene = GolfScoresScene(self.app)
+                self.next_scene = golf_mode.GolfScoresScene(self.app)
             elif self.b_back.hovered((mx, my)):
                 from solitaire.scenes.menu import MainMenuScene
                 self.next_scene = MainMenuScene(self.app)

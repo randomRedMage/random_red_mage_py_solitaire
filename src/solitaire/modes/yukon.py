@@ -129,7 +129,7 @@ class YukonGameScene(C.Scene):
         # Toolbar
         def goto_menu():
             # Offer return to options; progress not auto-saved unless Save&Exit used
-            from solitaire.modes.yukon import YukonOptionsScene
+            from solitaire.scenes.game_options.yukon_options import YukonOptionsScene
             self.next_scene = YukonOptionsScene(self.app)
 
         def can_undo():
@@ -270,7 +270,7 @@ class YukonGameScene(C.Scene):
         state = self._state_dict()
         _safe_write_json(_yukon_save_path(), state)
         if to_menu:
-            from solitaire.modes.yukon import YukonOptionsScene
+            from solitaire.scenes.game_options.yukon_options import YukonOptionsScene
             self.next_scene = YukonOptionsScene(self.app)
 
     def _state_dict(self):

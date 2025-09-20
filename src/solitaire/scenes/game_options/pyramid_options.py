@@ -1,6 +1,6 @@
 import pygame
 from solitaire import common as C
-from solitaire.modes.pyramid import PyramidGameScene
+from solitaire.modes import pyramid as pyramid_mode
 
 
 class PyramidOptionsScene(C.Scene):
@@ -18,7 +18,7 @@ class PyramidOptionsScene(C.Scene):
             mx, my = e.pos
             if self.b_start.hovered((mx, my)):
                 allowed = [None, 2, 1][self.diff_index]
-                self.next_scene = PyramidGameScene(self.app, allowed_resets=allowed)
+                self.next_scene = pyramid_mode.PyramidGameScene(self.app, allowed_resets=allowed)
             elif self.b_diff.hovered((mx, my)):
                 self.diff_index = (self.diff_index + 1) % 3
                 text = ["Easy (Unlimited resets)", "Normal (2 resets)", "Hard (1 reset)"][self.diff_index]

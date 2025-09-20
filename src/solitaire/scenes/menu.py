@@ -54,10 +54,10 @@ class MainMenuScene(C.Scene):
                 "title": "Packers",
                 "entries": [
                     _GameEntry("klondike", "Klondike", "icon_klondike.png", "solitaire.scenes.game_options.klondike_options", "KlondikeOptionsScene"),
-                    _GameEntry("freecell", "FreeCell", "icon_freecell.png", "solitaire.modes.freecell", "FreeCellOptionsScene"),
-                    _GameEntry("gate", "Gate", "icon_gate.png", "solitaire.modes.gate", "GateOptionsScene"),
+                    _GameEntry("freecell", "FreeCell", "icon_freecell.png", "solitaire.scenes.game_options.freecell_options", "FreeCellOptionsScene"),
+                    _GameEntry("gate", "Gate", "icon_gate.png", "solitaire.scenes.game_options.gate_options", "GateOptionsScene"),
                     _GameEntry("beleaguered_castle", "Beleaguered\nCastle", "icon_beleagured_castle.png", "solitaire.scenes.game_options.beleaguered_castle_options", "BeleagueredCastleOptionsScene"),
-                    _GameEntry("yukon", "Yukon", "icon_yukon.png", "solitaire.modes.yukon", "YukonOptionsScene"),
+                    _GameEntry("yukon", "Yukon", "icon_yukon.png", "solitaire.scenes.game_options.yukon_options", "YukonOptionsScene"),
                 ],
                 "rect": pygame.Rect(0, 0, 0, 0),
                 "title_surf": None,
@@ -66,10 +66,10 @@ class MainMenuScene(C.Scene):
             {
                 "title": "Builders",
                 "entries": [
-                    _GameEntry("big_ben", "Big Ben", "icon_big_ben.png", "solitaire.modes.big_ben", "BigBenOptionsScene"),
-                    _GameEntry("golf", "Golf", "icon_golf.png", "solitaire.modes.golf", "GolfOptionsScene"),
-                    _GameEntry("pyramid", "Pyramid", "icon_pyramid.png", "solitaire.modes.pyramid", "PyramidOptionsScene"),
-                    _GameEntry("tripeaks", "TriPeaks", "icon_tripeaks.png", "solitaire.modes.tripeaks", "TriPeaksOptionsScene"),
+                    _GameEntry("big_ben", "Big Ben", "icon_big_ben.png", "solitaire.scenes.game_options.big_ben_options", "BigBenOptionsScene"),
+                    _GameEntry("golf", "Golf", "icon_golf.png", "solitaire.scenes.game_options.golf_options", "GolfOptionsScene"),
+                    _GameEntry("pyramid", "Pyramid", "icon_pyramid.png", "solitaire.scenes.game_options.pyramid_options", "PyramidOptionsScene"),
+                    _GameEntry("tripeaks", "TriPeaks", "icon_tripeaks.png", "solitaire.scenes.game_options.tripeaks_options", "TriPeaksOptionsScene"),
                 ],
                 "rect": pygame.Rect(0, 0, 0, 0),
                 "title_surf": None,
