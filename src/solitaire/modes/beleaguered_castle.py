@@ -5,7 +5,8 @@ from typing import List, Optional, Tuple
 import pygame
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.ui import ModalHelp
 from solitaire import mechanics as M
 
 
@@ -92,29 +93,25 @@ class BeleagueredCastleGameScene(C.Scene):
         # Edge panning while dragging (both axes)
         self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
 
-        def goto_menu():
-            from solitaire.scenes.game_options.beleaguered_castle_options import BeleagueredCastleOptionsScene
-            self.next_scene = BeleagueredCastleOptionsScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="beleaguered_castle")
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-            "Menu": {"on_click": goto_menu},
-            "New": {"on_click": self.deal_new},
-            "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
-            "Undo": {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Auto": {"on_click": self.start_autocomplete, "enabled": self.can_autocomplete, "tooltip": "Auto-finish foundations"},
-            "Help": {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-            "Save&Exit": {"on_click": lambda: self._save_game(to_menu=True), "tooltip": "Save game and return to menu"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            auto_action={
+                "on_click": self.start_autocomplete,
+                "enabled": self.can_autocomplete,
+                "tooltip": "Auto-finish foundations",
+            },
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play", "shortcut": pygame.K_h},
+            save_action=(
+                "Save&Exit",
+                {"on_click": lambda: self._save_game(to_menu=True), "tooltip": "Save game and return to menu"},
+            ),
         )
 
         self.compute_layout()
@@ -532,6 +529,8 @@ class BeleagueredCastleGameScene(C.Scene):
 
         if self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
 
         if self.anim.active:
             return
@@ -601,25 +600,7 @@ class BeleagueredCastleGameScene(C.Scene):
             return
 
         if e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_n:
-                self.deal_new()
-                return
-            if e.key == pygame.K_r:
-                self.restart()
-                return
-            if e.key == pygame.K_u:
-                self.undo()
-                return
-            if e.key == pygame.K_h:
-                self.help.open()
-                return
-            if e.key == pygame.K_a:
-                self.start_autocomplete()
-                return
-            if e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.game_options.beleaguered_castle_options import BeleagueredCastleOptionsScene
-                self.next_scene = BeleagueredCastleOptionsScene(self.app)
-                return
+            self.ui_helper.handle_shortcuts(e)
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             if self._maybe_handle_double_click(e):

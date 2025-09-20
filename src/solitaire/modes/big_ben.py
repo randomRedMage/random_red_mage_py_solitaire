@@ -7,7 +7,8 @@ from typing import List, Optional, Tuple
 import pygame
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.ui import ModalHelp
 from solitaire import mechanics as M
 
 
@@ -112,37 +113,21 @@ class BigBenGameScene(C.Scene):
         self._hscroll_drag_offset = 0
         self._card_diag = int(math.ceil(math.hypot(C.CARD_W, C.CARD_H)))
 
-        def goto_menu():
-            from solitaire.scenes.game_options.big_ben_options import BigBenOptionsScene
-            self.next_scene = BigBenOptionsScene(self.app)
-
-        def do_new():
-            self.deal_new()
-
-        def do_restart():
-            self.restart()
-
-        def do_undo():
-            self.undo()
+        self.ui_helper = ModeUIHelper(self, game_id="big_ben")
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-            "Menu": {"on_click": goto_menu, "tooltip": "Return to Big Ben menu"},
-            "New": {"on_click": do_new},
-            "Restart": {"on_click": do_restart, "tooltip": "Restart current deal"},
-            "Undo": {"on_click": do_undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Help": {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-            "Save&Exit": {"on_click": lambda: self._save_game(to_main=True), "tooltip": "Save game and return to main menu"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
+            save_action=(
+                "Save&Exit",
+                {"on_click": lambda: self._save_game(to_main=True), "tooltip": "Save game and return to main menu"},
+            ),
+            menu_tooltip="Return to Big Ben menu",
         )
 
         self.help = ModalHelp(
@@ -689,6 +674,9 @@ class BigBenGameScene(C.Scene):
         if self.toolbar.handle_event(e):
             self.peek.cancel()
             return
+        if self.ui_helper.handle_shortcuts(e):
+            self.peek.cancel()
+            return
 
         if e.type == pygame.MOUSEWHEEL:
             self.scroll_y += e.y * 60
@@ -702,9 +690,7 @@ class BigBenGameScene(C.Scene):
 
         if e.type == pygame.KEYDOWN:
             self.peek.cancel()
-            if e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.game_options.big_ben_options import BigBenOptionsScene
-                self.next_scene = BigBenOptionsScene(self.app)
+            self.ui_helper.handle_shortcuts(e)
             return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:

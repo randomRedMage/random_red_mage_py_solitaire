@@ -2,7 +2,8 @@
 import pygame
 from typing import List, Optional, Tuple
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.ui import ModalHelp
 from solitaire import mechanics as M
 
 
@@ -40,29 +41,17 @@ class FreeCellGameScene(C.Scene):
         # Undo manager
         self.undo_mgr = C.UndoManager()
 
-        # Toolbar
-        def goto_menu():
-            from solitaire.scenes.game_options.freecell_options import FreeCellOptionsScene
-            self.next_scene = FreeCellOptionsScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="freecell")
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-            "Menu":    {"on_click": goto_menu},
-            "New":     {"on_click": self.deal_new},
-            "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
-            "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Auto":    {"on_click": self.auto_to_foundations, "tooltip": "Auto-move available cards to foundations"},
-            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            auto_action={"on_click": self.auto_to_foundations, "tooltip": "Auto-move available cards to foundations"},
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         self.message = ""
@@ -330,6 +319,8 @@ class FreeCellGameScene(C.Scene):
                 return
         if self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
 
         if e.type == pygame.MOUSEWHEEL:
             self.scroll_y += e.y * 60
@@ -472,17 +463,7 @@ class FreeCellGameScene(C.Scene):
             return
 
         if e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_r:
-                self.restart()
-            elif e.key == pygame.K_n:
-                self.deal_new()
-            elif e.key == pygame.K_u:
-                self.undo()
-            elif e.key == pygame.K_a:
-                self.auto_to_foundations()
-            elif e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.game_options.freecell_options import FreeCellOptionsScene
-                self.next_scene = FreeCellOptionsScene(self.app)
+            self.ui_helper.handle_shortcuts(e)
 
     # ----- Scroll helpers -----
     def _content_bottom_y(self) -> int:

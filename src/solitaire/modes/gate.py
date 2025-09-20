@@ -2,7 +2,8 @@ import pygame
 from typing import List, Optional, Tuple
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.ui import ModalHelp
 from solitaire import mechanics as M
 
 
@@ -47,29 +48,21 @@ class GateGameScene(C.Scene):
         self.message: str = ""
         self.undo_mgr = C.UndoManager()
 
-        # Toolbar
-        def goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="gate")
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-            "Menu":    {"on_click": goto_menu},
-            "New":     {"on_click": self.deal_new},
-            "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
-            "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Auto":    {"on_click": self.start_auto_complete, "enabled": self.can_autocomplete, "tooltip": "Auto-finish to foundations"},
-            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            auto_action={
+                "on_click": self.start_auto_complete,
+                "enabled": self.can_autocomplete,
+                "tooltip": "Auto-finish to foundations",
+            },
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         self.compute_layout()
@@ -456,6 +449,8 @@ class GateGameScene(C.Scene):
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
         if self.toolbar.handle_event(e):
+            return
+        if self.ui_helper.handle_shortcuts(e):
             return
 
         # Avoid interactions while auto-fill animation is running

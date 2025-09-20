@@ -5,7 +5,8 @@ from typing import List, Optional, Tuple
 import pygame
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.ui import ModalHelp
 from solitaire import mechanics as M
 
 
@@ -127,10 +128,7 @@ class YukonGameScene(C.Scene):
         self._hscroll_geom = None
 
         # Toolbar
-        def goto_menu():
-            # Offer return to options; progress not auto-saved unless Save&Exit used
-            from solitaire.scenes.game_options.yukon_options import YukonOptionsScene
-            self.next_scene = YukonOptionsScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="yukon")
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -138,22 +136,17 @@ class YukonGameScene(C.Scene):
         def save_and_exit():
             self._save_game(to_menu=True)
 
-        actions = {
-            "Menu":    {"on_click": goto_menu},
-            "New":     {"on_click": self.deal_new},
-            "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
-            "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Auto":    {"on_click": self.start_autocomplete, "enabled": self.can_autocomplete, "tooltip": "Auto-finish to foundations"},
-            "Save&Exit": {"on_click": save_and_exit, "tooltip": "Save game and exit to menu"},
-            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            auto_action={
+                "on_click": self.start_autocomplete,
+                "enabled": self.can_autocomplete,
+                "tooltip": "Auto-finish to foundations",
+            },
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
+            save_action=("Save&Exit", {"on_click": save_and_exit, "tooltip": "Save game and exit to menu"}),
         )
 
         self.compute_layout()
@@ -414,14 +407,15 @@ class YukonGameScene(C.Scene):
 
         if self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
 
         # Do not interact while animation is running
         if self.anim.active:
             return
 
-        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.scenes.game_options.yukon_options import YukonOptionsScene
-            self.next_scene = YukonOptionsScene(self.app)
+        if e.type == pygame.KEYDOWN:
+            self.ui_helper.handle_shortcuts(e)
             return
 
         # Mouse wheel scroll
