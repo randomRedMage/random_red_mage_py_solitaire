@@ -1,6 +1,6 @@
 import pygame
 from solitaire import common as C
-from solitaire.modes.freecell import FreeCellGameScene
+from solitaire.modes import freecell as freecell_mode
 
 
 class FreeCellOptionsScene(C.Scene):
@@ -15,7 +15,7 @@ class FreeCellOptionsScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
             if self.b_start.hovered((mx, my)):
-                self.next_scene = FreeCellGameScene(self.app)
+                self.next_scene = freecell_mode.FreeCellGameScene(self.app)
             elif self.b_back.hovered((mx, my)):
                 from solitaire.scenes.menu import MainMenuScene
                 self.next_scene = MainMenuScene(self.app)

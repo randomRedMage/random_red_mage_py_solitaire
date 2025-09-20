@@ -49,8 +49,8 @@ class GateGameScene(C.Scene):
 
         # Toolbar
         def goto_menu():
-            from solitaire.scenes.game_options.gate_options import GateOptionsScene
-            self.next_scene = GateOptionsScene(self.app)
+            from solitaire.scenes.menu import MainMenuScene
+            self.next_scene = MainMenuScene(self.app)
 
         def can_undo():
             return self.undo_mgr.can_undo()

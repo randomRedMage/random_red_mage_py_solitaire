@@ -1,6 +1,6 @@
 import pygame
 from solitaire import common as C
-from solitaire.modes.klondike import KlondikeGameScene
+from solitaire.modes import klondike as klondike_mode
 
 
 class KlondikeOptionsScene(C.Scene):
@@ -20,7 +20,7 @@ class KlondikeOptionsScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx,my = e.pos
             if self.b_start.hovered((mx,my)):
-                self.next_scene = KlondikeGameScene(
+                self.next_scene = klondike_mode.KlondikeGameScene(
                     self.app,
                     draw_count=self.draw_mode,
                     stock_cycles=[None,2,1][self.diff_index]

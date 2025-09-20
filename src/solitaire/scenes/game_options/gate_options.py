@@ -1,6 +1,6 @@
 import pygame
 from solitaire import common as C
-from solitaire.modes.gate import GateGameScene
+from solitaire.modes import gate as gate_mode
 
 
 class GateOptionsScene(C.Scene):
@@ -15,7 +15,7 @@ class GateOptionsScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
             if self.b_start.hovered((mx, my)):
-                self.next_scene = GateGameScene(self.app)
+                self.next_scene = gate_mode.GateGameScene(self.app)
             elif self.b_back.hovered((mx, my)):
                 from solitaire.scenes.menu import MainMenuScene
                 self.next_scene = MainMenuScene(self.app)

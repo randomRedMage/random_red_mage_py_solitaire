@@ -1,6 +1,6 @@
 import pygame
 from solitaire import common as C
-from solitaire.modes.tripeaks import TriPeaksGameScene
+from solitaire.modes import tripeaks as tripeaks_mode
 
 
 class TriPeaksOptionsScene(C.Scene):
@@ -17,7 +17,7 @@ class TriPeaksOptionsScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
             if self.b_start.hovered((mx, my)):
-                self.next_scene = TriPeaksGameScene(self.app, wrap_ak=self.wrap_ak)
+                self.next_scene = tripeaks_mode.TriPeaksGameScene(self.app, wrap_ak=self.wrap_ak)
             elif self.b_wrap.hovered((mx, my)):
                 self.wrap_ak = not self.wrap_ak
                 self.b_wrap.text = f"Wrap A↔K: {'On' if self.wrap_ak else 'Off'}"

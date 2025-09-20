@@ -1,11 +1,6 @@
 import pygame
 from solitaire import common as C
-from solitaire.modes.big_ben import (
-    BigBenGameScene,
-    _bb_save_path,
-    _safe_read_json,
-    _clear_saved_game,
-)
+from solitaire.modes import big_ben as big_ben_mode
 
 
 class BigBenOptionsScene(C.Scene):
@@ -19,19 +14,19 @@ class BigBenOptionsScene(C.Scene):
         self.b_back = C.Button("Back", cx, y, w=440)
 
     def _has_save(self) -> bool:
-        state = _safe_read_json(_bb_save_path())
+        state = big_ben_mode._safe_read_json(big_ben_mode._bb_save_path())
         return bool(state) and not state.get("completed", False)
 
     def handle_event(self, e):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
             if self.b_start.hovered((mx, my)):
-                _clear_saved_game()
-                self.next_scene = BigBenGameScene(self.app, load_state=None)
+                big_ben_mode._clear_saved_game()
+                self.next_scene = big_ben_mode.BigBenGameScene(self.app, load_state=None)
             elif self.b_resume.hovered((mx, my)) and self._has_save():
-                state = _safe_read_json(_bb_save_path())
+                state = big_ben_mode._safe_read_json(big_ben_mode._bb_save_path())
                 if state:
-                    self.next_scene = BigBenGameScene(self.app, load_state=state)
+                    self.next_scene = big_ben_mode.BigBenGameScene(self.app, load_state=state)
             elif self.b_back.hovered((mx, my)):
                 from solitaire.scenes.menu import MainMenuScene
                 self.next_scene = MainMenuScene(self.app)
