@@ -116,5 +116,21 @@
       "Auto completes when all tableau cards are face-up.",
       "Use Save&Exit to continue later."
     ]
+  },
+  "bowling_solitaire": {
+    "title": "Bowling Solitaire — How to Play",
+    "lines": [
+      "Goal: Play 10 frames of bowling using card-matching shots and score like ten-pin bowling.",
+      "Setup: Aces through Tens of hearts and spades are shuffled. Ten cards form an upside-down triangle of pins.",
+      "The remaining cards become three ball piles (sizes 5/3/2). Top cards of each pile are face-up for the current ball.",
+      "Shot: Select a face-up ball card then choose 1, 2, or 3 adjacent pins. A single pin must match the card rank.",
+      "For combos, the ones digit of the pin total must match the ball card's ones digit. Removed pins go to the gutter.",
+      "First-ball restrictions: back row pins can't be the very first knock-down, and the middle pin must be part of a combo.",
+      "Second (and third) balls require every picked pin to touch at least one pin knocked down on the prior ball, unless pins reset.",
+      "A ball ends when you clear all pins, discard a ball card, or no moves remain. Strike/spare scoring follows bowling rules.",
+      "Tenth frame: strikes or spares earn extra balls. Pins reset between bonus balls when a rack is cleared.",
+      "Toolbar: Menu, New game, Save&Exit, Help. Action buttons handle Knock Down, Discard Ball, and clearing your selection."
+    ],
+    "max_width": 880
   }
 }
