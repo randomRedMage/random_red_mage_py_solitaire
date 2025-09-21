@@ -146,7 +146,6 @@ class HamburgerMenuButton(Button):
             min_width=max(height, 32),
             tooltip=tooltip,
         )
-        self._display_label = "☰"
         # Compact width for icon presentation
         compact_w = max(height, 32)
         self.rect.size = (compact_w, self.rect.height)
@@ -266,9 +265,12 @@ class HamburgerMenuButton(Button):
 
     def draw(self, surface: pygame.Surface):
         original_label = self.label
-        self.label = self._display_label
+        self.label = ""
         super().draw(surface)
         self.label = original_label
+
+        icon_color = BTN_TEXT if self.is_enabled() else BTN_TEXT_DISABLED
+        self._draw_icon(surface, icon_color)
         if not (self._open and self.items and self._panel_rect.width > 0):
             return
 
@@ -305,6 +307,29 @@ class HamburgerMenuButton(Button):
             if item.label == label and idx < len(self._item_rects):
                 return self._item_rects[idx].copy()
         return None
+
+    def _draw_icon(self, surface: pygame.Surface, color: Tuple[int, int, int]) -> None:
+        """Draw a hamburger icon using geometry instead of relying on font glyphs."""
+
+        rect = self.rect
+        icon_width = max(4, min(rect.width - 4, int(rect.width * 0.6)))
+        start_x = rect.centerx - icon_width // 2
+
+        line_thickness = max(2, rect.height // 12)
+        gap = max(2, rect.height // 10)
+        total_height = line_thickness * 3 + gap * 2
+        max_height = max(4, rect.height - 8)
+        if total_height > max_height:
+            scale = max_height / total_height
+            line_thickness = max(1, int(line_thickness * scale))
+            gap = max(1, int(gap * scale))
+            total_height = line_thickness * 3 + gap * 2
+
+        start_y = rect.centery - total_height // 2
+        for index in range(3):
+            top = start_y + index * (line_thickness + gap)
+            line_rect = pygame.Rect(start_x, top, icon_width, line_thickness)
+            pygame.draw.rect(surface, color, line_rect, border_radius=line_thickness // 2)
 
 
 def make_toolbar(
