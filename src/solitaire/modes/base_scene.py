@@ -108,6 +108,15 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         section="Builders",
         return_to_options=True,
     ),
+    GameMetadata(
+        key="bowling_solitaire",
+        label="Bowling\nSolitaire",
+        icon_filename="icon_bowling_solitaire.png",
+        options_module="solitaire.scenes.game_options.bowling_solitaire_options",
+        options_class="BowlingSolitaireOptionsScene",
+        section="Other",
+        return_to_options=True,
+    ),
 )
 
 
@@ -118,6 +127,7 @@ GAME_REGISTRY: Dict[str, GameMetadata] = {meta.key: meta for meta in _GAME_METAD
 GAME_SECTIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("Packers", ("klondike", "freecell", "gate", "beleaguered_castle", "yukon")),
     ("Builders", ("big_ben", "golf", "pyramid", "tripeaks")),
+    ("Other", ("bowling_solitaire",)),
 )
 
 
