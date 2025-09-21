@@ -505,7 +505,8 @@ class BowlingSolitaireGameScene(C.Scene):
 
     def _create_action_buttons(self) -> None:
         self.ball_action_buttons = [
-            UI.Button("Knock Down", self.apply_selection, enabled_fn=self.can_apply_selection),
+            UI.Button("Bowl", self.apply_selection, enabled_fn=self.can_apply_selection),
+            UI.Button("Next Ball", self.advance_to_next_ball, enabled_fn=self.can_force_next_ball),
             UI.Button("Discard Ball", self.discard_selected_ball, enabled_fn=self.can_discard_ball),
             UI.Button("Clear Selection", self.clear_selection, enabled_fn=lambda: bool(self.selected_pins)),
         ]
@@ -587,6 +588,13 @@ class BowlingSolitaireGameScene(C.Scene):
         pile = self.ball_piles[self.selected_ball_index]
         return pile.face_up is not None
 
+    def can_force_next_ball(self) -> bool:
+        if self.game_completed:
+            return False
+        if self.current_frame >= 10:
+            return False
+        return True
+
     # ---------------------------------------------------------------- controls
 
     def clear_selection(self) -> None:
@@ -629,6 +637,13 @@ class BowlingSolitaireGameScene(C.Scene):
         if not self.can_discard_ball():
             return
         self._end_ball(discarded=True)
+
+    def advance_to_next_ball(self) -> None:
+        if not self.can_force_next_ball():
+            return
+        self.selected_ball_index = None
+        self.selected_pins.clear()
+        self._end_ball(manual=True)
 
     # --------------------------------------------------------------- validation
 
@@ -720,7 +735,14 @@ class BowlingSolitaireGameScene(C.Scene):
 
     # -------------------------------------------------------------- ball logic
 
-    def _end_ball(self, *, after_strike: bool = False, discarded: bool = False, no_moves: bool = False) -> None:
+    def _end_ball(
+        self,
+        *,
+        after_strike: bool = False,
+        discarded: bool = False,
+        no_moves: bool = False,
+        manual: bool = False,
+    ) -> None:
         if self.game_completed:
             return
         pins_removed = set(self.pins_removed_this_ball)
@@ -732,7 +754,16 @@ class BowlingSolitaireGameScene(C.Scene):
         self._update_score_symbols(self.current_frame, self.current_ball, knocked)
         self._recompute_totals()
 
-        if after_strike and self.current_frame < 9 and self.current_ball == 0:
+        if manual:
+            if knocked == 0:
+                self.status_message = "Ball advanced – no pins knocked down."
+            else:
+                self.status_message = (
+                    "Ball complete – 1 pin knocked down."
+                    if knocked == 1
+                    else f"Ball complete – {knocked} pins knocked down."
+                )
+        elif after_strike and self.current_frame < 9 and self.current_ball == 0:
             self.status_message = "Strike!"
         elif after_strike and self.current_frame == 9:
             self.status_message = "Strike!"
@@ -1258,6 +1289,8 @@ class BowlingSolitaireGameScene(C.Scene):
                 self.apply_selection()
             elif event.key == pygame.K_BACKSPACE:
                 self.clear_selection()
+            elif event.key == pygame.K_n:
+                self.advance_to_next_ball()
 
     def _handle_scroll_event(self, event: pygame.event.Event) -> bool:
         if event.type == pygame.MOUSEWHEEL:
@@ -1336,7 +1369,7 @@ class BowlingSolitaireGameScene(C.Scene):
             return
         self.selected_ball_index = index
         self.selected_pins.clear()
-        self.status_message = "Ball selected – choose pins."
+        self.status_message = "Ball selected – choose pins, then press Bowl."
 
     def _handle_pin_click(self, index: int) -> None:
         if self.selected_ball_index is None:
@@ -1350,5 +1383,5 @@ class BowlingSolitaireGameScene(C.Scene):
                 self.status_message = "Maximum of three pins per ball."
                 return
             self.selected_pins.append(index)
-            self.status_message = "Pin selected."
+            self.status_message = "Pin selected – press Bowl to knock it down."
 
