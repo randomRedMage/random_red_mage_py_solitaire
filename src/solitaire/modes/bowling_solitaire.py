@@ -225,9 +225,29 @@ class BowlingSolitaireGameScene(C.Scene):
         load_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__(app)
-        self.player_initials = (player_initials or "PLY")[:3]
-        self.player_initials = self.player_initials.upper()
-        self.player_initials = self.player_initials or "PLY"
+
+        provided_initials = (player_initials or "").strip().upper()[:3]
+        self.player_initials: str = ""
+        self._pending_initials: str = provided_initials
+        self._initials_prompt_visible: bool = load_state is None
+        self._initials_input_active: bool = self._initials_prompt_visible
+        self._initials_panel_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
+        self._initials_input_rect: pygame.Rect = pygame.Rect(0, 0, 280, 60)
+        self._initials_accept_button = UI.Button(
+            "Confirm Initials",
+            self._commit_initials,
+            enabled_fn=lambda: bool(self._pending_initials),
+            min_width=200,
+        )
+
+        self.scroll_x: int = 0
+        self.scroll_y: int = 0
+        self._drag_vscroll: bool = False
+        self._drag_hscroll: bool = False
+        self._vscroll_drag_offset: int = 0
+        self._hscroll_drag_offset: int = 0
+        self._vscroll_geom: Optional[Tuple[int, int, int, int, int]] = None
+        self._hscroll_geom: Optional[Tuple[int, int, int, int, int]] = None
 
         self.ui_helper = ModeUIHelper(self, game_id="bowling_solitaire")
 
@@ -340,6 +360,9 @@ class BowlingSolitaireGameScene(C.Scene):
         for idx, btn in enumerate(self.ball_action_buttons):
             btn.set_position(btn_x + idx * (btn.rect.width + btn_gap), btn_y)
 
+        self._layout_initials_prompt()
+        self._clamp_scroll()
+
     def _layout_scoreboard(self) -> None:
         rect = self.scoreboard_rect
         header_h = 46
@@ -379,6 +402,107 @@ class BowlingSolitaireGameScene(C.Scene):
             )
             x += width
 
+    def _layout_initials_prompt(self) -> None:
+        panel_w = 480
+        panel_h = 240
+        top_bar = getattr(C, "TOP_BAR_H", 60)
+        center_y = top_bar + panel_h // 2 + 60
+        self._initials_panel_rect = pygame.Rect(0, 0, panel_w, panel_h)
+        self._initials_panel_rect.center = (C.SCREEN_W // 2, center_y)
+
+        self._initials_input_rect = pygame.Rect(0, 0, 280, 60)
+        self._initials_input_rect.center = (
+            self._initials_panel_rect.centerx,
+            self._initials_panel_rect.top + 120,
+        )
+        btn_y = self._initials_input_rect.bottom + 30
+        self._initials_accept_button.set_position(
+            self._initials_panel_rect.centerx - self._initials_accept_button.rect.width // 2,
+            btn_y,
+        )
+
+    def _content_bounds(self) -> Tuple[int, int, int, int]:
+        rects: List[pygame.Rect] = []
+        if self.scoreboard_rect.width and self.scoreboard_rect.height:
+            rects.append(self.scoreboard_rect)
+        rects.extend(pin.rect for pin in self.pins)
+        rects.extend(self.ball_face_rects)
+        rects.extend(self.ball_stack_rects)
+        if self.waste_rect.width and self.waste_rect.height:
+            rects.append(self.waste_rect)
+        if not rects:
+            top_bar = getattr(C, "TOP_BAR_H", 60)
+            return 0, C.SCREEN_W, top_bar, C.SCREEN_H
+        left = min(rect.left for rect in rects)
+        right = max(rect.right for rect in rects)
+        top = min(rect.top for rect in rects)
+        bottom = max(rect.bottom for rect in rects)
+        return left, right, top, bottom
+
+    def _scroll_limits(self) -> Tuple[int, int, int, int]:
+        left, right, top, bottom = self._content_bounds()
+        margin_x = 40
+        margin_y = 20
+        top_bar = getattr(C, "TOP_BAR_H", 60)
+        max_sx = margin_x - left
+        min_sx = min(0, C.SCREEN_W - right - margin_x)
+        max_sy = top_bar + margin_y - top
+        min_sy = min(0, C.SCREEN_H - bottom - margin_y)
+        if max_sx < min_sx:
+            max_sx = min_sx
+        if max_sy < min_sy:
+            max_sy = min_sy
+        return min_sx, max_sx, min_sy, max_sy
+
+    def _clamp_scroll(self) -> None:
+        min_sx, max_sx, min_sy, max_sy = self._scroll_limits()
+        if self.scroll_x < min_sx:
+            self.scroll_x = min_sx
+        elif self.scroll_x > max_sx:
+            self.scroll_x = max_sx
+        if self.scroll_y < min_sy:
+            self.scroll_y = min_sy
+        elif self.scroll_y > max_sy:
+            self.scroll_y = max_sy
+
+    def _vertical_scrollbar(self) -> Optional[Tuple[pygame.Rect, pygame.Rect, int, int, int, int, int]]:
+        min_sx, max_sx, min_sy, max_sy = self._scroll_limits()
+        if max_sy <= min_sy:
+            return None
+        track_x = C.SCREEN_W - 12
+        track_y = getattr(C, "TOP_BAR_H", 60)
+        track_h = C.SCREEN_H - track_y - 10
+        if track_h <= 0:
+            return None
+        view_h = track_h
+        content_h = view_h + (max_sy - min_sy)
+        knob_h = max(30, int(track_h * (view_h / max(1, content_h))))
+        denom = max_sy - min_sy
+        t = (self.scroll_y - min_sy) / denom if denom else 1.0
+        knob_y = int(track_y + (track_h - knob_h) * (1.0 - t))
+        knob_rect = pygame.Rect(track_x, knob_y, 6, knob_h)
+        track_rect = pygame.Rect(track_x, track_y, 6, track_h)
+        return track_rect, knob_rect, min_sy, max_sy, track_y, track_h, knob_h
+
+    def _horizontal_scrollbar(self) -> Optional[Tuple[pygame.Rect, pygame.Rect, int, int, int, int, int]]:
+        min_sx, max_sx, min_sy, max_sy = self._scroll_limits()
+        if max_sx <= min_sx:
+            return None
+        track_x = 10
+        track_w = C.SCREEN_W - 20
+        track_y = C.SCREEN_H - 12
+        if track_w <= 0:
+            return None
+        view_w = track_w
+        content_w = view_w + (max_sx - min_sx)
+        knob_w = max(30, int(track_w * (view_w / max(1, content_w))))
+        denom = max_sx - min_sx
+        t = (self.scroll_x - min_sx) / denom if denom else 1.0
+        knob_x = int(track_x + (track_w - knob_w) * t)
+        track_rect = pygame.Rect(track_x, track_y, track_w, 6)
+        knob_rect = pygame.Rect(knob_x, track_y, knob_w, 6)
+        return track_rect, knob_rect, min_sx, max_sx, track_x, track_w, knob_w
+
     def _create_action_buttons(self) -> None:
         self.ball_action_buttons = [
             UI.Button("Knock Down", self.apply_selection, enabled_fn=self.can_apply_selection),
@@ -400,7 +524,10 @@ class BowlingSolitaireGameScene(C.Scene):
             frame.reset()
         self.ball_waste = []
         self.status_message = "Frame 1 – select a ball card to start."
+        self.scroll_x = 0
+        self.scroll_y = 0
         self._deal_new_frame()
+        self._clamp_scroll()
         try:
             if os.path.isfile(_save_path()):
                 os.remove(_save_path())
@@ -790,6 +917,8 @@ class BowlingSolitaireGameScene(C.Scene):
             "current_ball": self.current_ball,
             "ball_actions": self.ball_actions,
             "game_completed": self.game_completed,
+            "scroll_x": self.scroll_x,
+            "scroll_y": self.scroll_y,
             "pins": [pin.to_dict() for pin in self.pins],
             "ball_piles": [pile.to_dict() for pile in self.ball_piles],
             "ball_waste": [_card_to_dict(card) for card in self.ball_waste],
@@ -810,6 +939,15 @@ class BowlingSolitaireGameScene(C.Scene):
 
     def _load_from_state(self, state: Mapping[str, Any]) -> bool:
         try:
+            initials_val = state.get("player_initials", "")
+            if isinstance(initials_val, str):
+                initials = initials_val.strip().upper()[:3]
+            else:
+                initials = ""
+            self.player_initials = initials or "PLY"
+            self._pending_initials = self.player_initials
+            self._initials_prompt_visible = False
+            self._initials_input_active = False
             self.current_frame = int(state.get("current_frame", 0))
             self.current_ball = int(state.get("current_ball", 0))
             self.ball_actions = int(state.get("ball_actions", 0))
@@ -855,6 +993,17 @@ class BowlingSolitaireGameScene(C.Scene):
                 self.selected_ball_index = int(self.selected_ball_index)
             self.selected_pins = [int(x) for x in state.get("selected_pins", [])]
             self.status_message = str(state.get("status_message", ""))
+            sx = state.get("scroll_x", 0)
+            sy = state.get("scroll_y", 0)
+            try:
+                self.scroll_x = int(sx)
+            except Exception:
+                self.scroll_x = 0
+            try:
+                self.scroll_y = int(sy)
+            except Exception:
+                self.scroll_y = 0
+            self._clamp_scroll()
             self._recompute_totals()
             return True
         except Exception:
@@ -874,61 +1023,82 @@ class BowlingSolitaireGameScene(C.Scene):
         self._draw_scoreboard(screen)
         self._draw_pins(screen)
         self._draw_ball_piles(screen)
+        self._draw_scrollbars(screen)
         self._draw_status(screen)
+        if self._initials_prompt_visible:
+            self._draw_initials_prompt(screen)
 
     def _draw_scoreboard(self, screen: pygame.Surface) -> None:
-        pygame.draw.rect(screen, (248, 248, 248), self.scoreboard_rect, border_radius=18)
-        pygame.draw.rect(screen, (0, 0, 0), self.scoreboard_rect, width=2, border_radius=18)
+        sx = self.scroll_x
+        sy = self.scroll_y
+        scoreboard_rect = self.scoreboard_rect.move(sx, sy)
+        pygame.draw.rect(screen, (248, 248, 248), scoreboard_rect, border_radius=18)
+        pygame.draw.rect(screen, (0, 0, 0), scoreboard_rect, width=2, border_radius=18)
         header_font = C.FONT_UI
         row_font = C.FONT_RANK
-        pygame.draw.rect(screen, (245, 245, 245), self.player_header_rect)
-        pygame.draw.rect(screen, (150, 150, 155), self.player_header_rect, width=1)
+        player_header_rect = self.player_header_rect.move(sx, sy)
+        pygame.draw.rect(screen, (245, 245, 245), player_header_rect)
+        pygame.draw.rect(screen, (150, 150, 155), player_header_rect, width=1)
         player_title = header_font.render("Player", True, (30, 30, 40))
         screen.blit(
             player_title,
             (
-                self.player_header_rect.centerx - player_title.get_width() // 2,
-                self.player_header_rect.centery - player_title.get_height() // 2,
+                player_header_rect.centerx - player_title.get_width() // 2,
+                player_header_rect.centery - player_title.get_height() // 2,
             ),
         )
         for idx, cell in enumerate(self.score_cells):
-            header_rect = cell["header_rect"]
+            header_rect = cell["header_rect"].move(sx, sy)
             title = header_font.render(str(idx + 1), True, (30, 30, 40))
             screen.blit(
                 title,
                 (header_rect.centerx - title.get_width() // 2, header_rect.centery - title.get_height() // 2),
             )
-            frame_rect = cell["frame_rect"]
+            frame_rect = cell["frame_rect"].move(sx, sy)
             pygame.draw.rect(screen, (210, 210, 215), frame_rect, width=1)
             for i, box in enumerate(cell["ball_boxes"]):
-                pygame.draw.rect(screen, (245, 245, 245), box)
-                pygame.draw.rect(screen, (150, 150, 155), box, width=1)
+                adj_box = box.move(sx, sy)
+                pygame.draw.rect(screen, (245, 245, 245), adj_box)
+                pygame.draw.rect(screen, (150, 150, 155), adj_box, width=1)
                 sym = self.score_frames[idx].symbols[i] if i < len(self.score_frames[idx].symbols) else ""
                 if sym:
                     text = row_font.render(sym, True, (30, 30, 35))
                     screen.blit(
                         text,
-                        (box.centerx - text.get_width() // 2, box.centery - text.get_height() // 2),
+                        (
+                            adj_box.centerx - text.get_width() // 2,
+                            adj_box.centery - text.get_height() // 2,
+                        ),
                     )
-            score_rect = cell["score_rect"]
+            score_rect = cell["score_rect"].move(sx, sy)
             total = self.score_frames[idx].total
             if total is not None:
                 score_text = header_font.render(str(total), True, (10, 70, 10))
                 screen.blit(
                     score_text,
-                    (score_rect.centerx - score_text.get_width() // 2, score_rect.centery - score_text.get_height() // 2),
+                    (
+                        score_rect.centerx - score_text.get_width() // 2,
+                        score_rect.centery - score_text.get_height() // 2,
+                    ),
                 )
-        pygame.draw.rect(screen, (255, 255, 255), self.player_rect)
-        pygame.draw.rect(screen, (150, 150, 155), self.player_rect, width=1)
-        initials_text = header_font.render(self.player_initials, True, (30, 30, 35))
+        player_rect = self.player_rect.move(sx, sy)
+        pygame.draw.rect(screen, (255, 255, 255), player_rect)
+        pygame.draw.rect(screen, (150, 150, 155), player_rect, width=1)
+        initials = self.player_initials or ""
+        initials_text = header_font.render(initials, True, (30, 30, 35))
         screen.blit(
             initials_text,
-            (self.player_rect.centerx - initials_text.get_width() // 2, self.player_rect.centery - initials_text.get_height() // 2),
+            (
+                player_rect.centerx - initials_text.get_width() // 2,
+                player_rect.centery - initials_text.get_height() // 2,
+            ),
         )
 
     def _draw_pins(self, screen: pygame.Surface) -> None:
+        sx = self.scroll_x
+        sy = self.scroll_y
         for pin in self.pins:
-            rect = pin.rect
+            rect = pin.rect.move(sx, sy)
             if pin.removed:
                 pygame.draw.rect(screen, (70, 70, 70), rect, width=1, border_radius=8)
                 continue
@@ -938,9 +1108,11 @@ class BowlingSolitaireGameScene(C.Scene):
                 pygame.draw.rect(screen, (255, 200, 60), rect, width=4, border_radius=10)
 
     def _draw_ball_piles(self, screen: pygame.Surface) -> None:
+        sx = self.scroll_x
+        sy = self.scroll_y
         for idx, pile in enumerate(self.ball_piles):
-            face_rect = self.ball_face_rects[idx]
-            stack_rect = self.ball_stack_rects[idx]
+            face_rect = self.ball_face_rects[idx].move(sx, sy)
+            stack_rect = self.ball_stack_rects[idx].move(sx, sy)
             if pile.remaining_hidden() > 0:
                 pygame.draw.rect(screen, (80, 80, 90), stack_rect)
                 count_text = C.FONT_SMALL.render(str(pile.remaining_hidden()), True, (230, 230, 235))
@@ -960,17 +1132,101 @@ class BowlingSolitaireGameScene(C.Scene):
         if self.ball_waste:
             waste_card = self.ball_waste[-1]
             surf = C.get_card_surface(waste_card)
-            screen.blit(surf, (self.waste_rect.left, self.waste_rect.top))
+            waste_rect = self.waste_rect.move(sx, sy)
+            screen.blit(surf, (waste_rect.left, waste_rect.top))
         else:
-            pygame.draw.rect(screen, (160, 160, 165), self.waste_rect, width=2, border_radius=10)
+            waste_rect = self.waste_rect.move(sx, sy)
+            pygame.draw.rect(screen, (160, 160, 165), waste_rect, width=2, border_radius=10)
+
+    def _draw_scrollbars(self, screen: pygame.Surface) -> None:
+        vsb = self._vertical_scrollbar()
+        if vsb is not None:
+            track_rect, knob_rect, *_ = vsb
+            pygame.draw.rect(screen, (45, 45, 50), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (205, 205, 215), knob_rect, border_radius=3)
+        hsb = self._horizontal_scrollbar()
+        if hsb is not None:
+            track_rect, knob_rect, *_ = hsb
+            pygame.draw.rect(screen, (45, 45, 50), track_rect, border_radius=3)
+            pygame.draw.rect(screen, (205, 205, 215), knob_rect, border_radius=3)
 
     def _draw_status(self, screen: pygame.Surface) -> None:
         text = C.FONT_UI.render(self.status_message, True, C.WHITE)
         screen.blit(text, (40, C.SCREEN_H - 60))
 
+    def _draw_initials_prompt(self, screen: pygame.Surface) -> None:
+        overlay = pygame.Surface((C.SCREEN_W, C.SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        screen.blit(overlay, (0, 0))
+
+        panel_rect = self._initials_panel_rect
+        pygame.draw.rect(screen, (245, 245, 250), panel_rect, border_radius=16)
+        pygame.draw.rect(screen, (110, 110, 125), panel_rect, width=2, border_radius=16)
+
+        title = C.FONT_TITLE.render("Enter Player Initials", True, (30, 30, 40))
+        screen.blit(
+            title,
+            (panel_rect.centerx - title.get_width() // 2, panel_rect.top + 28),
+        )
+        subtitle = C.FONT_UI.render("Use 1-3 letters or numbers.", True, (60, 60, 70))
+        screen.blit(
+            subtitle,
+            (panel_rect.centerx - subtitle.get_width() // 2, panel_rect.top + 74),
+        )
+
+        input_rect = self._initials_input_rect
+        pygame.draw.rect(screen, (255, 255, 255), input_rect, border_radius=12)
+        border_color = (255, 220, 120) if self._initials_input_active else (175, 175, 185)
+        pygame.draw.rect(screen, border_color, input_rect, width=3, border_radius=12)
+
+        display = self._pending_initials or "_"
+        text = C.FONT_TITLE.render(display, True, (30, 30, 35))
+        screen.blit(
+            text,
+            (input_rect.centerx - text.get_width() // 2, input_rect.centery - text.get_height() // 2),
+        )
+
+        hint = C.FONT_SMALL.render("Press Enter or click Confirm when ready.", True, (90, 90, 100))
+        screen.blit(
+            hint,
+            (panel_rect.centerx - hint.get_width() // 2, input_rect.bottom + 8),
+        )
+
+        self._initials_accept_button.draw(screen)
+
+    def _handle_initials_event(self, event: pygame.event.Event) -> None:
+        self._initials_accept_button.handle_event(event)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._initials_input_rect.collidepoint(event.pos):
+                self._initials_input_active = True
+            else:
+                self._initials_input_active = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_BACKSPACE:
+                self._pending_initials = self._pending_initials[:-1]
+            elif event.key == pygame.K_RETURN:
+                if self._pending_initials:
+                    self._commit_initials()
+            else:
+                char = event.unicode.upper()
+                if char.isalnum() and len(self._pending_initials) < 3:
+                    self._pending_initials += char
+
+    def _commit_initials(self) -> None:
+        initials = (self._pending_initials or "").strip().upper()
+        if not initials:
+            return
+        self.player_initials = initials[:3]
+        self._pending_initials = self.player_initials
+        self._initials_prompt_visible = False
+        self._initials_input_active = False
+
     # ---------------------------------------------------------------- events
 
     def handle_event(self, event: pygame.event.Event) -> None:
+        if self._initials_prompt_visible:
+            self._handle_initials_event(event)
+            return
         if self.help.visible:
             if self.help.handle_event(event):
                 return
@@ -980,17 +1236,21 @@ class BowlingSolitaireGameScene(C.Scene):
             return
         if self.ui_helper.handle_shortcuts(event):
             return
+        if self._handle_scroll_event(event):
+            return
         for btn in self.ball_action_buttons:
             if btn.handle_event(event):
                 return
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
+            offset_x = self.scroll_x
+            offset_y = self.scroll_y
             for idx, rect in enumerate(self.ball_face_rects):
-                if rect.collidepoint(pos):
+                if rect.move(offset_x, offset_y).collidepoint(pos):
                     self._handle_ball_click(idx)
                     return
             for pin in self.pins:
-                if not pin.removed and pin.rect.collidepoint(pos):
+                if not pin.removed and pin.rect.move(offset_x, offset_y).collidepoint(pos):
                     self._handle_pin_click(pin.index)
                     return
         elif event.type == pygame.KEYDOWN:
@@ -998,6 +1258,67 @@ class BowlingSolitaireGameScene(C.Scene):
                 self.apply_selection()
             elif event.key == pygame.K_BACKSPACE:
                 self.clear_selection()
+
+    def _handle_scroll_event(self, event: pygame.event.Event) -> bool:
+        if event.type == pygame.MOUSEWHEEL:
+            self.scroll_y += event.y * 60
+            try:
+                self.scroll_x += event.x * 60
+            except Exception:
+                pass
+            self._clamp_scroll()
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            vsb = self._vertical_scrollbar()
+            if vsb is not None:
+                track_rect, knob_rect, min_sy, max_sy, track_y, track_h, knob_h = vsb
+                if knob_rect.collidepoint(event.pos):
+                    self._drag_vscroll = True
+                    self._vscroll_geom = (min_sy, max_sy, track_y, track_h, knob_h)
+                    self._vscroll_drag_offset = event.pos[1] - knob_rect.y
+                    return True
+                if track_rect.collidepoint(event.pos):
+                    y = min(max(event.pos[1] - knob_h // 2, track_y), track_y + track_h - knob_h)
+                    t_knob = (y - track_y) / max(1, (track_h - knob_h))
+                    self.scroll_y = min_sy + (1.0 - t_knob) * (max_sy - min_sy)
+                    self._clamp_scroll()
+                    return True
+            hsb = self._horizontal_scrollbar()
+            if hsb is not None:
+                track_rect, knob_rect, min_sx, max_sx, track_x, track_w, knob_w = hsb
+                if knob_rect.collidepoint(event.pos):
+                    self._drag_hscroll = True
+                    self._hscroll_geom = (min_sx, max_sx, track_x, track_w, knob_w)
+                    self._hscroll_drag_offset = event.pos[0] - knob_rect.x
+                    return True
+                if track_rect.collidepoint(event.pos):
+                    x = min(max(event.pos[0] - knob_w // 2, track_x), track_x + track_w - knob_w)
+                    t_knob = (x - track_x) / max(1, (track_w - knob_w))
+                    self.scroll_x = min_sx + t_knob * (max_sx - min_sx)
+                    self._clamp_scroll()
+                    return True
+        if event.type == pygame.MOUSEMOTION and self._drag_vscroll and self._vscroll_geom is not None:
+            min_sy, max_sy, track_y, track_h, knob_h = self._vscroll_geom
+            y = min(max(event.pos[1] - self._vscroll_drag_offset, track_y), track_y + track_h - knob_h)
+            t_knob = (y - track_y) / max(1, (track_h - knob_h))
+            self.scroll_y = min_sy + (1.0 - t_knob) * (max_sy - min_sy)
+            self._clamp_scroll()
+            return True
+        if event.type == pygame.MOUSEMOTION and self._drag_hscroll and self._hscroll_geom is not None:
+            min_sx, max_sx, track_x, track_w, knob_w = self._hscroll_geom
+            x = min(max(event.pos[0] - self._hscroll_drag_offset, track_x), track_x + track_w - knob_w)
+            t_knob = (x - track_x) / max(1, (track_w - knob_w))
+            self.scroll_x = min_sx + t_knob * (max_sx - min_sx)
+            self._clamp_scroll()
+            return True
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._drag_vscroll or self._drag_hscroll:
+                self._drag_vscroll = False
+                self._drag_hscroll = False
+                self._vscroll_geom = None
+                self._hscroll_geom = None
+                return True
+        return False
 
     def _handle_ball_click(self, index: int) -> None:
         if self.game_completed:
