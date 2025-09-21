@@ -4,7 +4,8 @@ import pygame
 import os
 from typing import List, Optional, Tuple
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.help_data import create_modal_help
 
 # Helper value rules
 def card_value(card: C.Card) -> int:
@@ -94,28 +95,22 @@ class PyramidGameScene(C.Scene):
         self.undo_mgr = C.UndoManager()
 
         # Toolbar (right-aligned)
-        def _goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="pyramid", return_to_options=False)
 
         def _can_undo():
             return self.undo_mgr.can_undo()
 
-        _actions = {
-            "Menu":    {"on_click": _goto_menu},
-            "New":     {"on_click": self.new_game},
-            "Restart": {"on_click": self.restart_deal, "tooltip": "Restart current deal"},
-            "Undo":    {"on_click": lambda: self.undo(), "enabled": _can_undo, "tooltip": "Undo last move"},
-            "Hint":    {"on_click": lambda: self.show_hint(), "enabled": self.any_moves_available, "tooltip": "Highlight a possible move"},
-            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-        self.toolbar = make_toolbar(
-            _actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.new_game},
+            restart_action={"on_click": self.restart_deal, "tooltip": "Restart current deal"},
+            undo_action={"on_click": lambda: self.undo(), "enabled": _can_undo, "tooltip": "Undo last move"},
+            hint_action={
+                "on_click": lambda: self.show_hint(),
+                "enabled": self.any_moves_available,
+                "tooltip": "Highlight a possible move",
+                "shortcut": pygame.K_h,
+            },
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         # UI buttons
@@ -142,19 +137,7 @@ class PyramidGameScene(C.Scene):
         self.push_undo()
 
         # Help overlay
-        self.help = ModalHelp(
-            "Pyramid — How to Play",
-            [
-                "Goal: Remove all cards by making pairs that sum to 13.",
-                "Kings (13) remove by themselves.",
-                "Only uncovered (exposed) cards can be paired.",
-                "Use the two waste piles under the stock; pair with wastes when possible.",
-                "Stock: Click to deal to waste. Resets allowed depend on difficulty:",
-                "Easy=unlimited, Normal=2, Hard=1.",
-                "Use Hint to highlight a possible pair. Undo/Restart available.",
-                "Press H to close this help.",
-            ],
-        )
+        self.help = create_modal_help("pyramid")
 
     # ---------- Scrolling helpers ----------
     def _content_bottom_y(self) -> int:
@@ -536,6 +519,8 @@ class PyramidGameScene(C.Scene):
         # Toolbar first
         if self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
 
         # Mouse wheel -> scroll (vertical + horizontal if available)
         if e.type == pygame.MOUSEWHEEL:
@@ -601,14 +586,8 @@ class PyramidGameScene(C.Scene):
                 self._clamp_scroll()
                 return
 
-        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
-            return
-        elif e.type == pygame.KEYDOWN and e.key == pygame.K_u:
-            self.undo(); return
-        elif e.type == pygame.KEYDOWN and e.key == pygame.K_h:
-            self.show_hint(); return
+        if e.type == pygame.KEYDOWN:
+            self.ui_helper.handle_shortcuts(e)
 
         # Middle button drag to pan
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 2:

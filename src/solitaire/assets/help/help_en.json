@@ -1,0 +1,120 @@
+{
+  "big_ben": {
+    "title": "Big Ben - How to Play",
+    "lines": [
+      "Goal: Build each foundation to its clock value using cards of the same suit.",
+      "Setup: One copy of the highlighted cards forms the twelve foundations arranged like a clock (starting at the 9 o'clock position).",
+      "Tableau: Each foundation has an outward fan of up to three face-up cards. The outermost card of a fan is the only card that may move.",
+      "Tableau moves: Move a fan's top card onto another fan when it is exactly one rank lower (wrapping K->A) and the same suit.",
+      "Foundations: Build upward by suit from the starting card, wrapping K->A, until the foundation's clock rank is on top. Waste cards may also be played here.",
+      "Stock: Click the stock to refill every fan with fewer than three cards (starting at 12 o'clock clockwise). If no fan needs cards, the click moves the top stock card to the waste face-up.",
+      "Waste: Its top card can only be played to foundations. It never refills tableau fans.",
+      "End: Win when all foundations reach their clock rank. Lose when the stock is empty and there are no legal moves left.",
+      "Toolbar: Menu (return to Big Ben menu), New deal, Restart, Undo, Help, Save&Exit."
+    ],
+    "max_width": 880
+  },
+  "beleaguered_castle": {
+    "title": "Beleaguered Castle - How to Play",
+    "lines": [
+      "Goal: Build each foundation from Ace to King in the same suit.",
+      "Setup: All four aces start on the central foundations. The remaining 48 cards are dealt face-up into eight rows of six cards that flank each foundation (left and right).",
+      "Moves: You may move only the exposed bottom card of any row. Place it onto another row when its rank is exactly one less than the target card, regardless of suit. Empty rows may be filled by any single card.",
+      "Foundations: When a top card is the next rank for its suited foundation, double-click it (or drag it) to build upward. Foundations build A->K and cannot move back to the tableau.",
+      "Controls: Toolbar buttons provide New Deal, Restart, Undo, Auto-complete, Help, Save & Exit, and return to the menu. Auto-complete becomes available when every tableau row is already in perfect descending order."
+    ],
+    "max_width": 860
+  },
+  "freecell": {
+    "title": "FreeCell — How to Play",
+    "lines": [
+      "Goal: Build up four foundations A→K by suit.",
+      "Tableau: Build down by rank with alternating colors.",
+      "Empty column accepts any card or a valid descending run.",
+      "Free cells: Four cells each hold one card to help maneuver.",
+      "You can drag runs; movable length depends on empty cells and columns.",
+      "Double-click a safe top card to move to a foundation.",
+      "Use Auto to move obvious cards to foundations. Undo/Restart available.",
+      "Press H to close this help."
+    ]
+  },
+  "gate": {
+    "title": "Gate — How to Play",
+    "lines": [
+      "Goal: Build four foundations A→K by suit.",
+      "Layout: 8 center tableau piles (2×4) build down with alternating colors.",
+      "Reserves: Two side reserves start with 5 face-up cards; you cannot place onto reserves.",
+      "You may move a reserve top card to a center pile or to its foundation.",
+      "Stock/Waste: Click stock to draw 1 to waste (no redeals).",
+      "When a center pile is emptied it auto-fills from Stock, else from Waste.",
+      "If both are empty it stays empty; you may fill it from a reserve.",
+      "Double-click eligible tops to foundations. Auto-finish available.",
+      "Press H/Esc to close this help."
+    ]
+  },
+  "golf": {
+    "title": "Golf — How to Play",
+    "lines": [
+      "Goal: Clear tableau piles across 1/3/9/18 holes for a low total score.",
+      "Play: Move the top card of any tableau pile to the foundation",
+      "if it is one rank higher or lower than the foundation top (suit doesn't matter).",
+      "Wrap A↔K is controlled by the Around-the-Corner option on the options screen.",
+      "Stock: Flip one to the foundation to start, and when stuck. No redeals.",
+      "Scoring: If tableau is cleared, score = -remaining stock; else = remaining tableau count.",
+      "Save&Exit lets you continue later; recent totals shown in Scores.",
+      "Undo/Restart available from the toolbar. Press Esc/Close to dismiss help."
+    ]
+  },
+  "klondike": {
+    "title": "Klondike — How to Play",
+    "lines": [
+      "Goal: Build up four foundations A→K by suit.",
+      "Tableau: Build down by rank with alternating colors.",
+      "You may drag sequences that follow alternating colors.",
+      "Empty column: Only a King or a stack starting with King.",
+      "Stock/Waste: Click stock to deal 1 or 3 cards depending on Draw setting.",
+      "Redeals depend on Difficulty: Easy=unlimited, Medium=2, Hard=1.",
+      "Double-click a top card to auto-move to a foundation if legal.",
+      "Use Auto to auto-finish when eligible. Undo/Restart from toolbar.",
+      "Press H to close this help."
+    ]
+  },
+  "pyramid": {
+    "title": "Pyramid — How to Play",
+    "lines": [
+      "Goal: Remove all cards by making pairs that sum to 13.",
+      "Kings (13) remove by themselves.",
+      "Only uncovered (exposed) cards can be paired.",
+      "Use the two waste piles under the stock; pair with wastes when possible.",
+      "Stock: Click to deal to waste. Resets allowed depend on difficulty:",
+      "Easy=unlimited, Normal=2, Hard=1.",
+      "Use Hint to highlight a possible pair. Undo/Restart available.",
+      "Press H to close this help."
+    ]
+  },
+  "tripeaks": {
+    "title": "TriPeaks — How to Play",
+    "lines": [
+      "Goal: Clear all tableau cards.",
+      "Move any exposed card that is one rank higher or lower",
+      "than the waste top (suit does not matter).",
+      "Wrap A↔K is controlled by the Wrap option on the options screen.",
+      "Click stock to deal the next card to waste; no redeals.",
+      "Use Hint to highlight a playable card. Undo/Restart available.",
+      "Press Esc or Close to dismiss this help."
+    ]
+  },
+  "yukon": {
+    "title": "Yukon — How to Play",
+    "lines": [
+      "Goal: Build four foundations A→K by suit.",
+      "Layout: 7 tableau piles with counts 1,6,7,8,9,10,11 (top 5 face-up).",
+      "Move: Drag any face-up substack; it need not be ordered.",
+      "Target: Bottom card must be one rank lower and opposite color than the destination top.",
+      "Empty column: Only Kings (or stacks starting with King).",
+      "Aces auto-move to foundations when exposed. Double-click top to send to foundation.",
+      "Auto completes when all tableau cards are face-up.",
+      "Use Save&Exit to continue later."
+    ]
+  }
+}

@@ -2,7 +2,8 @@ import pygame
 from typing import List, Optional, Tuple
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 
@@ -10,33 +11,7 @@ def is_red(suit: int) -> bool:
     return suit in (1, 2)
 
 
-class GateOptionsScene(C.Scene):
-    def __init__(self, app):
-        super().__init__(app)
-        cx = C.SCREEN_W // 2 - 210
-        y = 300
-        self.b_start = C.Button("Start Gate", cx, y, w=420); y += 70
-        self.b_back = C.Button("Back", cx, y, w=420)
-
-    def handle_event(self, e):
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            mx, my = e.pos
-            if self.b_start.hovered((mx, my)):
-                self.next_scene = GateGameScene(self.app)
-            elif self.b_back.hovered((mx, my)):
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
-        elif e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
-
-    def draw(self, screen):
-        screen.fill(C.TABLE_BG)
-        title = C.FONT_TITLE.render("Gate - Options", True, C.WHITE)
-        screen.blit(title, (C.SCREEN_W // 2 - title.get_width() // 2, 140))
-        mp = pygame.mouse.get_pos()
-        for b in [self.b_start, self.b_back]:
-            b.draw(screen, hover=b.hovered(mp))
+ 
 
 
 class GateGameScene(C.Scene):
@@ -73,48 +48,27 @@ class GateGameScene(C.Scene):
         self.message: str = ""
         self.undo_mgr = C.UndoManager()
 
-        # Toolbar
-        def goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="gate", return_to_options=False)
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-            "Menu":    {"on_click": goto_menu},
-            "New":     {"on_click": self.deal_new},
-            "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
-            "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Auto":    {"on_click": self.start_auto_complete, "enabled": self.can_autocomplete, "tooltip": "Auto-finish to foundations"},
-            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            auto_action={
+                "on_click": self.start_auto_complete,
+                "enabled": self.can_autocomplete,
+                "tooltip": "Auto-finish to foundations",
+            },
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         self.compute_layout()
         self.deal_new()
         # Help overlay
-        self.help = ModalHelp(
-            "Gate — How to Play",
-            [
-                "Goal: Build four foundations A→K by suit.",
-                "Layout: 8 center tableau piles (2×4) build down with alternating colors.",
-                "Reserves: Two side reserves start with 5 face-up cards; you cannot place onto reserves.",
-                "You may move a reserve top card to a center pile or to its foundation.",
-                "Stock/Waste: Click stock to draw 1 to waste (no redeals).",
-                "When a center pile is emptied it auto-fills from Stock, else from Waste.",
-                "If both are empty it stays empty; you may fill it from a reserve.",
-                "Double-click eligible tops to foundations. Auto-finish available.",
-                "Press H/Esc to close this help.",
-            ],
-        )
+        self.help = create_modal_help("gate")
 
         # Double-click tracking (to foundations)
         self._last_click_time = 0
@@ -482,6 +436,8 @@ class GateGameScene(C.Scene):
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
         if self.toolbar.handle_event(e):
+            return
+        if self.ui_helper.handle_shortcuts(e):
             return
 
         # Avoid interactions while auto-fill animation is running

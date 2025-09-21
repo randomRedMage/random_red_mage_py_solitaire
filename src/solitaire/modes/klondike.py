@@ -1,62 +1,11 @@
 # klondike.py - Klondike scenes with flip-on-click, auto-finish, and win message
 import pygame
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 def is_red(suit): return suit in (1,2)
-
-# -----------------------------
-# Options Scene
-# -----------------------------
-class KlondikeOptionsScene(C.Scene):
-    def __init__(self, app):
-        super().__init__(app)
-        self.diff_index = 0  # 0: Easy(∞), 1: Medium(2), 2: Hard(1)
-        self.draw_mode = 3   # 1 or 3
-        cx = C.SCREEN_W//2 - 210
-        y = 260
-        self.b_start = C.Button("Start Klondike", cx, y); y+=60
-        self.b_diff  = C.Button("Difficulty: Easy (Unlimited stock cycles)", cx, y, w=420); y+=60
-        self.b_draw  = C.Button("Draw: 3", cx, y, w=420); y+=60
-        y+=10
-        self.b_back  = C.Button("Back", cx, y)
-
-    def handle_event(self, e):
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            mx,my = e.pos
-            if self.b_start.hovered((mx,my)):
-                self.next_scene = KlondikeGameScene(
-                    self.app,
-                    draw_count=self.draw_mode,
-                    stock_cycles=[None,2,1][self.diff_index]
-                )
-            elif self.b_diff.hovered((mx,my)):
-                self.diff_index = (self.diff_index + 1) % 3
-                txt = ["Easy (Unlimited stock cycles)",
-                       "Medium (2 stock cycles)",
-                       "Hard (1 stock cycle)"][self.diff_index]
-                self.b_diff.text = "Difficulty: " + txt
-            elif self.b_draw.hovered((mx,my)):
-                self.draw_mode = 1 if self.draw_mode == 3 else 3
-                self.b_draw.text = f"Draw: {self.draw_mode}"
-            elif self.b_back.hovered((mx,my)):
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
-        elif e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
-
-    def draw(self, screen):
-        screen.fill(C.TABLE_BG)
-        title = C.FONT_TITLE.render("Klondike – Options", True, C.WHITE)
-        # Override garbled title with a clean one
-        title = C.FONT_TITLE.render("Klondike - Options", True, C.WHITE)
-        screen.blit(title, (C.SCREEN_W//2 - title.get_width()//2, 120))
-        mp = pygame.mouse.get_pos()
-        for b in [self.b_start, self.b_diff, self.b_draw, self.b_back]:
-            b.draw(screen, hover=b.hovered(mp))
 
 # -----------------------------
 # Game Scene
@@ -86,33 +35,21 @@ class KlondikeGameScene(C.Scene):
         self.message = ""
         self.drag_stack = None
 
-        # Toolbar actions
-        def goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="klondike", return_to_options=False)
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-                "Menu":    {"on_click": goto_menu},
-                "New":     {"on_click": self.deal_new},
-                "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
-                "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-                "Auto":    {"on_click": self.start_auto_finish,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            auto_action={
+                "on_click": self.start_auto_finish,
                 "enabled": self.can_autofinish,
-                "tooltip": "Auto-finish to foundations"},
-                "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-
-# NEW: align='right', tell toolbar how wide the screen is, and set top-bar margins
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),                # (right/left pad when right-aligned, top pad)
-            gap=8,
-            align="right",                 # <-- key bit
-            width_provider=lambda: C.SCREEN_W
+                "tooltip": "Auto-finish to foundations",
+            },
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         # Auto-finish timing state
@@ -126,20 +63,7 @@ class KlondikeGameScene(C.Scene):
         # Hover peek for face-up cards within a pile
 
         # Help overlay
-        self.help = ModalHelp(
-            "Klondike — How to Play",
-            [
-                "Goal: Build up four foundations A→K by suit.",
-                "Tableau: Build down by rank with alternating colors.",
-                "You may drag sequences that follow alternating colors.",
-                "Empty column: Only a King or a stack starting with King.",
-                "Stock/Waste: Click stock to deal 1 or 3 cards depending on Draw setting.",
-                "Redeals depend on Difficulty: Easy=unlimited, Medium=2, Hard=1.",
-                "Double-click a top card to auto-move to a foundation if legal.",
-                "Use Auto to auto-finish when eligible. Undo/Restart from toolbar.",
-                "Press H to close this help.",
-            ],
-        )
+        self.help = create_modal_help("klondike")
         # Klondike-style delayed single-card peek (shared across modes)
         self.peek = M.PeekController(delay_ms=2000)
         # Central edge-panning controller for drag-to-edge auto-scroll
@@ -459,6 +383,8 @@ class KlondikeGameScene(C.Scene):
                 return
         if self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
 
         # Mouse wheel scrolling (supports trackpads: e.x horizontal, e.y vertical)
         if e.type == pygame.MOUSEWHEEL:
@@ -616,17 +542,6 @@ class KlondikeGameScene(C.Scene):
             if origin == "waste": self.waste_pile.cards.extend(stack)
             elif origin == "foundation": self.foundations[idx].cards.extend(stack)
             elif origin == "tableau": self.tableau[idx].cards.extend(stack)
-
-        elif e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_r: self.restart()
-            elif e.key == pygame.K_n: self.deal_new()
-            elif e.key == pygame.K_u: self.undo()
-            elif e.key == pygame.K_a:
-                if self.can_autofinish():
-                    self.start_auto_finish()
-            elif e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
 
     # ---------- Drawing ----------
     def draw(self, screen):

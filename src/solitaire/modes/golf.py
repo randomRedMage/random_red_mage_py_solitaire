@@ -5,7 +5,8 @@ import pygame
 from typing import List, Optional, Tuple, Dict, Any
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.help_data import create_modal_help
 
 
 def _golf_dir() -> str:
@@ -158,11 +159,7 @@ class GolfGameScene(C.Scene):
         # Restart snapshot for the current hole
         self._initial_snapshot = None
 
-        # Toolbar
-        def goto_menu():
-            # Return without saving (discard progress)
-            from solitaire.modes.golf import GolfOptionsScene
-            self.next_scene = GolfOptionsScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="golf")
 
         def can_undo():
             return self.undo_mgr.can_undo()
@@ -170,21 +167,12 @@ class GolfGameScene(C.Scene):
         def save_and_exit():
             self._save_game(to_menu=True)
 
-        actions = {
-            "Menu":    {"on_click": goto_menu},
-            "New":     {"on_click": self._new_game_reset},
-            "Restart": {"on_click": self.restart_hole, "tooltip": "Restart current hole"},
-            "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Save&Exit": {"on_click": save_and_exit, "tooltip": "Save game and exit to menu"},
-            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self._new_game_reset},
+            restart_action={"on_click": self.restart_hole, "tooltip": "Restart current hole"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
+            save_action=("Save&Exit", {"on_click": save_and_exit, "tooltip": "Save game and exit to menu"}),
         )
 
         self.compute_layout()
@@ -195,19 +183,7 @@ class GolfGameScene(C.Scene):
             self.deal_new_hole()
 
         # Help overlay
-        self.help = ModalHelp(
-            "Golf — How to Play",
-            [
-                "Goal: Clear tableau piles across 1/3/9/18 holes for a low total score.",
-                "Play: Move the top card of any tableau pile to the foundation",
-                "if it is one rank higher or lower than the foundation top (suit doesn't matter).",
-                "Wrap A↔K is controlled by the Around-the-Corner option on the options screen.",
-                "Stock: Flip one to the foundation to start, and when stuck. No redeals.",
-                "Scoring: If tableau is cleared, score = -remaining stock; else = remaining tableau count.",
-                "Save&Exit lets you continue later; recent totals shown in Scores.",
-                "Undo/Restart available from the toolbar. Press Esc/Close to dismiss help.",
-            ],
-        )
+        self.help = create_modal_help("golf")
 
         # Lazy-load golf placeholder image
         self._golf_img_raw: Optional[pygame.Surface] = None
@@ -356,7 +332,7 @@ class GolfGameScene(C.Scene):
         state = self._game_state()
         _safe_write_json(_golf_save_path(), state)
         if to_menu:
-            from solitaire.modes.golf import GolfOptionsScene
+            from solitaire.scenes.game_options.golf_options import GolfOptionsScene
             self.next_scene = GolfOptionsScene(self.app)
 
     def _load_from_state(self, state: Dict[str, Any]):
@@ -546,6 +522,8 @@ class GolfGameScene(C.Scene):
                 return
         if self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
         # Scroll wheel for content
         if e.type == pygame.MOUSEWHEEL:
             # Keep vertical: up => content down (positive scroll_y)
@@ -590,11 +568,8 @@ class GolfGameScene(C.Scene):
                 t = max(0.0, min(1.0, t))
                 self.scroll_x = min_sx + t * (max_sx - min_sx)
                 self._clamp_scroll()
-        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            # ESC = back to options (no save)
-            from solitaire.modes.golf import GolfOptionsScene
-            self.next_scene = GolfOptionsScene(self.app)
-            return
+        if e.type == pygame.KEYDOWN:
+            self.ui_helper.handle_shortcuts(e)
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
@@ -627,7 +602,7 @@ class GolfGameScene(C.Scene):
                 self._advance_to_next_hole()
                 return
             if self._is_game_complete() and self._finish_button_rect().collidepoint((mx, my)):
-                from solitaire.modes.golf import GolfOptionsScene
+                from solitaire.scenes.game_options.golf_options import GolfOptionsScene
                 self.next_scene = GolfOptionsScene(self.app)
                 return
 
@@ -879,10 +854,10 @@ class GolfScoresScene(C.Scene):
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
             if self.b_back.hovered((mx, my)):
-                from solitaire.modes.golf import GolfOptionsScene
+                from solitaire.scenes.game_options.golf_options import GolfOptionsScene
                 self.next_scene = GolfOptionsScene(self.app)
         elif e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.modes.golf import GolfOptionsScene
+            from solitaire.scenes.game_options.golf_options import GolfOptionsScene
             self.next_scene = GolfOptionsScene(self.app)
 
     def draw(self, screen):

@@ -2,7 +2,8 @@
 import pygame
 from typing import List, Optional, Tuple
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 
@@ -10,34 +11,7 @@ def is_red(suit: int) -> bool:
     return suit in (1, 2)
 
 
-class FreeCellOptionsScene(C.Scene):
-    def __init__(self, app):
-        super().__init__(app)
-        cx = C.SCREEN_W // 2 - 210
-        y = 300
-        # Use width 420 to center like other option screens
-        self.b_start = C.Button("Start FreeCell", cx, y, w=420); y += 70
-        self.b_back = C.Button("Back", cx, y, w=420)
-
-    def handle_event(self, e):
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            mx, my = e.pos
-            if self.b_start.hovered((mx, my)):
-                self.next_scene = FreeCellGameScene(self.app)
-            elif self.b_back.hovered((mx, my)):
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
-        elif e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
-
-    def draw(self, screen):
-        screen.fill(C.TABLE_BG)
-        title = C.FONT_TITLE.render("FreeCell - Options", True, C.WHITE)
-        screen.blit(title, (C.SCREEN_W // 2 - title.get_width() // 2, 140))
-        mp = pygame.mouse.get_pos()
-        for b in [self.b_start, self.b_back]:
-            b.draw(screen, hover=b.hovered(mp))
+ 
 
 
 class FreeCellGameScene(C.Scene):
@@ -67,29 +41,17 @@ class FreeCellGameScene(C.Scene):
         # Undo manager
         self.undo_mgr = C.UndoManager()
 
-        # Toolbar
-        def goto_menu():
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+        self.ui_helper = ModeUIHelper(self, game_id="freecell", return_to_options=False)
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-            "Menu":    {"on_click": goto_menu},
-            "New":     {"on_click": self.deal_new},
-            "Restart": {"on_click": self.restart, "tooltip": "Restart current deal"},
-            "Undo":    {"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Auto":    {"on_click": self.auto_to_foundations, "tooltip": "Auto-move available cards to foundations"},
-            "Help":    {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            auto_action={"on_click": self.auto_to_foundations, "tooltip": "Auto-move available cards to foundations"},
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         self.message = ""
@@ -100,19 +62,7 @@ class FreeCellGameScene(C.Scene):
         self._last_click_pos = (0, 0)
 
         # Help overlay
-        self.help = ModalHelp(
-            "FreeCell — How to Play",
-            [
-                "Goal: Build up four foundations A→K by suit.",
-                "Tableau: Build down by rank with alternating colors.",
-                "Empty column accepts any card or a valid descending run.",
-                "Free cells: Four cells each hold one card to help maneuver.",
-                "You can drag runs; movable length depends on empty cells and columns.",
-                "Double-click a safe top card to move to a foundation.",
-                "Use Auto to move obvious cards to foundations. Undo/Restart available.",
-                "Press H to close this help.",
-            ],
-        )
+        self.help = create_modal_help("freecell")
         # Edge panning while dragging near screen edges
         self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
 
@@ -357,6 +307,8 @@ class FreeCellGameScene(C.Scene):
                 return
         if self.toolbar.handle_event(e):
             return
+        if self.ui_helper.handle_shortcuts(e):
+            return
 
         if e.type == pygame.MOUSEWHEEL:
             self.scroll_y += e.y * 60
@@ -499,17 +451,7 @@ class FreeCellGameScene(C.Scene):
             return
 
         if e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_r:
-                self.restart()
-            elif e.key == pygame.K_n:
-                self.deal_new()
-            elif e.key == pygame.K_u:
-                self.undo()
-            elif e.key == pygame.K_a:
-                self.auto_to_foundations()
-            elif e.key == pygame.K_ESCAPE:
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
+            self.ui_helper.handle_shortcuts(e)
 
     # ----- Scroll helpers -----
     def _content_bottom_y(self) -> int:

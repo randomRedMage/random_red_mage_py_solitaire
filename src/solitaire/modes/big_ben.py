@@ -7,7 +7,8 @@ from typing import List, Optional, Tuple
 import pygame
 
 from solitaire import common as C
-from solitaire.ui import make_toolbar, DEFAULT_BUTTON_HEIGHT, ModalHelp
+from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
 
 
@@ -73,51 +74,7 @@ def _prev_rank(rank: int) -> int:
     return 13 if rank == 1 else rank - 1
 
 
-class BigBenOptionsScene(C.Scene):
-    def __init__(self, app):
-        super().__init__(app)
-        cx = C.SCREEN_W // 2 - 220
-        y = 260
-        self.b_start = C.Button("Start Big Ben", cx, y, w=440)
-        y += 60
-        self.b_resume = C.Button("Continue Saved Game", cx, y, w=440)
-        y += 60
-        y += 10
-        self.b_back = C.Button("Back", cx, y, w=440)
-
-    def _has_save(self) -> bool:
-        state = _safe_read_json(_bb_save_path())
-        return bool(state) and not state.get("completed", False)
-
-    def handle_event(self, e):
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            mx, my = e.pos
-            if self.b_start.hovered((mx, my)):
-                _clear_saved_game()
-                self.next_scene = BigBenGameScene(self.app, load_state=None)
-            elif self.b_resume.hovered((mx, my)) and self._has_save():
-                state = _safe_read_json(_bb_save_path())
-                if state:
-                    self.next_scene = BigBenGameScene(self.app, load_state=state)
-            elif self.b_back.hovered((mx, my)):
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
-        elif e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
-
-    def draw(self, screen):
-        screen.fill(C.TABLE_BG)
-        title = C.FONT_TITLE.render("Big Ben - Options", True, C.WHITE)
-        screen.blit(title, (C.SCREEN_W // 2 - title.get_width() // 2, 130))
-        mp = pygame.mouse.get_pos()
-        has_save = self._has_save()
-        resume_label = self.b_resume.text
-        if not has_save:
-            self.b_resume.text = "Continue Saved Game (None)"
-        for btn in (self.b_start, self.b_resume, self.b_back):
-            btn.draw(screen, hover=btn.hovered(mp))
-        self.b_resume.text = resume_label
+ 
 
 
 class BigBenGameScene(C.Scene):
@@ -156,54 +113,24 @@ class BigBenGameScene(C.Scene):
         self._hscroll_drag_offset = 0
         self._card_diag = int(math.ceil(math.hypot(C.CARD_W, C.CARD_H)))
 
-        def goto_menu():
-            from solitaire.modes.big_ben import BigBenOptionsScene
-            self.next_scene = BigBenOptionsScene(self.app)
-
-        def do_new():
-            self.deal_new()
-
-        def do_restart():
-            self.restart()
-
-        def do_undo():
-            self.undo()
+        self.ui_helper = ModeUIHelper(self, game_id="big_ben")
 
         def can_undo():
             return self.undo_mgr.can_undo()
 
-        actions = {
-            "Menu": {"on_click": goto_menu, "tooltip": "Return to Big Ben menu"},
-            "New": {"on_click": do_new},
-            "Restart": {"on_click": do_restart, "tooltip": "Restart current deal"},
-            "Undo": {"on_click": do_undo, "enabled": can_undo, "tooltip": "Undo last move"},
-            "Help": {"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-            "Save&Exit": {"on_click": lambda: self._save_game(to_main=True), "tooltip": "Save game and return to main menu"},
-        }
-        self.toolbar = make_toolbar(
-            actions,
-            height=DEFAULT_BUTTON_HEIGHT,
-            margin=(10, 8),
-            gap=8,
-            align="right",
-            width_provider=lambda: C.SCREEN_W,
+        self.toolbar = self.ui_helper.build_toolbar(
+            new_action={"on_click": self.deal_new},
+            restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
+            undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
+            help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
+            save_action=(
+                "Save&Exit",
+                {"on_click": lambda: self._save_game(to_main=True), "tooltip": "Save game and return to main menu"},
+            ),
+            menu_tooltip="Return to Big Ben menu",
         )
 
-        self.help = ModalHelp(
-            "Big Ben - How to Play",
-            [
-                "Goal: Build each foundation to its clock value using cards of the same suit.",
-                "Setup: One copy of the highlighted cards forms the twelve foundations arranged like a clock (starting at the 9 o'clock position).",
-                "Tableau: Each foundation has an outward fan of up to three face-up cards. The outermost card of a fan is the only card that may move.",
-                "Tableau moves: Move a fan's top card onto another fan when it is exactly one rank lower (wrapping K->A) and the same suit.",
-                "Foundations: Build upward by suit from the starting card, wrapping K->A, until the foundation's clock rank is on top. Waste cards may also be played here.",
-                "Stock: Click the stock to refill every fan with fewer than three cards (starting at 12 o'clock clockwise). If no fan needs cards, the click moves the top stock card to the waste face-up.",
-                "Waste: Its top card can only be played to foundations. It never refills tableau fans.",
-                "End: Win when all foundations reach their clock rank. Lose when the stock is empty and there are no legal moves left.",
-                "Toolbar: Menu (return to Big Ben menu), New deal, Restart, Undo, Help, Save&Exit.",
-            ],
-            max_width=880,
-        )
+        self.help = create_modal_help("big_ben")
         self.peek = M.PeekController(delay_ms=500)
         # Central edge-panning controller (for drag-to-edge auto-scroll)
         self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 60))
@@ -733,6 +660,9 @@ class BigBenGameScene(C.Scene):
         if self.toolbar.handle_event(e):
             self.peek.cancel()
             return
+        if self.ui_helper.handle_shortcuts(e):
+            self.peek.cancel()
+            return
 
         if e.type == pygame.MOUSEWHEEL:
             self.scroll_y += e.y * 60
@@ -746,9 +676,7 @@ class BigBenGameScene(C.Scene):
 
         if e.type == pygame.KEYDOWN:
             self.peek.cancel()
-            if e.key == pygame.K_ESCAPE:
-                from solitaire.modes.big_ben import BigBenOptionsScene
-                self.next_scene = BigBenOptionsScene(self.app)
+            self.ui_helper.handle_shortcuts(e)
             return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
