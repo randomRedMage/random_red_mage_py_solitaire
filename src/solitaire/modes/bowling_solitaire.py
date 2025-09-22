@@ -297,6 +297,7 @@ class BowlingSolitaireGameScene(C.Scene):
         self._score_frame_width: int = 0
         self._score_tenth_width: int = 0
         self._score_row_height: int = 0
+        self._score_label_height: int = 0
         self._score_col_gap: int = 0
         self._score_row_gap: int = 0
         self.score_cells: List[Dict[str, Any]] = []
@@ -316,18 +317,20 @@ class BowlingSolitaireGameScene(C.Scene):
         top_margin = getattr(C, "TOP_BAR_H", 60) + 20
         left_margin = 40
         right_margin = 40
-        scoreboard_gap_left = 40
+        scoreboard_gap_left = 20
 
         frame_width = max(70, int(C.CARD_W * 0.7))
         tenth_width = max(frame_width + 30, int(frame_width * 1.5))
         row_height = max(70, int(C.CARD_H * 0.5))
+        label_height = max(20, int(row_height * 0.3))
         col_gap = 12
         row_gap = 18
 
         top_row_width = frame_width * 5 + col_gap * 4
         bottom_row_width = frame_width * 4 + tenth_width + col_gap * 4
         scoreboard_width = max(top_row_width, bottom_row_width)
-        scoreboard_height = row_height * 2 + row_gap
+        row_total_height = row_height + label_height
+        scoreboard_height = row_total_height * 2 + row_gap
 
         scoreboard_left = C.SCREEN_W - right_margin - scoreboard_width
         scoreboard_top = top_margin
@@ -340,6 +343,7 @@ class BowlingSolitaireGameScene(C.Scene):
         self._score_frame_width = frame_width
         self._score_tenth_width = tenth_width
         self._score_row_height = row_height
+        self._score_label_height = label_height
         self._score_col_gap = col_gap
         self._score_row_gap = row_gap
         self._layout_scoreboard()
@@ -372,6 +376,10 @@ class BowlingSolitaireGameScene(C.Scene):
         max_face_x = leftmost_pin - C.CARD_W - 12
         column_face_x = min(desired_face_x, max_face_x)
         column_face_x = max(20, column_face_x)
+        min_face_x = 20 + self._action_button_size + 12
+        if max_face_x >= min_face_x:
+            column_face_x = max(column_face_x, min_face_x)
+        column_face_x = min(column_face_x, max_face_x)
 
         self.ball_face_rects = []
         for i in range(3):
@@ -395,6 +403,7 @@ class BowlingSolitaireGameScene(C.Scene):
     def _layout_scoreboard(self) -> None:
         rect = self.scoreboard_rect
         row_h = self._score_row_height
+        label_h = self._score_label_height
         top_h = row_h // 2
         col_gap = self._score_col_gap
         row_gap = self._score_row_gap
@@ -404,7 +413,8 @@ class BowlingSolitaireGameScene(C.Scene):
         self.score_cells = []
         for frame_index in range(10):
             row = 0 if frame_index < 5 else 1
-            row_y = rect.top + row * (row_h + row_gap)
+            row_total = row_h + label_h
+            row_y = rect.top + row * (row_total + row_gap)
             if frame_index == 0:
                 row_x = rect.left
             elif frame_index == 5:
@@ -413,9 +423,11 @@ class BowlingSolitaireGameScene(C.Scene):
                 row_x = self.score_cells[frame_index - 1]["frame_rect"].right + col_gap
 
             width = tenth_w if frame_index == 9 else frame_w
-            frame_rect = pygame.Rect(row_x, row_y, width, row_h)
-            top_rect = pygame.Rect(row_x, row_y, width, top_h)
-            bottom_rect = pygame.Rect(row_x, row_y + top_h, width, row_h - top_h)
+            frame_rect = pygame.Rect(row_x, row_y, width, row_total)
+            label_rect = pygame.Rect(row_x, row_y, width, label_h)
+            ball_top = row_y + label_h
+            top_rect = pygame.Rect(row_x, ball_top, width, top_h)
+            bottom_rect = pygame.Rect(row_x, ball_top + top_h, width, row_h - top_h)
 
             boxes = 3 if frame_index == 9 else 2
             base_box_w = width // boxes
@@ -425,16 +437,16 @@ class BowlingSolitaireGameScene(C.Scene):
             for box_index in range(boxes):
                 extra = 1 if box_index < remainder else 0
                 bw = base_box_w + extra
-                ball_boxes.append(pygame.Rect(box_x, row_y, bw, top_h))
+                ball_boxes.append(pygame.Rect(box_x, ball_top, bw, top_h))
                 box_x += bw
 
             self.score_cells.append(
                 {
                     "frame_rect": frame_rect,
+                    "label_rect": label_rect,
                     "top_rect": top_rect,
                     "score_rect": bottom_rect,
                     "ball_boxes": ball_boxes,
-                    "label_pos": (frame_rect.left + 6, frame_rect.top + 4),
                 }
             )
 
@@ -1195,10 +1207,18 @@ class BowlingSolitaireGameScene(C.Scene):
 
         for idx, cell in enumerate(self.score_cells):
             frame_rect = cell["frame_rect"].move(sx, sy)
+            label_rect = cell["label_rect"].move(sx, sy)
             top_rect = cell["top_rect"].move(sx, sy)
             score_rect = cell["score_rect"].move(sx, sy)
 
             pygame.draw.rect(screen, line_color, frame_rect, width=2, border_radius=8)
+            pygame.draw.line(
+                screen,
+                line_color,
+                (label_rect.left, label_rect.bottom),
+                (label_rect.right, label_rect.bottom),
+                width=2,
+            )
             pygame.draw.line(
                 screen,
                 line_color,
@@ -1217,9 +1237,14 @@ class BowlingSolitaireGameScene(C.Scene):
                     width=2,
                 )
 
-            label_pos = cell["label_pos"]
             label_text = frame_font.render(str(idx + 1), True, text_color)
-            screen.blit(label_text, (label_pos[0] + sx, label_pos[1] + sy))
+            screen.blit(
+                label_text,
+                (
+                    label_rect.centerx - label_text.get_width() // 2,
+                    label_rect.centery - label_text.get_height() // 2,
+                ),
+            )
 
             symbols = self.score_frames[idx].symbols
             for i, box in enumerate(cell["ball_boxes"]):
