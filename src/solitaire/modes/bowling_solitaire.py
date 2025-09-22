@@ -685,7 +685,11 @@ class BowlingSolitaireGameScene(C.Scene):
             return
         self.selected_ball_index = None
         self.selected_pins.clear()
-        self._end_ball(manual=True)
+        staying_in_frame = self.current_ball == 0
+        self._end_ball(manual=True, force_stay_in_frame=staying_in_frame)
+        if staying_in_frame and not self.game_completed:
+            ball_label = self.current_ball + 1
+            self.status_message = f"Ball {ball_label} – select a ball card."
 
     # --------------------------------------------------------------- validation
 
@@ -819,6 +823,7 @@ class BowlingSolitaireGameScene(C.Scene):
         discarded: bool = False,
         no_moves: bool = False,
         manual: bool = False,
+        force_stay_in_frame: bool = False,
     ) -> None:
         if self.game_completed:
             return
@@ -883,6 +888,9 @@ class BowlingSolitaireGameScene(C.Scene):
                     frame_done = True
             else:
                 frame_done = True
+
+        if force_stay_in_frame:
+            frame_done = False
 
         if frame_done:
             self.current_frame += 1
