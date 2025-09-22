@@ -323,8 +323,8 @@ class BowlingSolitaireGameScene(C.Scene):
         tenth_width = max(frame_width + 30, int(frame_width * 1.5))
         row_height = max(70, int(C.CARD_H * 0.5))
         label_height = max(20, int(row_height * 0.3))
-        col_gap = 12
-        row_gap = 18
+        col_gap = 0
+        row_gap = 0
 
         top_row_width = frame_width * 5 + col_gap * 4
         bottom_row_width = frame_width * 4 + tenth_width + col_gap * 4
