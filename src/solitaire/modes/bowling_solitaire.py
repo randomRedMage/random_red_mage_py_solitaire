@@ -358,8 +358,18 @@ class BowlingSolitaireGameScene(C.Scene):
 
         button_size = self._action_button_size
         btn_gap = 18
+
+        btn_x = start_x - button_size - 48
+        column_count = len(self.ball_action_buttons)
+        if column_count:
+            card_center = piles_top + C.CARD_H // 2
+            last_top = card_center - button_size // 2
+            btn_y = last_top - (column_count - 1) * (button_size + btn_gap)
+        else:
+            btn_y = piles_top
         btn_x = start_x - button_size - 30
         btn_y = piles_top
+    def new_games
         for idx, btn in enumerate(self.ball_action_buttons):
             btn.rect.size = (button_size, button_size)
             btn.set_position(btn_x, btn_y + idx * (button_size + btn_gap))
@@ -662,7 +672,11 @@ class BowlingSolitaireGameScene(C.Scene):
             self._end_ball(after_strike=True)
             return
         if not self._has_available_move():
-            self._end_ball(no_moves=True)
+            if self.current_ball == 0:
+                self.status_message = "No moves available – press Next Ball for your second ball."
+            else:
+                self.status_message = "No moves available – press Next Ball."
+            self.selected_pins.clear()
             return
 
     def discard_selected_ball(self) -> None:
@@ -675,7 +689,11 @@ class BowlingSolitaireGameScene(C.Scene):
             return
         self.selected_ball_index = None
         self.selected_pins.clear()
-        self._end_ball(manual=True)
+        staying_in_frame = self.current_ball == 0
+        self._end_ball(manual=True, force_stay_in_frame=staying_in_frame)
+        if staying_in_frame and not self.game_completed:
+            ball_label = self.current_ball + 1
+            self.status_message = f"Ball {ball_label} – select a ball card."
 
     # --------------------------------------------------------------- validation
 
@@ -809,6 +827,7 @@ class BowlingSolitaireGameScene(C.Scene):
         discarded: bool = False,
         no_moves: bool = False,
         manual: bool = False,
+        force_stay_in_frame: bool = False,
     ) -> None:
         if self.game_completed:
             return
@@ -873,6 +892,9 @@ class BowlingSolitaireGameScene(C.Scene):
                     frame_done = True
             else:
                 frame_done = True
+
+        if force_stay_in_frame:
+            frame_done = False
 
         if frame_done:
             self.current_frame += 1
