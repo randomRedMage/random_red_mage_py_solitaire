@@ -351,6 +351,7 @@ class BowlingSolitaireGameScene(C.Scene):
                 pin_slots.append(rect)
         self.pin_slots = pin_slots
 
+
         column_top = pin_top + C.CARD_H // 2
         leftmost_pin = min((slot.left for slot in pin_slots), default=cx - C.CARD_W // 2)
         desired_face_x = leftmost_pin - BALL_COLUMN_GAP - C.CARD_W
@@ -358,10 +359,12 @@ class BowlingSolitaireGameScene(C.Scene):
         min_face_x = min(20, max_face_x)
         column_face_x = min(desired_face_x, max_face_x)
         column_face_x = max(min_face_x, column_face_x)
+
         self.ball_face_rects = []
         for i in range(3):
             y = column_top + i * (C.CARD_H + BALL_PILE_VERTICAL_GAP)
             face_rect = pygame.Rect(column_face_x, y, C.CARD_W, C.CARD_H)
+
             self.ball_face_rects.append(face_rect)
 
         button_size = self._action_button_size
@@ -1289,6 +1292,7 @@ class BowlingSolitaireGameScene(C.Scene):
                 screen.blit(surf, (face_rect.left, face_rect.top))
                 drew_card = True
             if not drew_card:
+
                 pygame.draw.rect(screen, (100, 100, 110), face_rect, width=2, border_radius=10)
             if hidden_count > 0:
                 badge_rect = pygame.Rect(face_rect.right - 34, face_rect.bottom - 28, 28, 22)
