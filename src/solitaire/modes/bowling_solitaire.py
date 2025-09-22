@@ -349,6 +349,7 @@ class BowlingSolitaireGameScene(C.Scene):
                 pin_slots.append(rect)
         self.pin_slots = pin_slots
 
+
         column_top = pin_top + C.CARD_H // 2
         leftmost_pin = min((slot.left for slot in pin_slots), default=cx - C.CARD_W // 2)
         fan_buffer = BALL_PILE_FAN_DX * (BALL_PILE_MAX_SIZE - 1)
@@ -380,6 +381,7 @@ class BowlingSolitaireGameScene(C.Scene):
 
         button_size = self._action_button_size
         btn_gap = 18
+
         btn_x = (
             column_face_x
             - button_size
