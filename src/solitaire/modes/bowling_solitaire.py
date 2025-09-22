@@ -358,8 +358,16 @@ class BowlingSolitaireGameScene(C.Scene):
             count * C.CARD_W + (count - 1) * gap_x for count in PIN_ROW_COUNTS
         )
         max_pin_left = max(area_left, available_right - widest_row)
-        desired_pin_left = left_margin + C.CARD_W + 30
-        pin_left = min(max(desired_pin_left, area_left), max_pin_left)
+
+        max_gap = C.CARD_W
+        min_gap = max(scoreboard_gap_left, 0)
+        # Keep the pins close to the scoreboard so that the gap is no larger
+        # than a single card width while still leaving a little breathing room.
+        desired_gap = min(max_gap, max(min_gap, C.CARD_W // 2))
+        desired_pin_left = max(
+            area_left, self.scoreboard_rect.left - desired_gap - widest_row
+        )
+        pin_left = min(desired_pin_left, max_pin_left)
         cx = pin_left + widest_row // 2
         for row_index, count in enumerate(PIN_ROW_COUNTS):
             row_width = count * C.CARD_W + (count - 1) * gap_x
