@@ -358,6 +358,7 @@ class BowlingSolitaireGameScene(C.Scene):
 
         button_size = self._action_button_size
         btn_gap = 18
+
         btn_x = start_x - button_size - 48
         column_count = len(self.ball_action_buttons)
         if column_count:
@@ -366,6 +367,9 @@ class BowlingSolitaireGameScene(C.Scene):
             btn_y = last_top - (column_count - 1) * (button_size + btn_gap)
         else:
             btn_y = piles_top
+        btn_x = start_x - button_size - 30
+        btn_y = piles_top
+    def new_games
         for idx, btn in enumerate(self.ball_action_buttons):
             btn.rect.size = (button_size, button_size)
             btn.set_position(btn_x, btn_y + idx * (button_size + btn_gap))
