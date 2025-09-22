@@ -268,6 +268,7 @@ class BowlingSolitaireGameScene(C.Scene):
         )
 
         self.ball_action_buttons: List[UI.Button] = []
+        self._action_button_size: int = 110
 
         self.score_frames: List[FrameScore] = [FrameScore(["", ""]) for _ in range(9)]
         self.score_frames.append(FrameScore(["", "", ""]))
@@ -324,7 +325,7 @@ class BowlingSolitaireGameScene(C.Scene):
         self._layout_scoreboard()
 
         pin_top = self.scoreboard_rect.bottom + 30
-        gap_y = 12
+        gap_y = 6
         gap_x = 18
         pin_slots: List[pygame.Rect] = []
         cx = C.SCREEN_W // 2
@@ -355,11 +356,19 @@ class BowlingSolitaireGameScene(C.Scene):
         waste_rect = pygame.Rect(start_x + 3 * (pile_width + pile_gap), piles_top, pile_width, C.CARD_H)
         self.waste_rect = waste_rect
 
-        btn_y = piles_top + C.CARD_H + 30
-        btn_x = cx - 260
-        btn_gap = 16
+        button_size = self._action_button_size
+        btn_gap = 18
+        btn_x = start_x - button_size - 48
+        column_count = len(self.ball_action_buttons)
+        if column_count:
+            card_center = piles_top + C.CARD_H // 2
+            last_top = card_center - button_size // 2
+            btn_y = last_top - (column_count - 1) * (button_size + btn_gap)
+        else:
+            btn_y = piles_top
         for idx, btn in enumerate(self.ball_action_buttons):
-            btn.set_position(btn_x + idx * (btn.rect.width + btn_gap), btn_y)
+            btn.rect.size = (button_size, button_size)
+            btn.set_position(btn_x, btn_y + idx * (button_size + btn_gap))
 
         self._layout_initials_prompt()
         self._clamp_scroll()
@@ -506,12 +515,39 @@ class BowlingSolitaireGameScene(C.Scene):
         return track_rect, knob_rect, min_sx, max_sx, track_x, track_w, knob_w
 
     def _create_action_buttons(self) -> None:
+        size = self._action_button_size
         self.ball_action_buttons = [
-            UI.Button("Bowl", self.apply_selection, enabled_fn=self.can_apply_selection),
-            UI.Button("Next Ball", self.advance_to_next_ball, enabled_fn=self.can_force_next_ball),
-            UI.Button("Discard Ball", self.discard_selected_ball, enabled_fn=self.can_discard_ball),
-            UI.Button("Clear Selection", self.clear_selection, enabled_fn=lambda: bool(self.selected_pins)),
+            UI.Button(
+                "Bowl",
+                self.apply_selection,
+                enabled_fn=self.can_apply_selection,
+                height=size,
+                min_width=size,
+            ),
+            UI.Button(
+                "Next Ball",
+                self.advance_to_next_ball,
+                enabled_fn=self.can_force_next_ball,
+                height=size,
+                min_width=size,
+            ),
+            UI.Button(
+                "Discard Ball",
+                self.discard_selected_ball,
+                enabled_fn=self.can_discard_ball,
+                height=size,
+                min_width=size,
+            ),
+            UI.Button(
+                "Clear Selection",
+                self.clear_selection,
+                enabled_fn=lambda: bool(self.selected_pins),
+                height=size,
+                min_width=size,
+            ),
         ]
+        for btn in self.ball_action_buttons:
+            btn.rect.size = (size, size)
 
     # ------------------------------------------------------------------ state
 
@@ -632,7 +668,11 @@ class BowlingSolitaireGameScene(C.Scene):
             self._end_ball(after_strike=True)
             return
         if not self._has_available_move():
-            self._end_ball(no_moves=True)
+            if self.current_ball == 0:
+                self.status_message = "No moves available – press Next Ball for your second ball."
+            else:
+                self.status_message = "No moves available – press Next Ball."
+            self.selected_pins.clear()
             return
 
     def discard_selected_ball(self) -> None:
@@ -683,10 +723,25 @@ class BowlingSolitaireGameScene(C.Scene):
             if len(pins) == 1 and pins[0].index == CENTER_PIN_INDEX:
                 return False, "The middle pin must be part of a combo."
 
+        include_back_row = any(pin.index in BACK_ROW_INDICES for pin in pins)
+
+        if (
+            self.current_ball == 1
+            and self.ball_actions == 0
+            and include_back_row
+            and not self.pins_removed_prev_ball
+            and len(pins) == 1
+        ):
+            return False, "Back-row pins can't be taken first."
+
         if self.current_ball > 0 and self.pins_removed_prev_ball:
-            for pin in pins:
-                if not (PIN_ADJACENCY.get(pin.index, set()) & self.pins_removed_prev_ball):
+            if self.current_ball == 1 and self.ball_actions == 0 and include_back_row:
+                if not self._selection_connected_to_previous(pin_indices):
                     return False, "Pins must touch pins from the previous ball."
+            else:
+                for pin in pins:
+                    if not (PIN_ADJACENCY.get(pin.index, set()) & self.pins_removed_prev_ball):
+                        return False, "Pins must touch pins from the previous ball."
 
         if len(pins) >= 2:
             if not self._pins_form_connected_group(pin_indices):
@@ -717,6 +772,26 @@ class BowlingSolitaireGameScene(C.Scene):
                 if neighbor in target and neighbor not in visited:
                     to_visit.append(neighbor)
         return visited == target
+
+    def _selection_connected_to_previous(self, indices: Sequence[int]) -> bool:
+        if not indices or not self.pins_removed_prev_ball:
+            return False
+        selection = set(indices)
+        previous = set(self.pins_removed_prev_ball)
+        seeds = [idx for idx in selection if PIN_ADJACENCY.get(idx, set()) & previous]
+        if not seeds:
+            return False
+        visited: Set[int] = set()
+        stack = list(seeds)
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            for neighbor in PIN_ADJACENCY.get(current, set()):
+                if neighbor in selection and neighbor not in visited:
+                    stack.append(neighbor)
+        return visited == selection
 
     def _has_available_move(self) -> bool:
         if self.game_completed:
