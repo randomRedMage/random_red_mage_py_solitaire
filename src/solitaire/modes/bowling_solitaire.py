@@ -85,10 +85,7 @@ BACK_ROW_INDICES: Set[int] = {0, 1, 2, 3}
 CENTER_PIN_INDEX = 5
 
 
-BALL_PILE_FAN_DX = 18
-BALL_PILE_FAN_DY = -12
 BALL_PILE_VERTICAL_GAP = 28
-BALL_PILE_MAX_SIZE = 5
 BALL_COLUMN_GAP = 40
 
 
@@ -304,8 +301,13 @@ class BowlingSolitaireGameScene(C.Scene):
 
         self.pin_slots: List[pygame.Rect] = []
         self.ball_face_rects: List[pygame.Rect] = []
-        self.ball_stack_rects: List[pygame.Rect] = []
-        self.waste_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
+        self._discard_modal_visible: bool = False
+        self._discard_modal_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
+        self._discard_modal_close_button = UI.Button(
+            "Close",
+            self._close_discard_modal,
+            min_width=160,
+        )
 
         self.scoreboard_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
         self.player_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
@@ -352,43 +354,22 @@ class BowlingSolitaireGameScene(C.Scene):
 
         column_top = pin_top + C.CARD_H // 2
         leftmost_pin = min((slot.left for slot in pin_slots), default=cx - C.CARD_W // 2)
-        fan_buffer = BALL_PILE_FAN_DX * (BALL_PILE_MAX_SIZE - 1)
-        face_x = leftmost_pin - BALL_COLUMN_GAP - C.CARD_W
-        min_x = face_x - fan_buffer
-        if min_x < left_margin:
-            adjust = left_margin - min_x
-            face_x += adjust
+        desired_face_x = leftmost_pin - BALL_COLUMN_GAP - C.CARD_W
+        max_face_x = leftmost_pin - C.CARD_W - 12
+        min_face_x = min(20, max_face_x)
+        column_face_x = min(desired_face_x, max_face_x)
+        column_face_x = max(min_face_x, column_face_x)
 
-        column_face_x = face_x
-        fan_height = abs(BALL_PILE_FAN_DY) * (BALL_PILE_MAX_SIZE - 1)
         self.ball_face_rects = []
-        self.ball_stack_rects = []
         for i in range(3):
             y = column_top + i * (C.CARD_H + BALL_PILE_VERTICAL_GAP)
             face_rect = pygame.Rect(column_face_x, y, C.CARD_W, C.CARD_H)
-            stack_rect = pygame.Rect(
-                face_rect.left - fan_buffer,
-                y,
-                C.CARD_W + fan_buffer,
-                C.CARD_H + fan_height,
-            )
-            self.ball_face_rects.append(face_rect)
-            self.ball_stack_rects.append(stack_rect)
 
-        last_face_bottom = self.ball_face_rects[-1].bottom if self.ball_face_rects else column_top
-        waste_top = last_face_bottom + BALL_PILE_VERTICAL_GAP + 20
-        self.waste_rect = pygame.Rect(column_face_x, waste_top, C.CARD_W, C.CARD_H)
+            self.ball_face_rects.append(face_rect)
 
         button_size = self._action_button_size
         btn_gap = 18
-
-        btn_x = (
-            column_face_x
-            - button_size
-            - 30
-            - fan_buffer // 4
-            - (C.CARD_W * 3) // 4
-        )
+        btn_x = max(20, column_face_x - button_size - 30)
         btn_y = column_top
 
         for idx, btn in enumerate(self.ball_action_buttons):
@@ -396,6 +377,7 @@ class BowlingSolitaireGameScene(C.Scene):
             btn.set_position(btn_x, btn_y + idx * (button_size + btn_gap))
 
         self._layout_initials_prompt()
+        self._layout_discard_modal()
         self._clamp_scroll()
 
     def _layout_scoreboard(self) -> None:
@@ -456,16 +438,28 @@ class BowlingSolitaireGameScene(C.Scene):
             btn_y,
         )
 
+    def _layout_discard_modal(self) -> None:
+        panel_w = 620
+        panel_h = 420
+        panel_rect = pygame.Rect(0, 0, panel_w, panel_h)
+        center_y = getattr(C, "TOP_BAR_H", 60) + (C.SCREEN_H - getattr(C, "TOP_BAR_H", 60)) // 2
+        panel_rect.center = (C.SCREEN_W // 2, center_y)
+        self._discard_modal_rect = panel_rect
+
+        close_btn = self._discard_modal_close_button
+        close_btn_height = close_btn.rect.height or self._action_button_size
+        close_btn.set_position(
+            panel_rect.centerx - close_btn.rect.width // 2,
+            panel_rect.bottom - close_btn_height - 24,
+        )
+
     def _content_bounds(self) -> Tuple[int, int, int, int]:
         rects: List[pygame.Rect] = []
         if self.scoreboard_rect.width and self.scoreboard_rect.height:
             rects.append(self.scoreboard_rect)
         rects.extend(pin.rect for pin in self.pins)
         rects.extend(self.ball_face_rects)
-        rects.extend(self.ball_stack_rects)
         rects.extend(btn.rect for btn in self.ball_action_buttons)
-        if self.waste_rect.width and self.waste_rect.height:
-            rects.append(self.waste_rect)
         if not rects:
             top_bar = getattr(C, "TOP_BAR_H", 60)
             return 0, C.SCREEN_W, top_bar, C.SCREEN_H
@@ -557,9 +551,9 @@ class BowlingSolitaireGameScene(C.Scene):
                 min_width=size,
             ),
             UI.Button(
-                "Clear Selection",
-                self.clear_selection,
-                enabled_fn=lambda: bool(self.selected_pins),
+                "View Discards",
+                self._open_discard_modal,
+                enabled_fn=lambda: bool(self.ball_waste),
                 height=size,
                 min_width=size,
             ),
@@ -580,6 +574,7 @@ class BowlingSolitaireGameScene(C.Scene):
         for frame in self.score_frames:
             frame.reset()
         self.ball_waste = []
+        self._close_discard_modal()
         self.status_message = "Frame 1 – select a ball card to start."
         self._next_ball_confirmation_pending = False
         self.scroll_x = 0
@@ -621,6 +616,7 @@ class BowlingSolitaireGameScene(C.Scene):
             offset += size
         self.ball_piles = piles
         self.ball_waste = []
+        self._close_discard_modal()
         self.selected_ball_index = None
         self.selected_pins = []
         self.pins_removed_this_ball = set()
@@ -650,6 +646,18 @@ class BowlingSolitaireGameScene(C.Scene):
             self._next_ball_confirmation_pending = False
 
     # ---------------------------------------------------------------- controls
+
+    def _open_discard_modal(self) -> None:
+        if not self.ball_waste:
+            return
+        self._cancel_next_ball_warning()
+        self._discard_modal_visible = True
+        self._discard_modal_close_button._hover = False
+
+    def _close_discard_modal(self) -> None:
+        if self._discard_modal_visible:
+            self._discard_modal_visible = False
+        self._discard_modal_close_button._hover = False
 
     def clear_selection(self) -> None:
         self._cancel_next_ball_warning()
@@ -1145,6 +1153,7 @@ class BowlingSolitaireGameScene(C.Scene):
                 self.scroll_y = int(sy)
             except Exception:
                 self.scroll_y = 0
+            self._close_discard_modal()
             self._clamp_scroll()
             self._recompute_totals()
             return True
@@ -1182,6 +1191,8 @@ class BowlingSolitaireGameScene(C.Scene):
         self._draw_ball_piles(screen)
         self._draw_scrollbars(screen)
         self._draw_status(screen)
+        if self._discard_modal_visible:
+            self._draw_discard_modal(screen)
         if self._initials_prompt_visible:
             self._draw_initials_prompt(screen)
 
@@ -1267,39 +1278,93 @@ class BowlingSolitaireGameScene(C.Scene):
     def _draw_ball_piles(self, screen: pygame.Surface) -> None:
         sx = self.scroll_x
         sy = self.scroll_y
-        fan_dx = BALL_PILE_FAN_DX
-        fan_dy = BALL_PILE_FAN_DY
+        back_surface = C.get_back_surface()
         for idx, pile in enumerate(self.ball_piles):
             face_rect = self.ball_face_rects[idx].move(sx, sy)
-            hidden_cards = pile.hidden_cards()
-            cards_to_draw: List[C.Card] = list(hidden_cards)
-            if pile.face_up is not None:
-                cards_to_draw.append(pile.face_up)
-            if cards_to_draw:
-                start_x = face_rect.left - fan_dx * (len(cards_to_draw) - 1)
-                start_y = face_rect.top - fan_dy * (len(cards_to_draw) - 1)
-                for offset, card in enumerate(cards_to_draw):
-                    draw_rect = pygame.Rect(
-                        start_x + fan_dx * offset,
-                        start_y + fan_dy * offset,
-                        C.CARD_W,
-                        C.CARD_H,
-                    )
-                    surf = C.get_card_surface(card)
-                    screen.blit(surf, (draw_rect.left, draw_rect.top))
-            else:
+            hidden_count = pile.remaining_hidden()
+            has_face = pile.face_up is not None
+            drew_card = False
+            if hidden_count > 0:
+                screen.blit(back_surface, (face_rect.left, face_rect.top))
+                drew_card = True
+            if has_face:
+                surf = C.get_card_surface(pile.face_up)
+                screen.blit(surf, (face_rect.left, face_rect.top))
+                drew_card = True
+            if not drew_card:
+
                 pygame.draw.rect(screen, (100, 100, 110), face_rect, width=2, border_radius=10)
+            if hidden_count > 0:
+                badge_rect = pygame.Rect(face_rect.right - 34, face_rect.bottom - 28, 28, 22)
+                pygame.draw.rect(screen, (35, 35, 50), badge_rect, border_radius=8)
+                pygame.draw.rect(screen, (210, 210, 220), badge_rect, width=1, border_radius=8)
+                badge_text = C.FONT_SMALL.render(str(hidden_count), True, (235, 235, 245))
+                screen.blit(
+                    badge_text,
+                    (
+                        badge_rect.centerx - badge_text.get_width() // 2,
+                        badge_rect.centery - badge_text.get_height() // 2,
+                    ),
+                )
             if self.selected_ball_index == idx:
                 pygame.draw.rect(screen, (255, 220, 90), face_rect, width=4, border_radius=12)
 
-        if self.ball_waste:
-            waste_card = self.ball_waste[-1]
-            surf = C.get_card_surface(waste_card)
-            waste_rect = self.waste_rect.move(sx, sy)
-            screen.blit(surf, (waste_rect.left, waste_rect.top))
+    def _draw_discard_modal(self, screen: pygame.Surface) -> None:
+        overlay = pygame.Surface((C.SCREEN_W, C.SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        panel = self._discard_modal_rect
+        pygame.draw.rect(screen, (250, 250, 255), panel, border_radius=18)
+        pygame.draw.rect(screen, (50, 50, 65), panel, width=2, border_radius=18)
+
+        title_font = C.FONT_UI
+        title = title_font.render("Discarded Cards", True, (30, 30, 45))
+        screen.blit(title, (panel.centerx - title.get_width() // 2, panel.top + 24))
+
+        frame_label = C.FONT_SMALL.render(f"Frame {self.current_frame + 1}", True, (70, 70, 85))
+        screen.blit(frame_label, (panel.centerx - frame_label.get_width() // 2, panel.top + 58))
+
+        cards = list(self.ball_waste)
+        card_top = panel.top + 90
+        close_top = self._discard_modal_close_button.rect.top
+        available_height = max(0, close_top - 30 - card_top)
+        available_width = panel.width - 60
+        thumb_scale = 0.7
+        thumb_size = (int(C.CARD_W * thumb_scale), int(C.CARD_H * thumb_scale))
+        gap = 14
+
+        if cards:
+            cols = max(1, min(len(cards), available_width // max(1, thumb_size[0] + gap)))
+            while cols > 1 and (cols * thumb_size[0] + (cols - 1) * gap) > available_width:
+                cols -= 1
+            rows = (len(cards) + cols - 1) // cols
+            if available_height < thumb_size[1]:
+                available_height = thumb_size[1]
+            while cols > 1 and (rows * thumb_size[1] + (rows - 1) * gap) > available_height:
+                cols -= 1
+                rows = (len(cards) + cols - 1) // cols
+            cards_width = cols * thumb_size[0] + (cols - 1) * gap
+            cards_height = rows * thumb_size[1] + (rows - 1) * gap
+            start_x = panel.left + (panel.width - cards_width) // 2
+            start_y = card_top + max(0, (available_height - cards_height) // 2)
+            for index, card in enumerate(cards):
+                row = index // cols
+                col = index % cols
+                draw_x = start_x + col * (thumb_size[0] + gap)
+                draw_y = start_y + row * (thumb_size[1] + gap)
+                surf = C.get_card_surface(card)
+                if surf.get_size() != thumb_size:
+                    surf = pygame.transform.smoothscale(surf, thumb_size)
+                screen.blit(surf, (draw_x, draw_y))
         else:
-            waste_rect = self.waste_rect.move(sx, sy)
-            pygame.draw.rect(screen, (160, 160, 165), waste_rect, width=2, border_radius=10)
+            empty_msg = C.FONT_SMALL.render("No cards discarded this frame.", True, (80, 80, 95))
+            screen.blit(
+                empty_msg,
+                (panel.centerx - empty_msg.get_width() // 2, card_top + available_height // 2 - empty_msg.get_height() // 2),
+            )
+
+        self._discard_modal_close_button.draw(screen)
 
     def _draw_scrollbars(self, screen: pygame.Surface) -> None:
         vsb = self._vertical_scrollbar()
@@ -1389,6 +1454,25 @@ class BowlingSolitaireGameScene(C.Scene):
     def handle_event(self, event: pygame.event.Event) -> None:
         if self._initials_prompt_visible:
             self._handle_initials_event(event)
+            return
+        if self._discard_modal_visible:
+            if event.type == pygame.MOUSEMOTION:
+                self._discard_modal_close_button.handle_event(event)
+                return
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self._discard_modal_close_button.rect.collidepoint(event.pos):
+                    if self._discard_modal_close_button.is_enabled():
+                        self._close_discard_modal()
+                    return
+                if not self._discard_modal_rect.collidepoint(event.pos):
+                    self._close_discard_modal()
+                    return
+                return
+            if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                self._close_discard_modal()
+                return
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                return
             return
         if self.help.visible:
             if self.help.handle_event(event):
