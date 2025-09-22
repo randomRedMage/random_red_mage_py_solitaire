@@ -22,7 +22,7 @@ class BowlingSolitaireOptionsScene(C.Scene):
 
     def _start_new(self):
         self.message = ""
-        self.next_scene = bowling_mode.BowlingSolitaireGameScene(self.app, player_initials="")
+        self.next_scene = bowling_mode.BowlingSolitaireGameScene(self.app)
 
     def _continue_saved(self):
         load_state = bowling_mode.load_saved_game()
@@ -30,10 +30,8 @@ class BowlingSolitaireOptionsScene(C.Scene):
             self.message = "No saved game found."
             return
         self.message = ""
-        initials = load_state.get("player_initials", "PLY") or "PLY"
         self.next_scene = bowling_mode.BowlingSolitaireGameScene(
             self.app,
-            player_initials=initials,
             load_state=load_state,
         )
 
@@ -60,9 +58,6 @@ class BowlingSolitaireOptionsScene(C.Scene):
         screen.fill(C.TABLE_BG)
         title = C.FONT_TITLE.render("Bowling Solitaire - Options", True, C.WHITE)
         screen.blit(title, (C.SCREEN_W // 2 - title.get_width() // 2, 130))
-
-        subtitle = C.FONT_UI.render("Player initials will be requested when the game begins.", True, C.WHITE)
-        screen.blit(subtitle, (C.SCREEN_W // 2 - subtitle.get_width() // 2, 190))
 
         mp = pygame.mouse.get_pos()
         has_save = self._has_save()

@@ -229,24 +229,9 @@ class BowlingSolitaireGameScene(C.Scene):
         self,
         app,
         *,
-        player_initials: str,
         load_state: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__(app)
-
-        provided_initials = (player_initials or "").strip().upper()[:3]
-        self.player_initials: str = ""
-        self._pending_initials: str = provided_initials
-        self._initials_prompt_visible: bool = load_state is None
-        self._initials_input_active: bool = self._initials_prompt_visible
-        self._initials_panel_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
-        self._initials_input_rect: pygame.Rect = pygame.Rect(0, 0, 280, 60)
-        self._initials_accept_button = UI.Button(
-            "Confirm Initials",
-            self._commit_initials,
-            enabled_fn=lambda: bool(self._pending_initials),
-            min_width=200,
-        )
 
         self.scroll_x: int = 0
         self.scroll_y: int = 0
@@ -271,7 +256,6 @@ class BowlingSolitaireGameScene(C.Scene):
                 },
             ),
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-            toolbar_kwargs={"align": "left"},
         )
 
         self.ball_action_buttons: List[UI.Button] = []
@@ -310,8 +294,11 @@ class BowlingSolitaireGameScene(C.Scene):
         )
 
         self.scoreboard_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
-        self.player_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
-        self.player_header_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
+        self._score_frame_width: int = 0
+        self._score_tenth_width: int = 0
+        self._score_row_height: int = 0
+        self._score_col_gap: int = 0
+        self._score_row_gap: int = 0
         self.score_cells: List[Dict[str, Any]] = []
 
         self._create_action_buttons()
@@ -329,19 +316,47 @@ class BowlingSolitaireGameScene(C.Scene):
         top_margin = getattr(C, "TOP_BAR_H", 60) + 20
         left_margin = 40
         right_margin = 40
+        scoreboard_gap_left = 40
+
+        frame_width = max(70, int(C.CARD_W * 0.7))
+        tenth_width = max(frame_width + 30, int(frame_width * 1.5))
+        row_height = max(70, int(C.CARD_H * 0.5))
+        col_gap = 12
+        row_gap = 18
+
+        top_row_width = frame_width * 5 + col_gap * 4
+        bottom_row_width = frame_width * 4 + tenth_width + col_gap * 4
+        scoreboard_width = max(top_row_width, bottom_row_width)
+        scoreboard_height = row_height * 2 + row_gap
+
+        scoreboard_left = C.SCREEN_W - right_margin - scoreboard_width
+        scoreboard_top = top_margin
         self.scoreboard_rect = pygame.Rect(
-            left_margin,
-            top_margin,
-            C.SCREEN_W - left_margin - right_margin,
-            170,
+            scoreboard_left,
+            scoreboard_top,
+            scoreboard_width,
+            scoreboard_height,
         )
+        self._score_frame_width = frame_width
+        self._score_tenth_width = tenth_width
+        self._score_row_height = row_height
+        self._score_col_gap = col_gap
+        self._score_row_gap = row_gap
         self._layout_scoreboard()
 
-        pin_top = self.scoreboard_rect.bottom + 30
+        pin_top = top_margin
         gap_y = 6
         gap_x = 18
         pin_slots: List[pygame.Rect] = []
-        cx = C.SCREEN_W // 2
+        available_right = self.scoreboard_rect.left - scoreboard_gap_left
+        area_left = left_margin
+        widest_row = max(
+            count * C.CARD_W + (count - 1) * gap_x for count in PIN_ROW_COUNTS
+        )
+        max_pin_left = max(area_left, available_right - widest_row)
+        desired_pin_left = left_margin + C.CARD_W + 30
+        pin_left = min(max(desired_pin_left, area_left), max_pin_left)
+        cx = pin_left + widest_row // 2
         for row_index, count in enumerate(PIN_ROW_COUNTS):
             row_width = count * C.CARD_W + (count - 1) * gap_x
             left = cx - row_width // 2
@@ -351,14 +366,12 @@ class BowlingSolitaireGameScene(C.Scene):
                 pin_slots.append(rect)
         self.pin_slots = pin_slots
 
-
         column_top = pin_top + C.CARD_H // 2
         leftmost_pin = min((slot.left for slot in pin_slots), default=cx - C.CARD_W // 2)
         desired_face_x = leftmost_pin - BALL_COLUMN_GAP - C.CARD_W
         max_face_x = leftmost_pin - C.CARD_W - 12
-        min_face_x = min(20, max_face_x)
         column_face_x = min(desired_face_x, max_face_x)
-        column_face_x = max(min_face_x, column_face_x)
+        column_face_x = max(20, column_face_x)
 
         self.ball_face_rects = []
         for i in range(3):
@@ -370,73 +383,60 @@ class BowlingSolitaireGameScene(C.Scene):
         button_size = self._action_button_size
         btn_gap = 18
         btn_x = max(20, column_face_x - button_size - 30)
-        btn_y = column_top
+        btn_y = column_top + C.CARD_H // 2
 
         for idx, btn in enumerate(self.ball_action_buttons):
             btn.rect.size = (button_size, button_size)
             btn.set_position(btn_x, btn_y + idx * (button_size + btn_gap))
 
-        self._layout_initials_prompt()
         self._layout_discard_modal()
         self._clamp_scroll()
 
     def _layout_scoreboard(self) -> None:
         rect = self.scoreboard_rect
-        header_h = 46
-        row_h = rect.height - header_h - 16
-        player_col_w = 140
-        frame_col_w = (rect.width - player_col_w) // 11
-        tenth_col_w = frame_col_w * 2
-        frame_col_w = (rect.width - player_col_w - tenth_col_w) // 9
+        row_h = self._score_row_height
+        top_h = row_h // 2
+        col_gap = self._score_col_gap
+        row_gap = self._score_row_gap
+        frame_w = self._score_frame_width
+        tenth_w = self._score_tenth_width
 
-        self.player_header_rect = pygame.Rect(rect.left, rect.top, player_col_w, header_h)
-        self.player_rect = pygame.Rect(rect.left + 6, rect.top + header_h, player_col_w - 12, row_h)
         self.score_cells = []
-        x = rect.left + player_col_w
-        header_top = rect.top
         for frame_index in range(10):
-            width = tenth_col_w if frame_index == 9 else frame_col_w
-            cell_rect = pygame.Rect(x, header_top + header_h, width, row_h)
-            box_height = 28
-            box_width = max(20, min(38, width // (3 if frame_index == 9 else 2)))
-            box_spacing = 4
-            ball_boxes: List[pygame.Rect] = []
+            row = 0 if frame_index < 5 else 1
+            row_y = rect.top + row * (row_h + row_gap)
+            if frame_index == 0:
+                row_x = rect.left
+            elif frame_index == 5:
+                row_x = rect.left
+            else:
+                row_x = self.score_cells[frame_index - 1]["frame_rect"].right + col_gap
+
+            width = tenth_w if frame_index == 9 else frame_w
+            frame_rect = pygame.Rect(row_x, row_y, width, row_h)
+            top_rect = pygame.Rect(row_x, row_y, width, top_h)
+            bottom_rect = pygame.Rect(row_x, row_y + top_h, width, row_h - top_h)
+
             boxes = 3 if frame_index == 9 else 2
-            right = cell_rect.right - 6
-            for _ in range(boxes):
-                box = pygame.Rect(right - box_width, cell_rect.top + 6, box_width, box_height)
-                ball_boxes.insert(0, box)
-                right -= box_width + box_spacing
-            score_rect = pygame.Rect(cell_rect.left + 6, cell_rect.bottom - 34, width - 12, 28)
-            header_rect = pygame.Rect(cell_rect.left, header_top, width, header_h)
+            base_box_w = width // boxes
+            remainder = width - base_box_w * boxes
+            box_x = row_x
+            ball_boxes: List[pygame.Rect] = []
+            for box_index in range(boxes):
+                extra = 1 if box_index < remainder else 0
+                bw = base_box_w + extra
+                ball_boxes.append(pygame.Rect(box_x, row_y, bw, top_h))
+                box_x += bw
+
             self.score_cells.append(
                 {
-                    "frame_rect": cell_rect,
-                    "header_rect": header_rect,
+                    "frame_rect": frame_rect,
+                    "top_rect": top_rect,
+                    "score_rect": bottom_rect,
                     "ball_boxes": ball_boxes,
-                    "score_rect": score_rect,
+                    "label_pos": (frame_rect.left + 6, frame_rect.top + 4),
                 }
             )
-            x += width
-
-    def _layout_initials_prompt(self) -> None:
-        panel_w = 480
-        panel_h = 240
-        top_bar = getattr(C, "TOP_BAR_H", 60)
-        center_y = top_bar + panel_h // 2 + 60
-        self._initials_panel_rect = pygame.Rect(0, 0, panel_w, panel_h)
-        self._initials_panel_rect.center = (C.SCREEN_W // 2, center_y)
-
-        self._initials_input_rect = pygame.Rect(0, 0, 280, 60)
-        self._initials_input_rect.center = (
-            self._initials_panel_rect.centerx,
-            self._initials_panel_rect.top + 120,
-        )
-        btn_y = self._initials_input_rect.bottom + 30
-        self._initials_accept_button.set_position(
-            self._initials_panel_rect.centerx - self._initials_accept_button.rect.width // 2,
-            btn_y,
-        )
 
     def _layout_discard_modal(self) -> None:
         panel_w = 620
@@ -1061,7 +1061,6 @@ class BowlingSolitaireGameScene(C.Scene):
 
     def save_state(self) -> Dict[str, Any]:
         return {
-            "player_initials": self.player_initials,
             "current_frame": self.current_frame,
             "current_ball": self.current_ball,
             "ball_actions": self.ball_actions,
@@ -1088,15 +1087,6 @@ class BowlingSolitaireGameScene(C.Scene):
 
     def _load_from_state(self, state: Mapping[str, Any]) -> bool:
         try:
-            initials_val = state.get("player_initials", "")
-            if isinstance(initials_val, str):
-                initials = initials_val.strip().upper()[:3]
-            else:
-                initials = ""
-            self.player_initials = initials or "PLY"
-            self._pending_initials = self.player_initials
-            self._initials_prompt_visible = False
-            self._initials_input_active = False
             self.current_frame = int(state.get("current_frame", 0))
             self.current_ball = int(state.get("current_ball", 0))
             self.ball_actions = int(state.get("ball_actions", 0))
@@ -1193,74 +1183,79 @@ class BowlingSolitaireGameScene(C.Scene):
         self._draw_status(screen)
         if self._discard_modal_visible:
             self._draw_discard_modal(screen)
-        if self._initials_prompt_visible:
-            self._draw_initials_prompt(screen)
 
     def _draw_scoreboard(self, screen: pygame.Surface) -> None:
         sx = self.scroll_x
         sy = self.scroll_y
-        scoreboard_rect = self.scoreboard_rect.move(sx, sy)
-        pygame.draw.rect(screen, (248, 248, 248), scoreboard_rect, border_radius=18)
-        pygame.draw.rect(screen, (0, 0, 0), scoreboard_rect, width=2, border_radius=18)
-        header_font = C.FONT_UI
-        row_font = C.FONT_RANK
-        player_header_rect = self.player_header_rect.move(sx, sy)
-        pygame.draw.rect(screen, (245, 245, 245), player_header_rect)
-        pygame.draw.rect(screen, (150, 150, 155), player_header_rect, width=1)
-        player_title = header_font.render("Player", True, (30, 30, 40))
-        screen.blit(
-            player_title,
-            (
-                player_header_rect.centerx - player_title.get_width() // 2,
-                player_header_rect.centery - player_title.get_height() // 2,
-            ),
-        )
+        line_color = (240, 240, 240)
+        text_color = (255, 255, 255)
+        frame_font = C.FONT_SMALL
+        ball_font = C.FONT_RANK
+        total_font = C.FONT_UI
+
         for idx, cell in enumerate(self.score_cells):
-            header_rect = cell["header_rect"].move(sx, sy)
-            title = header_font.render(str(idx + 1), True, (30, 30, 40))
-            screen.blit(
-                title,
-                (header_rect.centerx - title.get_width() // 2, header_rect.centery - title.get_height() // 2),
-            )
             frame_rect = cell["frame_rect"].move(sx, sy)
-            pygame.draw.rect(screen, (210, 210, 215), frame_rect, width=1)
+            top_rect = cell["top_rect"].move(sx, sy)
+            score_rect = cell["score_rect"].move(sx, sy)
+
+            pygame.draw.rect(screen, line_color, frame_rect, width=2, border_radius=8)
+            pygame.draw.line(
+                screen,
+                line_color,
+                (top_rect.left, top_rect.bottom),
+                (top_rect.right, top_rect.bottom),
+                width=2,
+            )
+
+            for boundary in cell["ball_boxes"][1:]:
+                boundary_x = boundary.move(sx, sy).left
+                pygame.draw.line(
+                    screen,
+                    line_color,
+                    (boundary_x, top_rect.top),
+                    (boundary_x, top_rect.bottom),
+                    width=2,
+                )
+
+            label_pos = cell["label_pos"]
+            label_text = frame_font.render(str(idx + 1), True, text_color)
+            screen.blit(label_text, (label_pos[0] + sx, label_pos[1] + sy))
+
+            symbols = self.score_frames[idx].symbols
             for i, box in enumerate(cell["ball_boxes"]):
-                adj_box = box.move(sx, sy)
-                pygame.draw.rect(screen, (245, 245, 245), adj_box)
-                pygame.draw.rect(screen, (150, 150, 155), adj_box, width=1)
-                sym = self.score_frames[idx].symbols[i] if i < len(self.score_frames[idx].symbols) else ""
+                box_rect = box.move(sx, sy)
+                sym = symbols[i] if i < len(symbols) else ""
                 if sym:
-                    text = row_font.render(sym, True, (30, 30, 35))
+                    inner = box_rect.inflate(-8, -6)
+                    text = ball_font.render(sym, True, text_color)
                     screen.blit(
                         text,
                         (
-                            adj_box.centerx - text.get_width() // 2,
-                            adj_box.centery - text.get_height() // 2,
+                            inner.centerx - text.get_width() // 2,
+                            inner.centery - text.get_height() // 2,
                         ),
                     )
-            score_rect = cell["score_rect"].move(sx, sy)
+
             total = self.score_frames[idx].total
-            if total is not None:
-                score_text = header_font.render(str(total), True, (10, 70, 10))
+            if total is not None and not self._frame_has_strike_or_spare(idx):
+                inner_score = score_rect.inflate(-10, -8)
+                score_text = total_font.render(str(total), True, text_color)
                 screen.blit(
                     score_text,
                     (
-                        score_rect.centerx - score_text.get_width() // 2,
-                        score_rect.centery - score_text.get_height() // 2,
+                        inner_score.centerx - score_text.get_width() // 2,
+                        inner_score.centery - score_text.get_height() // 2,
                     ),
                 )
-        player_rect = self.player_rect.move(sx, sy)
-        pygame.draw.rect(screen, (255, 255, 255), player_rect)
-        pygame.draw.rect(screen, (150, 150, 155), player_rect, width=1)
-        initials = self.player_initials or ""
-        initials_text = header_font.render(initials, True, (30, 30, 35))
-        screen.blit(
-            initials_text,
-            (
-                player_rect.centerx - initials_text.get_width() // 2,
-                player_rect.centery - initials_text.get_height() // 2,
-            ),
-        )
+
+    def _frame_has_strike_or_spare(self, frame_index: int) -> bool:
+        symbols = self.score_frames[frame_index].symbols
+        for idx, sym in enumerate(symbols):
+            if idx > 1:
+                break
+            if sym in ("X", "/"):
+                return True
+        return False
 
     def _draw_pins(self, screen: pygame.Surface) -> None:
         sx = self.scroll_x
@@ -1294,11 +1289,12 @@ class BowlingSolitaireGameScene(C.Scene):
             if not drew_card:
 
                 pygame.draw.rect(screen, (100, 100, 110), face_rect, width=2, border_radius=10)
-            if hidden_count > 0:
+            total_cards = hidden_count + (1 if has_face else 0)
+            if total_cards > 0:
                 badge_rect = pygame.Rect(face_rect.right - 34, face_rect.bottom - 28, 28, 22)
                 pygame.draw.rect(screen, (35, 35, 50), badge_rect, border_radius=8)
                 pygame.draw.rect(screen, (210, 210, 220), badge_rect, width=1, border_radius=8)
-                badge_text = C.FONT_SMALL.render(str(hidden_count), True, (235, 235, 245))
+                badge_text = C.FONT_SMALL.render(str(total_cards), True, (235, 235, 245))
                 screen.blit(
                     badge_text,
                     (
@@ -1325,44 +1321,85 @@ class BowlingSolitaireGameScene(C.Scene):
         frame_label = C.FONT_SMALL.render(f"Frame {self.current_frame + 1}", True, (70, 70, 85))
         screen.blit(frame_label, (panel.centerx - frame_label.get_width() // 2, panel.top + 58))
 
-        cards = list(self.ball_waste)
-        card_top = panel.top + 90
-        close_top = self._discard_modal_close_button.rect.top
-        available_height = max(0, close_top - 30 - card_top)
-        available_width = panel.width - 60
-        thumb_scale = 0.7
-        thumb_size = (int(C.CARD_W * thumb_scale), int(C.CARD_H * thumb_scale))
-        gap = 14
+        def draw_card_section(
+            title: str,
+            cards: Sequence[C.Card],
+            top: int,
+            bottom: int,
+            scale: float,
+            empty_message: str,
+        ) -> Tuple[int, int]:
+            label = C.FONT_SMALL.render(title, True, (70, 70, 90))
+            screen.blit(label, (panel.centerx - label.get_width() // 2, top))
+            content_top = top + label.get_height() + 10
+            if not cards:
+                empty_msg = C.FONT_SMALL.render(empty_message, True, (90, 90, 110))
+                text_y = min(bottom - empty_msg.get_height(), content_top)
+                screen.blit(
+                    empty_msg,
+                    (panel.centerx - empty_msg.get_width() // 2, text_y),
+                )
+                return text_y + empty_msg.get_height() + 16, text_y + empty_msg.get_height()
 
-        if cards:
-            cols = max(1, min(len(cards), available_width // max(1, thumb_size[0] + gap)))
-            while cols > 1 and (cols * thumb_size[0] + (cols - 1) * gap) > available_width:
-                cols -= 1
+            available_width = panel.width - 60
+            gap = 12
+            thumb_w = max(12, int(C.CARD_W * scale))
+            thumb_h = max(18, int(C.CARD_H * scale))
+            max_cols = max(1, available_width // max(1, thumb_w + gap))
+            cols = max(1, min(len(cards), max_cols))
             rows = (len(cards) + cols - 1) // cols
-            if available_height < thumb_size[1]:
-                available_height = thumb_size[1]
-            while cols > 1 and (rows * thumb_size[1] + (rows - 1) * gap) > available_height:
-                cols -= 1
-                rows = (len(cards) + cols - 1) // cols
-            cards_width = cols * thumb_size[0] + (cols - 1) * gap
-            cards_height = rows * thumb_size[1] + (rows - 1) * gap
+            cards_height = rows * thumb_h + (rows - 1) * gap
+            max_height = max(thumb_h, bottom - content_top)
+            if cards_height > max_height:
+                scale_factor = min(1.0, max_height / max(1, cards_height))
+                thumb_w = max(8, int(thumb_w * scale_factor))
+                thumb_h = max(12, int(thumb_h * scale_factor))
+                cards_height = rows * thumb_h + (rows - 1) * gap
+            cards_width = cols * thumb_w + (cols - 1) * gap
             start_x = panel.left + (panel.width - cards_width) // 2
-            start_y = card_top + max(0, (available_height - cards_height) // 2)
+            start_y = content_top
             for index, card in enumerate(cards):
                 row = index // cols
                 col = index % cols
-                draw_x = start_x + col * (thumb_size[0] + gap)
-                draw_y = start_y + row * (thumb_size[1] + gap)
+                draw_x = start_x + col * (thumb_w + gap)
+                draw_y = start_y + row * (thumb_h + gap)
                 surf = C.get_card_surface(card)
-                if surf.get_size() != thumb_size:
-                    surf = pygame.transform.smoothscale(surf, thumb_size)
+                if surf.get_width() != thumb_w or surf.get_height() != thumb_h:
+                    surf = pygame.transform.smoothscale(surf, (thumb_w, thumb_h))
                 screen.blit(surf, (draw_x, draw_y))
-        else:
-            empty_msg = C.FONT_SMALL.render("No cards discarded this frame.", True, (80, 80, 95))
-            screen.blit(
-                empty_msg,
-                (panel.centerx - empty_msg.get_width() // 2, card_top + available_height // 2 - empty_msg.get_height() // 2),
-            )
+            section_bottom = start_y + cards_height
+            return section_bottom + 20, section_bottom
+
+        cards = list(self.ball_waste)
+        card_top = panel.top + 90
+        close_top = self._discard_modal_close_button.rect.top
+        bottom_limit = close_top - 30
+        cards_area_bottom = max(card_top + 140, bottom_limit - 210)
+        cards_next, _ = draw_card_section(
+            "Ball Cards Used",
+            cards,
+            card_top,
+            cards_area_bottom,
+            0.66,
+            "No cards discarded this frame.",
+        )
+
+        pins = [pin for pin in sorted(self.pins, key=lambda p: p.index) if pin.removed]
+        pins_top = max(cards_next, card_top + 160)
+        pin_next, pin_bottom = draw_card_section(
+            "Pins Knocked Down",
+            [pin.card for pin in pins],
+            pins_top,
+            bottom_limit - 10,
+            0.54,
+            "No pins have been knocked down yet.",
+        )
+
+        if pins:
+            pin_numbers = ", ".join(str(pin.index + 1) for pin in pins)
+            summary = C.FONT_SMALL.render(f"Pin positions: {pin_numbers}", True, (70, 70, 95))
+            summary_y = min(bottom_limit - summary.get_height() - 6, pin_bottom + 8)
+            screen.blit(summary, (panel.centerx - summary.get_width() // 2, summary_y))
 
         self._discard_modal_close_button.draw(screen)
 
@@ -1382,79 +1419,9 @@ class BowlingSolitaireGameScene(C.Scene):
         text = C.FONT_UI.render(self.status_message, True, C.WHITE)
         screen.blit(text, (40, C.SCREEN_H - 60))
 
-    def _draw_initials_prompt(self, screen: pygame.Surface) -> None:
-        overlay = pygame.Surface((C.SCREEN_W, C.SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        screen.blit(overlay, (0, 0))
-
-        panel_rect = self._initials_panel_rect
-        pygame.draw.rect(screen, (245, 245, 250), panel_rect, border_radius=16)
-        pygame.draw.rect(screen, (110, 110, 125), panel_rect, width=2, border_radius=16)
-
-        title = C.FONT_TITLE.render("Enter Player Initials", True, (30, 30, 40))
-        screen.blit(
-            title,
-            (panel_rect.centerx - title.get_width() // 2, panel_rect.top + 28),
-        )
-        subtitle = C.FONT_UI.render("Use 1-3 letters or numbers.", True, (60, 60, 70))
-        screen.blit(
-            subtitle,
-            (panel_rect.centerx - subtitle.get_width() // 2, panel_rect.top + 74),
-        )
-
-        input_rect = self._initials_input_rect
-        pygame.draw.rect(screen, (255, 255, 255), input_rect, border_radius=12)
-        border_color = (255, 220, 120) if self._initials_input_active else (175, 175, 185)
-        pygame.draw.rect(screen, border_color, input_rect, width=3, border_radius=12)
-
-        display = self._pending_initials or "_"
-        text = C.FONT_TITLE.render(display, True, (30, 30, 35))
-        screen.blit(
-            text,
-            (input_rect.centerx - text.get_width() // 2, input_rect.centery - text.get_height() // 2),
-        )
-
-        hint = C.FONT_SMALL.render("Press Enter or click Confirm when ready.", True, (90, 90, 100))
-        screen.blit(
-            hint,
-            (panel_rect.centerx - hint.get_width() // 2, input_rect.bottom + 8),
-        )
-
-        self._initials_accept_button.draw(screen)
-
-    def _handle_initials_event(self, event: pygame.event.Event) -> None:
-        self._initials_accept_button.handle_event(event)
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self._initials_input_rect.collidepoint(event.pos):
-                self._initials_input_active = True
-            else:
-                self._initials_input_active = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_BACKSPACE:
-                self._pending_initials = self._pending_initials[:-1]
-            elif event.key == pygame.K_RETURN:
-                if self._pending_initials:
-                    self._commit_initials()
-            else:
-                char = event.unicode.upper()
-                if char.isalnum() and len(self._pending_initials) < 3:
-                    self._pending_initials += char
-
-    def _commit_initials(self) -> None:
-        initials = (self._pending_initials or "").strip().upper()
-        if not initials:
-            return
-        self.player_initials = initials[:3]
-        self._pending_initials = self.player_initials
-        self._initials_prompt_visible = False
-        self._initials_input_active = False
-
     # ---------------------------------------------------------------- events
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        if self._initials_prompt_visible:
-            self._handle_initials_event(event)
-            return
         if self._discard_modal_visible:
             if event.type == pygame.MOUSEMOTION:
                 self._discard_modal_close_button.handle_event(event)
