@@ -317,7 +317,7 @@ class BowlingSolitaireGameScene(C.Scene):
         top_margin = getattr(C, "TOP_BAR_H", 60) + 20
         left_margin = 40
         right_margin = 40
-        scoreboard_gap_left = 20
+        scoreboard_gap_left = 10
 
         frame_width = max(70, int(C.CARD_W * 0.7))
         tenth_width = max(frame_width + 30, int(frame_width * 1.5))
@@ -1211,7 +1211,7 @@ class BowlingSolitaireGameScene(C.Scene):
             top_rect = cell["top_rect"].move(sx, sy)
             score_rect = cell["score_rect"].move(sx, sy)
 
-            pygame.draw.rect(screen, line_color, frame_rect, width=2, border_radius=8)
+            pygame.draw.rect(screen, line_color, frame_rect, width=2)
             pygame.draw.line(
                 screen,
                 line_color,
