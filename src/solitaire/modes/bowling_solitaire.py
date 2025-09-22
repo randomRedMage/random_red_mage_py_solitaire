@@ -369,7 +369,7 @@ class BowlingSolitaireGameScene(C.Scene):
             btn_y = piles_top
         btn_x = start_x - button_size - 30
         btn_y = piles_top
-    def new_games
+    
         for idx, btn in enumerate(self.ball_action_buttons):
             btn.rect.size = (button_size, button_size)
             btn.set_position(btn_x, btn_y + idx * (button_size + btn_gap))
