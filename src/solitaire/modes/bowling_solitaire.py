@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 import random
+from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import combinations
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 import pygame
 
@@ -428,6 +429,7 @@ class BowlingSolitaireGameScene(C.Scene):
         rects.extend(pin.rect for pin in self.pins)
         rects.extend(self.ball_face_rects)
         rects.extend(self.ball_stack_rects)
+        rects.extend(btn.rect for btn in self.ball_action_buttons)
         if self.waste_rect.width and self.waste_rect.height:
             rects.append(self.waste_rect)
         if not rects:
@@ -1042,12 +1044,27 @@ class BowlingSolitaireGameScene(C.Scene):
 
     # ----------------------------------------------------------------- drawing
 
+    @contextmanager
+    def _ball_action_button_offset(self) -> Iterator[None]:
+        sx = self.scroll_x
+        sy = self.scroll_y
+        originals: List[Tuple[int, int]] = []
+        for btn in self.ball_action_buttons:
+            originals.append(btn.rect.topleft)
+            btn.rect.move_ip(sx, sy)
+        try:
+            yield
+        finally:
+            for btn, pos in zip(self.ball_action_buttons, originals):
+                btn.rect.topleft = pos
+
     def draw(self, screen: pygame.Surface) -> None:
         screen.fill(C.TABLE_BG)
         if self.toolbar:
             self.toolbar.draw(screen)
-        for btn in self.ball_action_buttons:
-            btn.draw(screen)
+        with self._ball_action_button_offset():
+            for btn in self.ball_action_buttons:
+                btn.draw(screen)
         if self.help.visible:
             self.help.draw(screen)
             return
@@ -1269,9 +1286,10 @@ class BowlingSolitaireGameScene(C.Scene):
             return
         if self._handle_scroll_event(event):
             return
-        for btn in self.ball_action_buttons:
-            if btn.handle_event(event):
-                return
+        with self._ball_action_button_offset():
+            for btn in self.ball_action_buttons:
+                if btn.handle_event(event):
+                    return
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             offset_x = self.scroll_x
