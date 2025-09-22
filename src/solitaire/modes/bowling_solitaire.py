@@ -85,6 +85,13 @@ BACK_ROW_INDICES: Set[int] = {0, 1, 2, 3}
 CENTER_PIN_INDEX = 5
 
 
+BALL_PILE_FAN_DX = 18
+BALL_PILE_FAN_DY = -12
+BALL_PILE_VERTICAL_GAP = 28
+BALL_PILE_MAX_SIZE = 5
+BALL_COLUMN_GAP = 40
+
+
 def _create_deck(shuffle: bool = True) -> List[C.Card]:
     cards = [C.Card(0, rank, True) for rank in range(1, 11)]
     cards.extend(C.Card(1, rank, True) for rank in range(1, 11))
@@ -195,6 +202,9 @@ class BallPile:
         self.flip_next()
         return card
 
+    def hidden_cards(self) -> List[C.Card]:
+        return list(self._stack)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "face_up": _card_to_dict(self.face_up) if self.face_up else None,
@@ -290,6 +300,7 @@ class BowlingSolitaireGameScene(C.Scene):
         self.selected_ball_index: Optional[int] = None
         self.selected_pins: List[int] = []
         self.status_message: str = "Select a ball card to begin."
+        self._next_ball_confirmation_pending: bool = False
 
         self.pin_slots: List[pygame.Rect] = []
         self.ball_face_rects: List[pygame.Rect] = []
@@ -338,38 +349,40 @@ class BowlingSolitaireGameScene(C.Scene):
                 pin_slots.append(rect)
         self.pin_slots = pin_slots
 
-        lane_bottom = pin_slots[-1].bottom if pin_slots else pin_top
-        piles_top = lane_bottom + 40
-        pile_gap = 60
-        pile_width = C.CARD_W
-        total_width = pile_width * 3 + pile_gap * 2
-        start_x = cx - total_width // 2
+        column_top = pin_top
+        leftmost_pin = min((slot.left for slot in pin_slots), default=cx - C.CARD_W // 2)
+        fan_buffer = BALL_PILE_FAN_DX * (BALL_PILE_MAX_SIZE - 1)
+        face_x = leftmost_pin - BALL_COLUMN_GAP - C.CARD_W
+        min_x = face_x - fan_buffer
+        if min_x < left_margin:
+            adjust = left_margin - min_x
+            face_x += adjust
+
+        column_face_x = face_x
+        fan_height = abs(BALL_PILE_FAN_DY) * (BALL_PILE_MAX_SIZE - 1)
         self.ball_face_rects = []
         self.ball_stack_rects = []
         for i in range(3):
-            x = start_x + i * (pile_width + pile_gap)
-            face_rect = pygame.Rect(x, piles_top, pile_width, C.CARD_H)
-            stack_rect = pygame.Rect(x - 16, piles_top, pile_width // 2, C.CARD_H)
+            y = column_top + i * (C.CARD_H + BALL_PILE_VERTICAL_GAP)
+            face_rect = pygame.Rect(column_face_x, y, C.CARD_W, C.CARD_H)
+            stack_rect = pygame.Rect(
+                face_rect.left - fan_buffer,
+                y,
+                C.CARD_W + fan_buffer,
+                C.CARD_H + fan_height,
+            )
             self.ball_face_rects.append(face_rect)
             self.ball_stack_rects.append(stack_rect)
 
-        waste_rect = pygame.Rect(start_x + 3 * (pile_width + pile_gap), piles_top, pile_width, C.CARD_H)
-        self.waste_rect = waste_rect
+        last_face_bottom = self.ball_face_rects[-1].bottom if self.ball_face_rects else column_top
+        waste_top = last_face_bottom + BALL_PILE_VERTICAL_GAP + 20
+        self.waste_rect = pygame.Rect(column_face_x, waste_top, C.CARD_W, C.CARD_H)
 
         button_size = self._action_button_size
         btn_gap = 18
+        btn_x = column_face_x - button_size - 30 - fan_buffer // 4
+        btn_y = column_top
 
-        btn_x = start_x - button_size - 48
-        column_count = len(self.ball_action_buttons)
-        if column_count:
-            card_center = piles_top + C.CARD_H // 2
-            last_top = card_center - button_size // 2
-            btn_y = last_top - (column_count - 1) * (button_size + btn_gap)
-        else:
-            btn_y = piles_top
-        btn_x = start_x - button_size - 30
-        btn_y = piles_top
-    
         for idx, btn in enumerate(self.ball_action_buttons):
             btn.rect.size = (button_size, button_size)
             btn.set_position(btn_x, btn_y + idx * (button_size + btn_gap))
@@ -536,13 +549,6 @@ class BowlingSolitaireGameScene(C.Scene):
                 min_width=size,
             ),
             UI.Button(
-                "Discard Ball",
-                self.discard_selected_ball,
-                enabled_fn=self.can_discard_ball,
-                height=size,
-                min_width=size,
-            ),
-            UI.Button(
                 "Clear Selection",
                 self.clear_selection,
                 enabled_fn=lambda: bool(self.selected_pins),
@@ -567,6 +573,7 @@ class BowlingSolitaireGameScene(C.Scene):
             frame.reset()
         self.ball_waste = []
         self.status_message = "Frame 1 – select a ball card to start."
+        self._next_ball_confirmation_pending = False
         self.scroll_x = 0
         self.scroll_y = 0
         self._deal_new_frame()
@@ -612,6 +619,7 @@ class BowlingSolitaireGameScene(C.Scene):
         self.pins_removed_prev_ball = set()
         self.ball_actions = 0
         self.current_ball = 0
+        self._next_ball_confirmation_pending = False
 
     # ----------------------------------------------------------------- helpers
 
@@ -622,14 +630,6 @@ class BowlingSolitaireGameScene(C.Scene):
         valid, _ = self._validate_current_selection()
         return valid
 
-    def can_discard_ball(self) -> bool:
-        if self.game_completed:
-            return False
-        if self.selected_ball_index is None:
-            return False
-        pile = self.ball_piles[self.selected_ball_index]
-        return pile.face_up is not None
-
     def can_force_next_ball(self) -> bool:
         if self.game_completed:
             return False
@@ -637,13 +637,19 @@ class BowlingSolitaireGameScene(C.Scene):
             return False
         return True
 
+    def _cancel_next_ball_warning(self) -> None:
+        if self._next_ball_confirmation_pending:
+            self._next_ball_confirmation_pending = False
+
     # ---------------------------------------------------------------- controls
 
     def clear_selection(self) -> None:
+        self._cancel_next_ball_warning()
         self.selected_pins.clear()
         self.status_message = "Selection cleared."
 
     def apply_selection(self) -> None:
+        self._cancel_next_ball_warning()
         valid, message = self._validate_current_selection()
         if not valid:
             if message:
@@ -679,14 +685,20 @@ class BowlingSolitaireGameScene(C.Scene):
             self.selected_pins.clear()
             return
 
-    def discard_selected_ball(self) -> None:
-        if not self.can_discard_ball():
-            return
-        self._end_ball(discarded=True)
-
     def advance_to_next_ball(self) -> None:
         if not self.can_force_next_ball():
             return
+        if not self._next_ball_confirmation_pending:
+            self._next_ball_confirmation_pending = True
+            if self.current_ball == 0:
+                prompt = "Press Next Ball again to confirm moving to your second ball."
+            elif self.current_frame == 9 and self.current_ball == 1:
+                prompt = "Press Next Ball again to confirm moving to your third ball."
+            else:
+                prompt = "Press Next Ball again to confirm ending the frame."
+            self.status_message = prompt
+            return
+        self._next_ball_confirmation_pending = False
         self.selected_ball_index = None
         self.selected_pins.clear()
         staying_in_frame = self.current_ball == 0
@@ -831,6 +843,7 @@ class BowlingSolitaireGameScene(C.Scene):
     ) -> None:
         if self.game_completed:
             return
+        self._cancel_next_ball_warning()
         pins_removed = set(self.pins_removed_this_ball)
         knocked = len(pins_removed)
         self.pins_removed_this_ball.clear()
@@ -1113,6 +1126,7 @@ class BowlingSolitaireGameScene(C.Scene):
                 self.selected_ball_index = int(self.selected_ball_index)
             self.selected_pins = [int(x) for x in state.get("selected_pins", [])]
             self.status_message = str(state.get("status_message", ""))
+            self._next_ball_confirmation_pending = False
             sx = state.get("scroll_x", 0)
             sy = state.get("scroll_y", 0)
             try:
@@ -1245,20 +1259,26 @@ class BowlingSolitaireGameScene(C.Scene):
     def _draw_ball_piles(self, screen: pygame.Surface) -> None:
         sx = self.scroll_x
         sy = self.scroll_y
+        fan_dx = BALL_PILE_FAN_DX
+        fan_dy = BALL_PILE_FAN_DY
         for idx, pile in enumerate(self.ball_piles):
             face_rect = self.ball_face_rects[idx].move(sx, sy)
-            stack_rect = self.ball_stack_rects[idx].move(sx, sy)
-            if pile.remaining_hidden() > 0:
-                pygame.draw.rect(screen, (80, 80, 90), stack_rect)
-                count_text = C.FONT_SMALL.render(str(pile.remaining_hidden()), True, (230, 230, 235))
-                screen.blit(
-                    count_text,
-                    (stack_rect.centerx - count_text.get_width() // 2, stack_rect.centery - count_text.get_height() // 2),
-                )
-            card = pile.face_up
-            if card is not None:
-                surf = C.get_card_surface(card)
-                screen.blit(surf, (face_rect.left, face_rect.top))
+            hidden_cards = pile.hidden_cards()
+            cards_to_draw: List[C.Card] = list(hidden_cards)
+            if pile.face_up is not None:
+                cards_to_draw.append(pile.face_up)
+            if cards_to_draw:
+                start_x = face_rect.left - fan_dx * (len(cards_to_draw) - 1)
+                start_y = face_rect.top - fan_dy * (len(cards_to_draw) - 1)
+                for offset, card in enumerate(cards_to_draw):
+                    draw_rect = pygame.Rect(
+                        start_x + fan_dx * offset,
+                        start_y + fan_dy * offset,
+                        C.CARD_W,
+                        C.CARD_H,
+                    )
+                    surf = C.get_card_surface(card)
+                    screen.blit(surf, (draw_rect.left, draw_rect.top))
             else:
                 pygame.draw.rect(screen, (100, 100, 110), face_rect, width=2, border_radius=10)
             if self.selected_ball_index == idx:
@@ -1461,6 +1481,7 @@ class BowlingSolitaireGameScene(C.Scene):
     def _handle_ball_click(self, index: int) -> None:
         if self.game_completed:
             return
+        self._cancel_next_ball_warning()
         pile = self.ball_piles[index]
         if pile.face_up is None:
             self.status_message = "That ball has no remaining cards."
@@ -1477,6 +1498,7 @@ class BowlingSolitaireGameScene(C.Scene):
         self.status_message = "Ball selected – choose pins, then press Bowl."
 
     def _handle_pin_click(self, index: int) -> None:
+        self._cancel_next_ball_warning()
         if self.selected_ball_index is None:
             self.status_message = "Select a ball card first."
             return
