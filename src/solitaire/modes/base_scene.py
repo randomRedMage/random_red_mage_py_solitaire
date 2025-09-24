@@ -32,6 +32,15 @@ class GameMetadata:
 
 _GAME_METADATA: Tuple[GameMetadata, ...] = (
     GameMetadata(
+        key="accordion",
+        label="Accordion",
+        icon_filename="icon_accordion.png",
+        options_module="solitaire.scenes.game_options.accordion_options",
+        options_class="AccordionOptionsScene",
+        section="Other",
+        return_to_options=True,
+    ),
+    GameMetadata(
         key="klondike",
         label="Klondike",
         icon_filename="icon_klondike.png",
@@ -127,7 +136,7 @@ GAME_REGISTRY: Dict[str, GameMetadata] = {meta.key: meta for meta in _GAME_METAD
 GAME_SECTIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("Packers", ("klondike", "freecell", "gate", "beleaguered_castle", "yukon")),
     ("Builders", ("big_ben", "golf", "pyramid", "tripeaks")),
-    ("Other", ("bowling_solitaire",)),
+    ("Other", ("accordion", "bowling_solitaire")),
 )
 
 
