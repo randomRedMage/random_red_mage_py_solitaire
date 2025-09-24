@@ -1,4 +1,17 @@
 {
+  "accordion": {
+    "title": "Accordion — How to Play",
+    "lines": [
+      "Goal: Finish with piles at or below the difficulty target once the stock is empty.",
+      "Setup: A shuffled 52-card stock sits at the upper left. Click it to deal face-up cards in rows of seven, wrapping left to start each new row.",
+      "Layout: Each dealt card becomes its own pile. When a new row starts, the first card is considered adjacent to the final column of the previous row.",
+      "Moves: Drag the top pile one space to the left when the top cards match in rank or suit. You may also jump three piles to the left with the same match rule.",
+      "Dragging carries the entire pile with the top card. There is no need to fan the cards in a pile.",
+      "Dealing: You may deal a new card at any time until the stock is empty. On Normal and Hard, dealing disables undo until another move is made.",
+      "Win: Stock empty and no moves left with 7 (Easy), 4 (Normal), or 1 (Hard) piles remaining. Otherwise the game is a loss.",
+      "Toolbar: Menu, New game, Undo, Save&Exit, and Help."
+    ]
+  },
   "big_ben": {
     "title": "Big Ben - How to Play",
     "lines": [
