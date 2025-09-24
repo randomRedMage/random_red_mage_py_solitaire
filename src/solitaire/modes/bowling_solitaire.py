@@ -16,6 +16,7 @@ from solitaire import common as C
 from solitaire import ui as UI
 from solitaire.help_data import create_modal_help
 from solitaire.modes.base_scene import ModeUIHelper
+from .bowling_scoring import calculate_frame_totals
 
 
 # --- Save helpers -----------------------------------------------------------
@@ -1024,58 +1025,9 @@ class BowlingSolitaireGameScene(C.Scene):
                     frame.symbols[2] = "X" if knocked == 10 else (str(knocked) if knocked > 0 else "-")
 
     def _recompute_totals(self) -> None:
-        cumulative = 0
-        rolls = self.roll_history
-        idx = 0
-        for frame_index in range(10):
-            frame = self.score_frames[frame_index]
-            frame.total = None
-            if frame_index < 9:
-                if idx >= len(rolls):
-                    break
-                first = rolls[idx]
-                if first == 10:
-                    if idx + 2 < len(rolls):
-                        cumulative += 10 + rolls[idx + 1] + rolls[idx + 2]
-                        frame.total = cumulative
-                    idx += 1
-                else:
-                    if idx + 1 >= len(rolls):
-                        break
-                    second = rolls[idx + 1]
-                    if first + second == 10:
-                        if idx + 2 < len(rolls):
-                            cumulative += 10 + rolls[idx + 2]
-                            frame.total = cumulative
-                    else:
-                        cumulative += first + second
-                        frame.total = cumulative
-                    idx += 2
-            else:
-                if idx >= len(rolls):
-                    break
-                first = rolls[idx]
-                if idx + 1 >= len(rolls):
-                    break
-                second = rolls[idx + 1]
-                if first == 10:
-                    if idx + 2 >= len(rolls):
-                        break
-                    third = rolls[idx + 2]
-                    cumulative += 10 + second + third
-                    frame.total = cumulative
-                    idx += 3
-                elif first + second == 10:
-                    if idx + 2 >= len(rolls):
-                        break
-                    third = rolls[idx + 2]
-                    cumulative += 10 + third
-                    frame.total = cumulative
-                    idx += 3
-                else:
-                    cumulative += first + second
-                    frame.total = cumulative
-                    idx += 2
+        totals = calculate_frame_totals(self.roll_history)
+        for frame, total in zip(self.score_frames, totals):
+            frame.total = total
 
     # ------------------------------------------------------------------- saving
 
