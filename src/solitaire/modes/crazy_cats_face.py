@@ -66,8 +66,6 @@ _FACE_SPECS: Tuple[CardLike, ...] = (
     C.Card(3, 12, False),
     C.Card(2, 10, False),
     C.Card(3, 10, False),
-    C.Card(2, 9, False),
-    C.Card(3, 9, False),
     JokerCard("red"),
     JokerCard("black"),
 )
@@ -183,14 +181,16 @@ class CrazyCatsFaceScene(C.Scene):
 
     def _tableau_layout(self) -> List[Tuple[Tuple[float, float], int]]:
         center_x = C.SCREEN_W // 2
-        column_gap = C.CARD_W + max(36, C.CARD_W // 2)
-        side_offset = max(24, C.CARD_W // 4)
-        vertical_gap = max(24, C.CARD_H // 6)
+        column_gap = C.CARD_W + max(40, C.CARD_W // 2)
+        inner_gap = column_gap / 2
+        vertical_gap = max(32, C.CARD_H // 5)
         top_y = C.TOP_BAR_H + 160
 
         left_x = center_x - column_gap
         mid_x = center_x
         right_x = center_x + column_gap
+        inner_left_x = center_x - inner_gap
+        inner_right_x = center_x + inner_gap
 
         rows: List[Tuple[Tuple[float, float], int]] = []
 
@@ -199,20 +199,17 @@ class CrazyCatsFaceScene(C.Scene):
         rows.append(((mid_x, top_center_y), 0))
         rows.append(((right_x, top_center_y), 0))
 
-        first_horizontal_y = top_y + C.CARD_H + vertical_gap + C.CARD_W / 2
-        rows.append(((left_x - (C.CARD_W / 2 + side_offset), first_horizontal_y), 90))
-        rows.append(((right_x + (C.CARD_W / 2 + side_offset), first_horizontal_y), -90))
 
-        second_horizontal_y = first_horizontal_y + C.CARD_W + vertical_gap
-        rows.append(((left_x - (C.CARD_W / 2 + side_offset), second_horizontal_y), 90))
-        rows.append(((right_x + (C.CARD_W / 2 + side_offset), second_horizontal_y), -90))
+        second_row_y = top_center_y + C.CARD_H + vertical_gap
+        rows.append(((inner_left_x, second_row_y), 0))
+        rows.append(((inner_right_x, second_row_y), 0))
 
-        third_horizontal_y = second_horizontal_y + C.CARD_W + vertical_gap
-        rows.append(((left_x - (C.CARD_W / 2 + side_offset), third_horizontal_y), 90))
-        rows.append(((right_x + (C.CARD_W / 2 + side_offset), third_horizontal_y), -90))
+        third_row_y = second_row_y + C.CARD_H + vertical_gap
+        rows.append(((left_x, third_row_y), 0))
+        rows.append(((right_x, third_row_y), 0))
 
-        chin_tip_y = third_horizontal_y + C.CARD_W / 2 + vertical_gap + C.CARD_H / 2
-        rows.append(((mid_x, chin_tip_y), 0))
+        chin_y = third_row_y + C.CARD_H + vertical_gap
+        rows.append(((mid_x, chin_y), 0))
 
         return rows
 
