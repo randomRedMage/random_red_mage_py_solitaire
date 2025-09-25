@@ -140,7 +140,7 @@ class CrazyCatsFaceScene(C.Scene):
         stock_x = 120
         stock_y = C.TOP_BAR_H + 120
         self.stock_pile = C.Pile(stock_x, stock_y)
-        self.waste_pile = C.Pile(stock_x, stock_y + C.CARD_H + 24, fan_y=18)
+        self.waste_pile = C.Pile(stock_x, stock_y + C.CARD_H + 24)
 
         self.face_slots: List[FaceCardSlot] = []
         self.pending_flips: int = 0
@@ -194,26 +194,25 @@ class CrazyCatsFaceScene(C.Scene):
 
         rows: List[Tuple[Tuple[float, float], int]] = []
 
-        rows.append(((left_x, top_y + C.CARD_H / 2), 0))
-        rows.append(((mid_x, top_y + C.CARD_H / 2 + C.CARD_H / 2), 0))
-        rows.append(((right_x, top_y + C.CARD_H / 2), 0))
+        top_center_y = top_y + C.CARD_H / 2
+        rows.append(((left_x, top_center_y), 0))
+        rows.append(((mid_x, top_center_y), 0))
+        rows.append(((right_x, top_center_y), 0))
 
-        mid_second_y = top_y + C.CARD_H + vertical_gap
-        rows.append(((mid_x, mid_second_y + C.CARD_H / 2), 0))
+        first_horizontal_y = top_y + C.CARD_H + vertical_gap + C.CARD_W / 2
+        rows.append(((left_x - (C.CARD_W / 2 + side_offset), first_horizontal_y), 90))
+        rows.append(((right_x + (C.CARD_W / 2 + side_offset), first_horizontal_y), -90))
 
-        whisker_y = mid_second_y + C.CARD_H / 2
-        rows.append(((left_x - (C.CARD_W / 2 + side_offset), whisker_y + C.CARD_W / 2), 90))
-        rows.append(((right_x + (C.CARD_W / 2 + side_offset), whisker_y + C.CARD_W / 2), -90))
+        second_horizontal_y = first_horizontal_y + C.CARD_W + vertical_gap
+        rows.append(((left_x - (C.CARD_W / 2 + side_offset), second_horizontal_y), 90))
+        rows.append(((right_x + (C.CARD_W / 2 + side_offset), second_horizontal_y), -90))
 
-        chin_base_y = whisker_y + C.CARD_W + vertical_gap
-        rows.append(((left_x - (C.CARD_W / 2 + side_offset), chin_base_y + C.CARD_H / 2), 0))
-        rows.append(((right_x + (C.CARD_W / 2 + side_offset), chin_base_y + C.CARD_H / 2), 0))
+        third_horizontal_y = second_horizontal_y + C.CARD_W + vertical_gap
+        rows.append(((left_x - (C.CARD_W / 2 + side_offset), third_horizontal_y), 90))
+        rows.append(((right_x + (C.CARD_W / 2 + side_offset), third_horizontal_y), -90))
 
-        chin_center_y = chin_base_y + C.CARD_H + vertical_gap
-        rows.append(((mid_x, chin_center_y + C.CARD_H / 2), 0))
-
-        chin_tip_y = chin_center_y + C.CARD_H + vertical_gap
-        rows.append(((mid_x, chin_tip_y + C.CARD_H / 2), 0))
+        chin_tip_y = third_horizontal_y + C.CARD_W / 2 + vertical_gap + C.CARD_H / 2
+        rows.append(((mid_x, chin_tip_y), 0))
 
         return rows
 
@@ -299,18 +298,20 @@ class CrazyCatsFaceScene(C.Scene):
             self.jokers_flipped += 1
         self.pending_flips = max(0, self.pending_flips - 1)
 
+        if self._remaining_face_down() == 0:
+            self.pending_flips = 0
+            self._finish_game()
+            return
+
         if self.pending_flips == 0:
-            if self._remaining_face_down() == 0:
-                self._finish_game()
-            else:
-                self.pending_note = "All required cards flipped."
-                self.message = "All required cards flipped. Draw again!"
+            self.pending_note = "All required cards flipped."
+            self.message = "All required cards flipped. Draw again!"
 
     def _finish_game(self) -> None:
         self.game_over = True
         score = self._current_score()
         self.message = f"All cards revealed! Final score: {score}."
-        self.pending_note = ""
+        self.pending_note = f"Final score: {score}"
 
     # ------------------------------------------------------------------
     def handle_event(self, event) -> None:
