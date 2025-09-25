@@ -515,5 +515,3 @@ class AccordionGameScene(C.Scene):
             msg_font = C.FONT_TITLE if C.FONT_TITLE is not None else font
             msg_surf = msg_font.render(self.message, True, C.GOLD if self.did_win else C.WHITE)
             screen.blit(msg_surf, (C.SCREEN_W // 2 - msg_surf.get_width() // 2, 110))
-
-*** End of File
