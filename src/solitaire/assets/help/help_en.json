@@ -65,6 +65,19 @@
       "Press H/Esc to close this help."
     ]
   },
+  "demon": {
+    "title": "Demon (Canfield) — How to Play",
+    "lines": [
+      "Goal: Build each foundation by suit starting from the starter card and wrapping K→A.",
+      "Setup: Deal 13 face-up cards to the Demon reserve at the upper left, then flip the next card to start the first foundation and set the base rank.",
+      "Tableau: Four face-up columns beneath the foundations build down by 1 with alternating colors, wrapping A→K.",
+      "Reserve: Only the top card of the Demon may be played. Empty tableau columns auto-fill from the reserve, then from the waste if the reserve is empty.",
+      "Stock/Waste: Click the stock to deal up to three cards face-up to the waste. When the stock is empty, turn the waste over to form a new stock until replays run out.",
+      "Moves: Drag single cards or ordered alternating sequences between tableau columns, or play any eligible card to its foundation.",
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+    ],
+    "max_width": 880
+  },
   "golf": {
     "title": "Golf — How to Play",
     "lines": [
