@@ -68,6 +68,14 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         return_to_options=True,
     ),
     GameMetadata(
+        key="demon",
+        label="Demon\n(Canfield)",
+        icon_filename="icon_demon.png",
+        options_module="solitaire.scenes.game_options.demon_options",
+        options_class="DemonOptionsScene",
+        section="Packers",
+    ),
+    GameMetadata(
         key="beleaguered_castle",
         label="Beleaguered\nCastle",
         icon_filename="icon_beleagured_castle.png",
@@ -134,7 +142,7 @@ GAME_REGISTRY: Dict[str, GameMetadata] = {meta.key: meta for meta in _GAME_METAD
 
 # Section definitions preserve the ordering from the original main menu.
 GAME_SECTIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
-    ("Packers", ("klondike", "freecell", "gate", "beleaguered_castle", "yukon")),
+    ("Packers", ("klondike", "freecell", "gate", "demon", "beleaguered_castle", "yukon")),
     ("Builders", ("big_ben", "golf", "pyramid", "tripeaks")),
     ("Other", ("accordion", "bowling_solitaire")),
 )
