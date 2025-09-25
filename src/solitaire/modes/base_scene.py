@@ -142,6 +142,15 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         section="Other",
         return_to_options=True,
     ),
+    GameMetadata(
+        key="crazy_cats_face",
+        label="Crazy Cat's\nFace",
+        icon_filename="icon_crazy_cat.png",
+        options_module="solitaire.scenes.game_options.crazy_cats_face_options",
+        options_class="CrazyCatsFaceOptionsScene",
+        section="Other",
+        return_to_options=True,
+    ),
 )
 
 
@@ -152,7 +161,7 @@ GAME_REGISTRY: Dict[str, GameMetadata] = {meta.key: meta for meta in _GAME_METAD
 GAME_SECTIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("Packers", ("klondike", "freecell", "gate", "demon", "chameleon", "beleaguered_castle", "yukon")),
     ("Builders", ("big_ben", "golf", "pyramid", "tripeaks")),
-    ("Other", ("accordion", "bowling_solitaire")),
+    ("Other", ("accordion", "bowling_solitaire", "crazy_cats_face")),
 )
 
 
