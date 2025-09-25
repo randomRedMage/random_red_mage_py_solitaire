@@ -113,7 +113,7 @@ class DemonGameScene(C.Scene):
         if stock_cycles is None:
             stock_cycles = cfg.get("stock_cycles")
 
-        self.reserve: C.Pile = C.Pile(0, 0, fan_y=max(16, C.CARD_H // 4))
+        self.reserve: C.Pile = C.Pile(0, 0, fan_y=0)
         self.foundations: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
         self.foundation_suits: List[int] = [0, 1, 2, 3]
         self.tableau: List[C.Pile] = [C.Pile(0, 0, fan_y=max(24, int(C.CARD_H * 0.3))) for _ in range(4)]
@@ -163,29 +163,33 @@ class DemonGameScene(C.Scene):
     def compute_layout(self) -> None:
         top_bar = getattr(C, "TOP_BAR_H", 60)
         top_y = max(90, top_bar + 28)
-        left_margin = 48
         foundation_gap = max(32, C.CARD_W // 3)
         row_gap = max(36, C.CARD_H // 4)
-        waste_gap = max(20, C.CARD_W // 6)
+        column_gap = C.CARD_W // 2
 
-        self.reserve.x = left_margin
+        foundation_span = len(self.foundations) * C.CARD_W + (len(self.foundations) - 1) * foundation_gap
+        total_width = C.CARD_W + column_gap + foundation_span
+        left_edge = max((C.SCREEN_W - total_width) // 2, 24)
+
+        column_x = left_edge
+        self.reserve.x = column_x
         self.reserve.y = top_y
 
-        foundation_start_x = self.reserve.x + C.CARD_W + foundation_gap
+        foundation_start_x = column_x + C.CARD_W + column_gap
         for idx, pile in enumerate(self.foundations):
-            pile.x = foundation_start_x + idx * (C.CARD_W + waste_gap)
+            pile.x = foundation_start_x + idx * (C.CARD_W + foundation_gap)
             pile.y = top_y
 
         row2_y = top_y + C.CARD_H + row_gap
-        self.stock_pile.x = self.reserve.x
+        self.stock_pile.x = column_x
         self.stock_pile.y = row2_y
 
-        self.waste_pile.x = self.stock_pile.x + C.CARD_W + waste_gap
-        self.waste_pile.y = row2_y
+        self.waste_pile.x = column_x
+        self.waste_pile.y = row2_y + C.CARD_H + row_gap
 
         tableau_start_x = foundation_start_x
         for idx, pile in enumerate(self.tableau):
-            pile.x = tableau_start_x + idx * (C.CARD_W + waste_gap)
+            pile.x = tableau_start_x + idx * (C.CARD_W + foundation_gap)
             pile.y = row2_y
 
     # ----- Deal / Restart -----
@@ -560,6 +564,29 @@ class DemonGameScene(C.Scene):
             elif origin == "tableau" and idx is not None:
                 self.tableau[idx].cards.extend(stack)
 
+    def _draw_reserve_with_count(self, screen: pygame.Surface) -> None:
+        self.reserve.draw(screen)
+        total_cards = len(self.reserve.cards)
+        if total_cards <= 0:
+            return
+        rect = pygame.Rect(
+            self.reserve.x + C.DRAW_OFFSET_X,
+            self.reserve.y + C.DRAW_OFFSET_Y,
+            C.CARD_W,
+            C.CARD_H,
+        )
+        badge_rect = pygame.Rect(rect.right - 34, rect.bottom - 28, 28, 22)
+        pygame.draw.rect(screen, (35, 35, 50), badge_rect, border_radius=8)
+        pygame.draw.rect(screen, (210, 210, 220), badge_rect, width=1, border_radius=8)
+        badge_text = C.FONT_SMALL.render(str(total_cards), True, (235, 235, 245))
+        screen.blit(
+            badge_text,
+            (
+                badge_rect.centerx - badge_text.get_width() // 2,
+                badge_rect.centery - badge_text.get_height() // 2,
+            ),
+        )
+
     # ----- Draw -----
     def draw(self, screen) -> None:
         screen.fill(C.TABLE_BG)
@@ -582,7 +609,7 @@ class DemonGameScene(C.Scene):
                 cy = pile.y + C.CARD_H // 2
                 screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
-        self.reserve.draw(screen)
+        self._draw_reserve_with_count(screen)
         self.stock_pile.draw(screen)
         self.waste_pile.draw(screen)
         for pile in self.tableau:
