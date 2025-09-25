@@ -66,8 +66,6 @@ _FACE_SPECS: Tuple[CardLike, ...] = (
     C.Card(3, 12, False),
     C.Card(2, 10, False),
     C.Card(3, 10, False),
-    C.Card(2, 9, False),
-    C.Card(3, 9, False),
     JokerCard("red"),
     JokerCard("black"),
 )
@@ -140,7 +138,7 @@ class CrazyCatsFaceScene(C.Scene):
         stock_x = 120
         stock_y = C.TOP_BAR_H + 120
         self.stock_pile = C.Pile(stock_x, stock_y)
-        self.waste_pile = C.Pile(stock_x, stock_y + C.CARD_H + 24, fan_y=18)
+        self.waste_pile = C.Pile(stock_x, stock_y + C.CARD_H + 24)
 
         self.face_slots: List[FaceCardSlot] = []
         self.pending_flips: int = 0
@@ -183,37 +181,34 @@ class CrazyCatsFaceScene(C.Scene):
 
     def _tableau_layout(self) -> List[Tuple[Tuple[float, float], int]]:
         center_x = C.SCREEN_W // 2
-        column_gap = C.CARD_W + max(36, C.CARD_W // 2)
-        side_offset = max(24, C.CARD_W // 4)
-        vertical_gap = max(24, C.CARD_H // 6)
+        column_gap = C.CARD_W + max(40, C.CARD_W // 2)
+        inner_gap = column_gap / 2
+        vertical_gap = max(32, C.CARD_H // 5)
         top_y = C.TOP_BAR_H + 160
 
         left_x = center_x - column_gap
         mid_x = center_x
         right_x = center_x + column_gap
+        inner_left_x = center_x - inner_gap
+        inner_right_x = center_x + inner_gap
 
         rows: List[Tuple[Tuple[float, float], int]] = []
 
-        rows.append(((left_x, top_y + C.CARD_H / 2), 0))
-        rows.append(((mid_x, top_y + C.CARD_H / 2 + C.CARD_H / 2), 0))
-        rows.append(((right_x, top_y + C.CARD_H / 2), 0))
+        top_center_y = top_y + C.CARD_H / 2
+        rows.append(((left_x, top_center_y), 0))
+        rows.append(((mid_x, top_center_y), 0))
+        rows.append(((right_x, top_center_y), 0))
 
-        mid_second_y = top_y + C.CARD_H + vertical_gap
-        rows.append(((mid_x, mid_second_y + C.CARD_H / 2), 0))
+        second_row_y = top_center_y + C.CARD_H + vertical_gap
+        rows.append(((inner_left_x, second_row_y), 0))
+        rows.append(((inner_right_x, second_row_y), 0))
 
-        whisker_y = mid_second_y + C.CARD_H / 2
-        rows.append(((left_x - (C.CARD_W / 2 + side_offset), whisker_y + C.CARD_W / 2), 90))
-        rows.append(((right_x + (C.CARD_W / 2 + side_offset), whisker_y + C.CARD_W / 2), -90))
+        third_row_y = second_row_y + C.CARD_H + vertical_gap
+        rows.append(((left_x, third_row_y), 0))
+        rows.append(((right_x, third_row_y), 0))
 
-        chin_base_y = whisker_y + C.CARD_W + vertical_gap
-        rows.append(((left_x - (C.CARD_W / 2 + side_offset), chin_base_y + C.CARD_H / 2), 0))
-        rows.append(((right_x + (C.CARD_W / 2 + side_offset), chin_base_y + C.CARD_H / 2), 0))
-
-        chin_center_y = chin_base_y + C.CARD_H + vertical_gap
-        rows.append(((mid_x, chin_center_y + C.CARD_H / 2), 0))
-
-        chin_tip_y = chin_center_y + C.CARD_H + vertical_gap
-        rows.append(((mid_x, chin_tip_y + C.CARD_H / 2), 0))
+        chin_y = third_row_y + C.CARD_H + vertical_gap
+        rows.append(((mid_x, chin_y), 0))
 
         return rows
 
@@ -299,18 +294,20 @@ class CrazyCatsFaceScene(C.Scene):
             self.jokers_flipped += 1
         self.pending_flips = max(0, self.pending_flips - 1)
 
+        if self._remaining_face_down() == 0:
+            self.pending_flips = 0
+            self._finish_game()
+            return
+
         if self.pending_flips == 0:
-            if self._remaining_face_down() == 0:
-                self._finish_game()
-            else:
-                self.pending_note = "All required cards flipped."
-                self.message = "All required cards flipped. Draw again!"
+            self.pending_note = "All required cards flipped."
+            self.message = "All required cards flipped. Draw again!"
 
     def _finish_game(self) -> None:
         self.game_over = True
         score = self._current_score()
         self.message = f"All cards revealed! Final score: {score}."
-        self.pending_note = ""
+        self.pending_note = f"Final score: {score}"
 
     # ------------------------------------------------------------------
     def handle_event(self, event) -> None:
