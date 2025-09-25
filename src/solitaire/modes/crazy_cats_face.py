@@ -199,6 +199,7 @@ class CrazyCatsFaceScene(C.Scene):
         rows.append(((mid_x, top_center_y), 0))
         rows.append(((right_x, top_center_y), 0))
 
+
         second_row_y = top_center_y + C.CARD_H + vertical_gap
         rows.append(((inner_left_x, second_row_y), 0))
         rows.append(((inner_right_x, second_row_y), 0))
