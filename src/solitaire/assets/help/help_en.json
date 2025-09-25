@@ -65,6 +65,19 @@
       "Press H/Esc to close this help."
     ]
   },
+  "chameleon": {
+    "title": "Chameleon — How to Play",
+    "lines": [
+      "Goal: Build each foundation by suit starting from the starter card and wrapping K→A.",
+      "Setup: Deal 12 face-up cards to the reserve at the upper left, then flip the next card to start the first foundation and set the base rank.",
+      "Tableau: Three columns beneath the foundations build down by 1 regardless of suit, wrapping A→K, and may move in complete descending sequences.",
+      "Reserve: Only the top card may be played. Empty tableau columns auto-fill from the reserve, then from the waste if the reserve is empty.",
+      "Stock/Waste: Click the stock to deal one card face-up to the waste. When the stock is empty, turn the waste over to form a new stock until redeals run out.",
+      "Moves: Drag single cards or valid descending sequences between tableau columns, or play any eligible card to its foundation.",
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+    ],
+    "max_width": 880
+  },
   "demon": {
     "title": "Demon (Canfield) — How to Play",
     "lines": [
