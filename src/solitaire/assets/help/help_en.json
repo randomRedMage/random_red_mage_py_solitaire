@@ -171,5 +171,16 @@
       "Toolbar: Menu, New game, Save&Exit, Help. Action buttons handle Knock Down, Discard Ball, and clearing your selection."
     ],
     "max_width": 880
+  },
+  "crazy_cats_face": {
+    "title": "Crazy Cat's Face — How to Play",
+    "lines": [
+      "Goal: Reveal every card in the cat-shaped tableau before the stock runs out.",
+      "Stock: Ace through Four of hearts and spades. Click the stock to draw the top card to the waste pile.",
+      "Spade draw: Flip a number of hidden tableau cards equal to the card's rank modulo two (Ace/Three = 1, Two/Four = 0).",
+      "Heart draw: Flip as many hidden tableau cards as the card's value when enough remain; otherwise flip every card still face down.",
+      "While flips are required, click hidden tableau cards of your choice to reveal them; jokers count as part of the tableau.",
+      "Score: Sum of the waste card values minus two points for each joker you reveal. Clearing the tableau wins the round."
+    ]
   }
 }
