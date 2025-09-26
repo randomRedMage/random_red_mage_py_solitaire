@@ -133,6 +133,7 @@ class DuchessGameScene(C.Scene):
         row_gap = max(36, C.CARD_H // 4)
         reserve_gap_y = max(26, C.CARD_H // 5)
         column_gap = C.CARD_W // 2
+        
 
         foundation_span = len(self.foundations) * C.CARD_W + (len(self.foundations) - 1) * foundation_gap
         total_width = C.CARD_W + column_gap + foundation_span
@@ -143,7 +144,9 @@ class DuchessGameScene(C.Scene):
 
         reserve_y = top_y
         for idx, pile in enumerate(self.reserves):
-            pile.x = foundation_start_x + idx * (C.CARD_W + foundation_gap)
+            #Adjusting gap
+            #pile.x = foundation_start_x + idx * (C.CARD_W + foundation_gap)
+            pile.x = column_x - (C.CARD_W // 2) + idx * (C.CARD_W + (foundation_gap * 3))
             pile.y = reserve_y
 
         foundation_y = reserve_y + C.CARD_H + reserve_gap_y
@@ -180,7 +183,7 @@ class DuchessGameScene(C.Scene):
         self._clear()
         deck = C.make_deck(shuffle=True)
 
-        reserve_counts = [4, 3, 3, 3]
+        reserve_counts = [3, 3, 3, 3]
         for idx, pile in enumerate(self.reserves):
             count = reserve_counts[idx]
             for _ in range(count):
