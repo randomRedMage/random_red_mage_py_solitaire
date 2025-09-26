@@ -363,31 +363,40 @@ class DuchessGameScene(C.Scene):
                 return False
         return True
 
-    def _pop_reserve_card(self) -> Optional[Tuple[C.Card, int]]:
-        for idx, pile in enumerate(self.reserves):
-            if pile.cards:
-                return pile.cards.pop(), idx
-        return None
-
     def _auto_fill_empty_columns(self) -> None:
-        changed = True
-        while changed:
+        while True:
+            empty_piles = [pile for pile in self.tableau if not pile.cards]
+            if not empty_piles:
+                break
+
+            reserve_with_cards = [pile for pile in self.reserves if pile.cards]
+            reserve_count = len(reserve_with_cards)
             changed = False
-            for pile in self.tableau:
-                if pile.cards:
-                    continue
-                card_info = self._pop_reserve_card()
+
+            for pile in empty_piles:
                 card: Optional[C.Card] = None
-                if card_info is not None:
-                    card, _ = card_info
+
+                if reserve_count > 1:
+                    continue
+                if reserve_count == 1:
+                    reserve_pile = reserve_with_cards[0]
+                    card = reserve_pile.cards.pop()
+                    reserve_with_cards = [rp for rp in self.reserves if rp.cards]
+                    reserve_count = len(reserve_with_cards)
                 elif self.waste_pile.cards:
                     card = self.waste_pile.cards.pop()
                 elif self.stock_pile.cards:
                     card = self.stock_pile.cards.pop()
-                if card is not None:
-                    card.face_up = True
-                    pile.cards.append(card)
-                    changed = True
+
+                if card is None:
+                    continue
+
+                card.face_up = True
+                pile.cards.append(card)
+                changed = True
+
+            if not changed:
+                break
 
     def post_move_cleanup(self) -> None:
         self._auto_fill_empty_columns()
@@ -561,6 +570,8 @@ class DuchessGameScene(C.Scene):
                 if rect.collidepoint((mx, my)):
                     target = pile.cards[-1] if pile.cards else None
                     if self._tableau_allows(stack[0], target):
+                        if not pile.cards and any(r.cards for r in self.reserves) and origin != "reserve":
+                            continue
                         self.push_undo()
                         pile.cards.extend(stack)
                         self.post_move_cleanup()
