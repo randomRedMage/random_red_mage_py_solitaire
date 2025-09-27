@@ -8,6 +8,7 @@ shortcuts for in-game scenes.
 from __future__ import annotations
 
 import importlib
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, Mapping, MutableMapping, Optional, Tuple
 
@@ -343,5 +344,131 @@ class ModeUIHelper:
         return self._invoke_action(action)
 
 
-__all__ = ["GAME_REGISTRY", "GAME_SECTIONS", "GameMetadata", "ModeUIHelper"]
+class ScrollableSceneMixin:
+    """Reusable helpers for solitaire scenes that support scrolling."""
+
+    scroll_step: int = 60
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[override]
+        super().__init__(*args, **kwargs)
+        self.scroll_x: int = 0
+        self.scroll_y: int = 0
+        self._panning: bool = False
+        self._pan_anchor: Optional[Tuple[int, int]] = None
+        self._scroll_anchor: Optional[Tuple[int, int]] = None
+
+    # ----- Abstract helpers -----
+    def iter_scroll_piles(self) -> Iterable["C.Pile"]:
+        """Return the piles that should be considered when clamping scroll."""
+
+        raise NotImplementedError
+
+    # ----- Coordinate transforms -----
+    def _screen_to_world(self, pos: Tuple[int, int]) -> Tuple[int, int]:
+        sx, sy = pos
+        return (sx - self.scroll_x, sy - self.scroll_y)
+
+    def _world_to_screen(self, pos: Tuple[int, int]) -> Tuple[int, int]:
+        wx, wy = pos
+        return (wx + self.scroll_x, wy + self.scroll_y)
+
+    # ----- Scroll bounds -----
+    def _scroll_content_bounds(self) -> Tuple[int, int, int, int]:
+        piles = tuple(self.iter_scroll_piles())
+        if not piles:
+            top_margin = getattr(C, "TOP_BAR_H", 60)
+            return (0, top_margin, C.SCREEN_W, top_margin + C.CARD_H)
+
+        left = min(p.x for p in piles)
+        top = min(p.y for p in piles)
+        right = left
+        bottom = top
+        for pile in piles:
+            if pile.cards:
+                last_rect = pile.rect_for_index(len(pile.cards) - 1)
+                rect = pygame.Rect(pile.x, pile.y, C.CARD_W, C.CARD_H)
+                rect.union_ip(last_rect)
+            else:
+                rect = pygame.Rect(pile.x, pile.y, C.CARD_W, C.CARD_H)
+            left = min(left, rect.left)
+            top = min(top, rect.top)
+            right = max(right, rect.right)
+            bottom = max(bottom, rect.bottom)
+        return left, top, right, bottom
+
+    def _clamp_scroll(self) -> None:
+        left, _top, right, bottom = self._scroll_content_bounds()
+        margin = 20
+        max_scroll_x = margin - left
+        min_scroll_x = min(0, C.SCREEN_W - right - margin)
+        if self.scroll_x > max_scroll_x:
+            self.scroll_x = max_scroll_x
+        if self.scroll_x < min_scroll_x:
+            self.scroll_x = min_scroll_x
+
+        max_scroll_y = 0
+        min_scroll_y = min(0, C.SCREEN_H - bottom - margin)
+        if self.scroll_y > max_scroll_y:
+            self.scroll_y = max_scroll_y
+        if self.scroll_y < min_scroll_y:
+            self.scroll_y = min_scroll_y
+
+    # ----- Scroll interaction -----
+    def handle_scroll_event(self, event) -> bool:
+        if event.type == pygame.MOUSEWHEEL:
+            self.scroll_y += event.y * self.scroll_step
+            self.scroll_x += getattr(event, "x", 0) * self.scroll_step
+            self._clamp_scroll()
+            return True
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
+            self._panning = True
+            self._pan_anchor = event.pos
+            self._scroll_anchor = (self.scroll_x, self.scroll_y)
+            return True
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 2:
+            self._panning = False
+            self._pan_anchor = None
+            self._scroll_anchor = None
+            return True
+
+        if event.type == pygame.MOUSEMOTION and self._panning and self._pan_anchor and self._scroll_anchor:
+            mx, my = event.pos
+            ax, ay = self._pan_anchor
+            dx = mx - ax
+            dy = my - ay
+            self.scroll_x = self._scroll_anchor[0] + dx
+            self.scroll_y = self._scroll_anchor[1] + dy
+            self._clamp_scroll()
+            return True
+
+        return False
+
+    # ----- Drawing helpers -----
+    @contextmanager
+    def scrolling_draw_offset(self):
+        self._clamp_scroll()
+        prev_dx, prev_dy = C.DRAW_OFFSET_X, C.DRAW_OFFSET_Y
+        C.DRAW_OFFSET_X = self.scroll_x
+        C.DRAW_OFFSET_Y = self.scroll_y
+        try:
+            yield
+        finally:
+            C.DRAW_OFFSET_X = prev_dx
+            C.DRAW_OFFSET_Y = prev_dy
+
+    def reset_scroll(self) -> None:
+        self.scroll_x = 0
+        self.scroll_y = 0
+        self._clamp_scroll()
+
+
+__all__ = [
+    "GAME_REGISTRY",
+    "GAME_SECTIONS",
+    "GameMetadata",
+    "ModeUIHelper",
+    "ScrollableSceneMixin",
+]
 

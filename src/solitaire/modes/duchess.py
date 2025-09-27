@@ -9,7 +9,7 @@ import pygame
 
 from solitaire import common as C
 from solitaire.help_data import create_modal_help
-from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 
 
 def _duchess_dir() -> str:
@@ -69,7 +69,7 @@ class _DragState:
     position: Tuple[int, int]
 
 
-class DuchessGameScene(C.Scene):
+class DuchessGameScene(ScrollableSceneMixin, C.Scene):
     """Game scene implementing the Duchess variant."""
 
     draw_count: int = 1
@@ -166,6 +166,13 @@ class DuchessGameScene(C.Scene):
             pile.x = tableau_start_x + idx * (C.CARD_W + foundation_gap)
             pile.y = row2_y
 
+    def iter_scroll_piles(self):  # type: ignore[override]
+        yield from self.reserves
+        yield from self.foundations
+        yield from self.tableau
+        yield self.stock_pile
+        yield self.waste_pile
+
     # ----- Deal / Restart -----
     def _clear(self) -> None:
         for pile in self.reserves:
@@ -208,6 +215,7 @@ class DuchessGameScene(C.Scene):
         self.waste_pile.cards.clear()
 
         self.stock_cycles_used = 0
+        self.reset_scroll()
         self.message = "Select a reserve card to start the foundations"
 
         self.undo_mgr = C.UndoManager()
@@ -262,6 +270,7 @@ class DuchessGameScene(C.Scene):
         self.stock_cycles_used = int(snap.get("stock_cycles_used", 0))
         self.message = snap.get("message", "")
         self.drag = None
+        self.reset_scroll()
 
     def push_undo(self) -> None:
         snap = self.record_snapshot()
@@ -402,6 +411,7 @@ class DuchessGameScene(C.Scene):
         self._auto_fill_empty_columns()
         if self.is_completed():
             self.message = "You win!"
+        self._clamp_scroll()
 
     def _maybe_auto_to_foundation(self, mx: int, my: int) -> bool:
         if self.waiting_for_base:
@@ -484,6 +494,9 @@ class DuchessGameScene(C.Scene):
             if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
 
+        if self.handle_scroll_event(event):
+            return
+
         if self.toolbar.handle_event(event):
             return
         if self.ui_helper.handle_shortcuts(event):
@@ -494,30 +507,31 @@ class DuchessGameScene(C.Scene):
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
+            mxw, myw = self._screen_to_world((mx, my))
             if my < getattr(C, "TOP_BAR_H", 60):
                 self._last_click_time = pygame.time.get_ticks()
-                self._last_click_pos = (mx, my)
+                self._last_click_pos = (mxw, myw)
                 return
 
-            if not self.waiting_for_base and self._maybe_auto_to_foundation(mx, my):
+            if not self.waiting_for_base and self._maybe_auto_to_foundation(mxw, myw):
                 return
 
             stock_rect = pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H)
-            if stock_rect.collidepoint((mx, my)):
+            if stock_rect.collidepoint((mxw, myw)):
                 self.push_undo()
                 self.draw_from_stock()
                 self.post_move_cleanup()
                 return
 
-            waste_idx = self.waste_pile.hit((mx, my))
+            waste_idx = self.waste_pile.hit((mxw, myw))
             if waste_idx is not None and waste_idx == len(self.waste_pile.cards) - 1:
                 rect = self.waste_pile.rect_for_index(waste_idx)
                 card = self.waste_pile.cards.pop()
-                self.drag = _DragState([card], ("waste", None), (mx - rect.x, my - rect.y), (mx, my))
+                self.drag = _DragState([card], ("waste", None), (mxw - rect.x, myw - rect.y), event.pos)
                 return
 
             for ri, pile in enumerate(self.reserves):
-                hit = pile.hit((mx, my))
+                hit = pile.hit((mxw, myw))
                 if hit is None or hit != len(pile.cards) - 1:
                     continue
                 if self.waiting_for_base:
@@ -526,11 +540,11 @@ class DuchessGameScene(C.Scene):
                     return
                 rect = pile.rect_for_index(hit)
                 card = pile.cards.pop()
-                self.drag = _DragState([card], ("reserve", ri), (mx - rect.x, my - rect.y), (mx, my))
+                self.drag = _DragState([card], ("reserve", ri), (mxw - rect.x, myw - rect.y), event.pos)
                 return
 
             for ti, pile in enumerate(self.tableau):
-                hit = pile.hit((mx, my))
+                hit = pile.hit((mxw, myw))
                 if hit is None or hit == -1:
                     continue
                 if not pile.cards[hit].face_up:
@@ -540,7 +554,7 @@ class DuchessGameScene(C.Scene):
                     continue
                 rect = pile.rect_for_index(hit)
                 pile.cards = pile.cards[:hit]
-                self.drag = _DragState(seq, ("tableau", ti), (mx - rect.x, my - rect.y), (mx, my))
+                self.drag = _DragState(seq, ("tableau", ti), (mxw - rect.x, myw - rect.y), event.pos)
                 return
 
         elif event.type == pygame.MOUSEMOTION:
@@ -554,12 +568,12 @@ class DuchessGameScene(C.Scene):
             self.drag = None
             stack = drag.cards
             origin, idx = drag.origin
-            mx, my = event.pos
+            mxw, myw = self._screen_to_world(event.pos)
 
             if len(stack) == 1 and not self.waiting_for_base:
                 card = stack[0]
                 for fi, pile in enumerate(self.foundations):
-                    if pile.top_rect().collidepoint((mx, my)) and self.can_move_to_foundation(card, fi):
+                    if pile.top_rect().collidepoint((mxw, myw)) and self.can_move_to_foundation(card, fi):
                         self.push_undo()
                         pile.cards.append(card)
                         self.post_move_cleanup()
@@ -567,7 +581,7 @@ class DuchessGameScene(C.Scene):
 
             for ti, pile in enumerate(self.tableau):
                 rect = pygame.Rect(pile.x, pile.y, C.CARD_W, max(C.CARD_H, len(pile.cards) * pile.fan_y + C.CARD_H))
-                if rect.collidepoint((mx, my)):
+                if rect.collidepoint((mxw, myw)):
                     target = pile.cards[-1] if pile.cards else None
                     if self._tableau_allows(stack[0], target):
                         if not pile.cards and any(r.cards for r in self.reserves) and origin != "reserve":
@@ -599,31 +613,27 @@ class DuchessGameScene(C.Scene):
 
         extra = f"Stock replays used: {self.stock_cycles_used}/{self.stock_cycles_allowed}"
 
-        C.DRAW_OFFSET_X = 0
-        C.DRAW_OFFSET_Y = 0
+        with self.scrolling_draw_offset():
+            self._draw_reserves(screen)
 
-        self._draw_reserves(screen)
-
-        for fi, pile in enumerate(self.foundations):
-            pile.draw(screen)
-            if not pile.cards:
-                if self.waiting_for_base:
-                    if fi == 0:
-                        txt = C.FONT_SMALL.render("Select base", True, (245, 245, 245))
-                        cx = pile.x + C.CARD_W // 2
-                        cy = pile.y + C.CARD_H // 2
+            for fi, pile in enumerate(self.foundations):
+                pile.draw(screen)
+                if not pile.cards:
+                    if self.waiting_for_base:
+                        if fi == 0:
+                            txt = C.FONT_SMALL.render("Select base", True, (245, 245, 245))
+                            cx, cy = self._world_to_screen((pile.x + C.CARD_W // 2, pile.y + C.CARD_H // 2))
+                            screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
+                    else:
+                        suit = self.foundation_suits[fi]
+                        txt = C.FONT_CENTER_SUIT.render(C.SUITS[suit], True, (245, 245, 245))
+                        cx, cy = self._world_to_screen((pile.x + C.CARD_W // 2, pile.y + C.CARD_H // 2))
                         screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
-                else:
-                    suit = self.foundation_suits[fi]
-                    txt = C.FONT_CENTER_SUIT.render(C.SUITS[suit], True, (245, 245, 245))
-                    cx = pile.x + C.CARD_W // 2
-                    cy = pile.y + C.CARD_H // 2
-                    screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
-        self.stock_pile.draw(screen)
-        self.waste_pile.draw(screen)
-        for pile in self.tableau:
-            pile.draw(screen)
+            self.stock_pile.draw(screen)
+            self.waste_pile.draw(screen)
+            for pile in self.tableau:
+                pile.draw(screen)
 
         if self.drag:
             cards = self.drag.cards
