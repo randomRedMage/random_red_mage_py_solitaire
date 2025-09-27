@@ -7,7 +7,7 @@ import pygame
 
 from solitaire import common as C
 from solitaire.help_data import create_modal_help
-from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 
 
 def _chameleon_dir() -> str:
@@ -103,7 +103,7 @@ class _DragState:
     position: Tuple[int, int]
 
 
-class ChameleonGameScene(C.Scene):
+class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
     draw_count: int = 1
 
     def __init__(self, app, *, load_state: Optional[Dict] = None, stock_cycles: Optional[int] = None):
@@ -192,6 +192,13 @@ class ChameleonGameScene(C.Scene):
             pile.x = tableau_start_x + idx * (C.CARD_W + foundation_gap)
             pile.y = row2_y
 
+    def iter_scroll_piles(self):  # type: ignore[override]
+        yield self.reserve
+        yield from self.foundations
+        yield from self.tableau
+        yield self.stock_pile
+        yield self.waste_pile
+
     # ----- Deal / Restart -----
     def _clear(self) -> None:
         self.reserve.cards.clear()
@@ -236,6 +243,7 @@ class ChameleonGameScene(C.Scene):
         self.waste_pile.cards.clear()
 
         self.stock_cycles_used = 0
+        self.reset_scroll()
         self.undo_mgr = C.UndoManager()
         self.push_undo()
         self._initial_snapshot = self.record_snapshot()
@@ -283,6 +291,7 @@ class ChameleonGameScene(C.Scene):
         self.stock_cycles_used = int(snap.get("stock_cycles_used", 0))
         self.message = snap.get("message", "")
         self.drag = None
+        self.reset_scroll()
 
     def push_undo(self) -> None:
         snap = self.record_snapshot()
@@ -401,6 +410,7 @@ class ChameleonGameScene(C.Scene):
         self._auto_fill_empty_columns()
         if self.is_completed():
             self.message = "You win!"
+        self._clamp_scroll()
 
     # ----- Event handling -----
     def _maybe_auto_to_foundation(self, mx: int, my: int) -> bool:
@@ -465,6 +475,9 @@ class ChameleonGameScene(C.Scene):
             if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
 
+        if self.handle_scroll_event(event):
+            return
+
         if self.toolbar.handle_event(event):
             return
         if self.ui_helper.handle_shortcuts(event):
@@ -475,37 +488,38 @@ class ChameleonGameScene(C.Scene):
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
+            mxw, myw = self._screen_to_world((mx, my))
             if my < getattr(C, "TOP_BAR_H", 60):
                 self._last_click_time = pygame.time.get_ticks()
-                self._last_click_pos = (mx, my)
+                self._last_click_pos = (mxw, myw)
                 return
 
-            if self._maybe_auto_to_foundation(mx, my):
+            if self._maybe_auto_to_foundation(mxw, myw):
                 return
 
             stock_rect = pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H)
-            if stock_rect.collidepoint((mx, my)):
+            if stock_rect.collidepoint((mxw, myw)):
                 self.push_undo()
                 self.draw_from_stock()
                 self.post_move_cleanup()
                 return
 
-            waste_idx = self.waste_pile.hit((mx, my))
+            waste_idx = self.waste_pile.hit((mxw, myw))
             if waste_idx is not None and waste_idx == len(self.waste_pile.cards) - 1:
                 rect = self.waste_pile.rect_for_index(waste_idx)
                 card = self.waste_pile.cards.pop()
-                self.drag = _DragState([card], ("waste", None), (mx - rect.x, my - rect.y), (mx, my))
+                self.drag = _DragState([card], ("waste", None), (mxw - rect.x, myw - rect.y), event.pos)
                 return
 
-            reserve_idx = self.reserve.hit((mx, my))
+            reserve_idx = self.reserve.hit((mxw, myw))
             if reserve_idx is not None and reserve_idx == len(self.reserve.cards) - 1:
                 rect = self.reserve.rect_for_index(reserve_idx)
                 card = self.reserve.cards.pop()
-                self.drag = _DragState([card], ("reserve", None), (mx - rect.x, my - rect.y), (mx, my))
+                self.drag = _DragState([card], ("reserve", None), (mxw - rect.x, myw - rect.y), event.pos)
                 return
 
             for ti, pile in enumerate(self.tableau):
-                hit = pile.hit((mx, my))
+                hit = pile.hit((mxw, myw))
                 if hit is None or hit == -1:
                     continue
                 if not pile.cards[hit].face_up:
@@ -515,7 +529,7 @@ class ChameleonGameScene(C.Scene):
                     continue
                 rect = pile.rect_for_index(hit)
                 pile.cards = pile.cards[:hit]
-                self.drag = _DragState(seq, ("tableau", ti), (mx - rect.x, my - rect.y), (mx, my))
+                self.drag = _DragState(seq, ("tableau", ti), (mxw - rect.x, myw - rect.y), event.pos)
                 return
 
         elif event.type == pygame.MOUSEMOTION:
@@ -529,13 +543,13 @@ class ChameleonGameScene(C.Scene):
             self.drag = None
             stack = drag.cards
             origin, idx = drag.origin
-            mx, my = event.pos
+            mxw, myw = self._screen_to_world(event.pos)
 
             # Foundations (single card only)
             if len(stack) == 1:
                 card = stack[0]
                 for fi, pile in enumerate(self.foundations):
-                    if pile.top_rect().collidepoint((mx, my)) and self.can_move_to_foundation(card, fi):
+                    if pile.top_rect().collidepoint((mxw, myw)) and self.can_move_to_foundation(card, fi):
                         self.push_undo()
                         pile.cards.append(card)
                         self.post_move_cleanup()
@@ -544,7 +558,7 @@ class ChameleonGameScene(C.Scene):
             # Tableau drops
             for ti, pile in enumerate(self.tableau):
                 rect = pygame.Rect(pile.x, pile.y, C.CARD_W, max(C.CARD_H, len(pile.cards) * pile.fan_y + C.CARD_H))
-                if rect.collidepoint((mx, my)):
+                if rect.collidepoint((mxw, myw)):
                     target = pile.cards[-1] if pile.cards else None
                     if self._tableau_allows(stack[0], target):
                         self.push_undo()
@@ -593,23 +607,20 @@ class ChameleonGameScene(C.Scene):
             else f"Stock replays used: {self.stock_cycles_used}/{self.stock_cycles_allowed}"
         )
 
-        C.DRAW_OFFSET_X = 0
-        C.DRAW_OFFSET_Y = 0
+        with self.scrolling_draw_offset():
+            for fi, pile in enumerate(self.foundations):
+                pile.draw(screen)
+                if not pile.cards:
+                    suit = self.foundation_suits[fi]
+                    txt = C.FONT_CENTER_SUIT.render(C.SUITS[suit], True, (245, 245, 245))
+                    cx, cy = self._world_to_screen((pile.x + C.CARD_W // 2, pile.y + C.CARD_H // 2))
+                    screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
-        for fi, pile in enumerate(self.foundations):
-            pile.draw(screen)
-            if not pile.cards:
-                suit = self.foundation_suits[fi]
-                txt = C.FONT_CENTER_SUIT.render(C.SUITS[suit], True, (245, 245, 245))
-                cx = pile.x + C.CARD_W // 2
-                cy = pile.y + C.CARD_H // 2
-                screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
-
-        self._draw_reserve_with_count(screen)
-        self.stock_pile.draw(screen)
-        self.waste_pile.draw(screen)
-        for pile in self.tableau:
-            pile.draw(screen)
+            self._draw_reserve_with_count(screen)
+            self.stock_pile.draw(screen)
+            self.waste_pile.draw(screen)
+            for pile in self.tableau:
+                pile.draw(screen)
 
         if self.drag:
             cards = self.drag.cards
