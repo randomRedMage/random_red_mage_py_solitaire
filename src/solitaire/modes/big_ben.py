@@ -105,6 +105,7 @@ class BigBenGameScene(C.Scene):
         self._center = (0, 0)
         self.scroll_x = 0
         self.scroll_y = 0
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll = False
         self._drag_hscroll = False
         self._vscroll_geom = None
@@ -596,6 +597,10 @@ class BigBenGameScene(C.Scene):
                 return
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN):
                 return
+
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll_xy):
+            self.peek.cancel()
+            return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             self.peek.cancel()

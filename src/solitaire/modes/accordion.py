@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 import pygame
 
 from solitaire import common as C
+from solitaire import mechanics as M
 from solitaire.help_data import create_modal_help
 from solitaire.modes.base_scene import ModeUIHelper
 
@@ -123,6 +124,7 @@ class AccordionGameScene(C.Scene):
         self.piles: List[C.Pile] = []
         self.scroll_y: int = 0
         self._min_scroll_y: int = 0
+        self.drag_pan = M.DragPanController()
         self.undo_mgr = C.UndoManager()
         self.undo_after_deal_allowed: bool = self.difficulty == "easy"
         self.drag_info: Optional[Dict[str, Any]] = None
@@ -441,6 +443,9 @@ class AccordionGameScene(C.Scene):
         if self.toolbar.handle_event(event):
             return
         if self.ui_helper.handle_shortcuts(event):
+            return
+
+        if self.drag_pan.handle_event(event, target=self, clamp=self._clamp_scroll, attr_x=None):
             return
 
         if event.type == pygame.MOUSEWHEEL:

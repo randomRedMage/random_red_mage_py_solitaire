@@ -5,6 +5,7 @@ import pygame
 from typing import List, Optional, Tuple, Dict, Any
 
 from solitaire import common as C
+from solitaire import mechanics as M
 from solitaire.modes.base_scene import ModeUIHelper
 from solitaire.help_data import create_modal_help
 
@@ -144,6 +145,7 @@ class GolfGameScene(C.Scene):
         # Scrolling (vertical + horizontal)
         self.scroll_y: int = 0
         self.scroll_x: int = 0
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll: bool = False
         self._drag_hscroll: bool = False
         # Last drawn geometry for scrollbar calculations
@@ -523,6 +525,8 @@ class GolfGameScene(C.Scene):
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
+            return
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll):
             return
         # Scroll wheel for content
         if e.type == pygame.MOUSEWHEEL:

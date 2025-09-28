@@ -122,6 +122,7 @@ class YukonGameScene(C.Scene):
         # Scrolling (both axes)
         self.scroll_x = 0
         self.scroll_y = 0
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll = False
         self._drag_hscroll = False
         self._vscroll_geom = None
@@ -396,6 +397,10 @@ class YukonGameScene(C.Scene):
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
+            return
+
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll_xy):
+            self.peek.cancel()
             return
 
         # Do not interact while animation is running

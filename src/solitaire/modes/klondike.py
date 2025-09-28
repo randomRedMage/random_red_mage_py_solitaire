@@ -16,9 +16,7 @@ class KlondikeGameScene(C.Scene):
         # 2D scroll for large cards
         self.scroll_x = 0
         self.scroll_y = 0
-        self._panning = False
-        self._pan_anchor = (0, 0)
-        self._scroll_anchor = (0, 0)
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll = False
         self._drag_hscroll = False
         self.draw_count = draw_count
@@ -386,6 +384,10 @@ class KlondikeGameScene(C.Scene):
         if self.ui_helper.handle_shortcuts(e):
             return
 
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll_xy):
+            self.peek.cancel()
+            return
+
         # Mouse wheel scrolling (supports trackpads: e.x horizontal, e.y vertical)
         if e.type == pygame.MOUSEWHEEL:
             self.scroll_y += e.y * 60  # up is positive
@@ -500,25 +502,6 @@ class KlondikeGameScene(C.Scene):
                 if hi != -1 and t.cards[hi].face_up:
                     seq = t.cards[hi:]; t.cards = t.cards[:hi]
                     self.drag_stack = (seq, ("tableau", ti)); self.edge_pan.set_active(True); return
-
-        # Middle-button drag panning
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 2:
-            self._panning = True
-            self._pan_anchor = e.pos
-            self._scroll_anchor = (self.scroll_x, self.scroll_y)
-            return
-        elif e.type == pygame.MOUSEBUTTONUP and e.button == 2:
-            self._panning = False
-            return
-        elif e.type == pygame.MOUSEMOTION and self._panning:
-            mx, my = e.pos
-            ax, ay = self._pan_anchor
-            dx = mx - ax
-            dy = my - ay
-            self.scroll_x = self._scroll_anchor[0] + dx
-            self.scroll_y = self._scroll_anchor[1] + dy
-            self._clamp_scroll_xy()
-            return
 
         elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
             if not self.drag_stack: return
