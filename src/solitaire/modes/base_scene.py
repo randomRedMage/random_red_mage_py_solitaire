@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Iterable, Mapping, MutableMapping, Optio
 import pygame
 
 from solitaire import common as C
+from solitaire import mechanics as M
 from solitaire.ui import DEFAULT_BUTTON_HEIGHT, make_toolbar
 
 
@@ -356,6 +357,10 @@ class ScrollableSceneMixin:
         self._panning: bool = False
         self._pan_anchor: Optional[Tuple[int, int]] = None
         self._scroll_anchor: Optional[Tuple[int, int]] = None
+        self.edge_pan = M.EdgePanDuringDrag(
+            edge_margin_px=28,
+            top_inset_px=getattr(C, "TOP_BAR_H", 60),
+        )
 
     # ----- Abstract helpers -----
     def iter_scroll_piles(self) -> Iterable["C.Pile"]:
@@ -413,6 +418,27 @@ class ScrollableSceneMixin:
         if self.scroll_y < min_scroll_y:
             self.scroll_y = min_scroll_y
 
+    def _scroll_ranges(self) -> Tuple[int, int, int, int]:
+        left, _top, right, bottom = self._scroll_content_bounds()
+        margin = 20
+        min_scroll_x = min(0, C.SCREEN_W - right - margin)
+        max_scroll_x = margin - left
+        min_scroll_y = min(0, C.SCREEN_H - bottom - margin)
+        max_scroll_y = 0
+        return min_scroll_x, max_scroll_x, min_scroll_y, max_scroll_y
+
+    def _step_edge_pan(self) -> None:
+        # Called during drawing to gently scroll when dragging near edges.
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
+        min_sx, max_sx, min_sy, max_sy = self._scroll_ranges()
+        has_h = max_sx > min_sx
+        has_v = max_sy > min_sy
+        dx, dy = self.edge_pan.step(has_h_scroll=has_h, has_v_scroll=has_v)
+        if dx or dy:
+            self.scroll_x += dx
+            self.scroll_y += dy
+            self._clamp_scroll()
+
     # ----- Scroll interaction -----
     def handle_scroll_event(self, event) -> bool:
         if event.type == pygame.MOUSEWHEEL:
@@ -448,6 +474,7 @@ class ScrollableSceneMixin:
     # ----- Drawing helpers -----
     @contextmanager
     def scrolling_draw_offset(self):
+        self._step_edge_pan()
         self._clamp_scroll()
         prev_dx, prev_dy = C.DRAW_OFFSET_X, C.DRAW_OFFSET_Y
         C.DRAW_OFFSET_X = self.scroll_x
@@ -462,6 +489,7 @@ class ScrollableSceneMixin:
         self.scroll_x = 0
         self.scroll_y = 0
         self._clamp_scroll()
+        self.edge_pan.set_active(False)
 
 
 __all__ = [
