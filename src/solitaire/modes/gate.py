@@ -436,6 +436,8 @@ class GateGameScene(C.Scene):
                 return
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
+        if self.ui_helper.handle_menu_event(e):
+            return
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
@@ -680,6 +682,7 @@ class GateGameScene(C.Scene):
         self.toolbar.draw(screen)
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
         # Activate any pending peek by time
         self.peek.maybe_activate(pygame.time.get_ticks())

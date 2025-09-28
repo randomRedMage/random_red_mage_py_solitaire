@@ -518,6 +518,8 @@ class BeleagueredCastleGameScene(C.Scene):
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN):
                 return
 
+        if self.ui_helper.handle_menu_event(e):
+            return
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
@@ -703,6 +705,7 @@ class BeleagueredCastleGameScene(C.Scene):
         self.toolbar.draw(screen)
         if self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
         # Draw scrollbars last
         vsb = self._vertical_scrollbar()

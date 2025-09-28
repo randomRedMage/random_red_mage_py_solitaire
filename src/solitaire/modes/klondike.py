@@ -379,6 +379,8 @@ class KlondikeGameScene(C.Scene):
                 else:
                     self.help.open()
                 return
+        if self.ui_helper.handle_menu_event(e):
+            return
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
@@ -615,6 +617,7 @@ class KlondikeGameScene(C.Scene):
         # Help overlay on top
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     # ---------- Scrollbar geometry helpers ----------
     def _vertical_scrollbar(self):

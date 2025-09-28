@@ -393,6 +393,8 @@ class YukonGameScene(C.Scene):
                 return
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
+        if self.ui_helper.handle_menu_event(e):
+            return
 
         if self.toolbar.handle_event(e):
             return
@@ -707,6 +709,7 @@ class YukonGameScene(C.Scene):
         self.toolbar.draw(screen)
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
         # Scrollbars
         vsb = self._vertical_scrollbar()

@@ -482,6 +482,8 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
             if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
 
+        if self.ui_helper.handle_menu_event(event):
+            return
         if self.handle_scroll_event(event):
             return
 
@@ -649,6 +651,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
         self.toolbar.draw(screen)
         if self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     def update(self, dt):
         pass

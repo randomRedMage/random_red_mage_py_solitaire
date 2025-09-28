@@ -1,7 +1,7 @@
 # ui.py
 import pygame
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, List, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 from solitaire import common as C
 
 pygame.font.init()
@@ -130,138 +130,24 @@ class Toolbar:
             b.draw(surface)
 
 class HamburgerMenuButton(Button):
-    """Toolbar button that expands into a drop-down menu of actions."""
+    """Toolbar button that opens an in-game modal menu."""
 
     def __init__(
         self,
-        items: List[MenuItem],
+        on_click: Callable[[], None],
         *,
         height: int = DEFAULT_BUTTON_HEIGHT,
         tooltip: Optional[str] = None,
     ) -> None:
         super().__init__(
             label="Menu",
-            on_click=self._toggle_menu,
+            on_click=on_click,
             height=height,
             min_width=max(height, 32),
             tooltip=tooltip,
         )
-        # Compact width for icon presentation
         compact_w = max(height, 32)
         self.rect.size = (compact_w, self.rect.height)
-        self.items: List[MenuItem] = items
-        self._open: bool = False
-        self._panel_padding: int = 6
-        self._item_rects: List[pygame.Rect] = []
-        self._panel_rect = pygame.Rect(0, 0, 0, 0)
-        self._menu_hover_index: int = -1
-        self._item_height: int = height
-        self._menu_width: int = self.rect.width
-        self._update_menu_geometry()
-
-    def _toggle_menu(self) -> None:
-        if not self.items:
-            return
-        if not self._open:
-            self._update_menu_geometry()
-        self._open = not self._open
-        if not self._open:
-            self._menu_hover_index = -1
-
-    def set_position(self, x: int, y: int):
-        super().set_position(x, y)
-        self._item_height = self.rect.height
-        if self._open:
-            self._open = False
-            self._menu_hover_index = -1
-        self._update_menu_geometry()
-
-    def _update_menu_geometry(self) -> None:
-        if not self.items:
-            self._panel_rect.size = (0, 0)
-            self._item_rects = []
-            return
-
-        text_widths = [FONT.render(item.label, True, BTN_TEXT).get_width() for item in self.items]
-        content_width = max([self.rect.width] + [w + DEFAULT_BUTTON_PADDING_X * 2 for w in text_widths])
-        padding = self._panel_padding
-        panel_width = content_width + padding * 2
-        panel_height = self._item_height * len(self.items) + padding * 2
-
-        left = self.rect.right - panel_width
-        left = max(0, min(left, C.SCREEN_W - panel_width))
-        top_below = self.rect.bottom + 4
-        top_above = self.rect.top - 4 - panel_height
-        if top_below + panel_height <= C.SCREEN_H:
-            top = max(0, top_below)
-        elif top_above >= 0:
-            top = top_above
-        else:
-            top = max(0, min(top_below, C.SCREEN_H - panel_height))
-
-        self._panel_rect = pygame.Rect(left, top, panel_width, panel_height)
-        item_left = left + padding
-        item_top = top + padding
-        self._menu_width = content_width
-        self._item_rects = []
-        for index in range(len(self.items)):
-            rect = pygame.Rect(item_left, item_top + index * self._item_height, content_width, self._item_height)
-            self._item_rects.append(rect)
-
-    @staticmethod
-    def _item_enabled(item: MenuItem) -> bool:
-        if item.enabled is None:
-            return True
-        if callable(item.enabled):
-            try:
-                return bool(item.enabled())
-            except Exception:
-                return False
-        return bool(item.enabled)
-
-    def _hit_test(self, pos: Tuple[int, int]) -> Optional[int]:
-        for idx, rect in enumerate(self._item_rects):
-            if rect.collidepoint(pos):
-                return idx
-        return None
-
-    def handle_event(self, event: pygame.event.Event) -> bool:
-        if event.type == pygame.MOUSEMOTION:
-            super().handle_event(event)
-            if self._open:
-                hovered = self._hit_test(event.pos)
-                self._menu_hover_index = hovered if hovered is not None else -1
-            else:
-                self._menu_hover_index = -1
-            return False
-
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self._open:
-                if self._panel_rect.collidepoint(event.pos):
-                    idx = self._hit_test(event.pos)
-                    if idx is not None:
-                        item = self.items[idx]
-                        if self._item_enabled(item) and callable(item.on_click):
-                            item.on_click()
-                        self._open = False
-                        self._menu_hover_index = -1
-                    else:
-                        self._open = False
-                        self._menu_hover_index = -1
-                    return True
-                elif not self.rect.collidepoint(event.pos):
-                    self._open = False
-                    self._menu_hover_index = -1
-                    return False
-            handled = super().handle_event(event)
-            return handled
-
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and self._open:
-            self._open = False
-            self._menu_hover_index = -1
-            return True
-
-        return super().handle_event(event)
 
     def draw(self, surface: pygame.Surface):
         original_label = self.label
@@ -271,42 +157,6 @@ class HamburgerMenuButton(Button):
 
         icon_color = BTN_TEXT if self.is_enabled() else BTN_TEXT_DISABLED
         self._draw_icon(surface, icon_color)
-        if not (self._open and self.items and self._panel_rect.width > 0):
-            return
-
-        pygame.draw.rect(surface, MENU_PANEL_BG, self._panel_rect, border_radius=8)
-        pygame.draw.rect(surface, BTN_BORDER, self._panel_rect, width=1, border_radius=8)
-
-        for idx, rect in enumerate(self._item_rects):
-            item = self.items[idx]
-            inner = rect.inflate(-2, -2)
-            enabled = self._item_enabled(item)
-            if not enabled:
-                bg = BTN_BG_DISABLED
-            elif idx == self._menu_hover_index:
-                bg = BTN_BG_HOVER
-            else:
-                bg = BTN_BG
-            pygame.draw.rect(surface, bg, inner, border_radius=6)
-
-            text_color = BTN_TEXT if enabled else BTN_TEXT_DISABLED
-            label_surf = FONT.render(item.label, True, text_color)
-            surface.blit(
-                label_surf,
-                (inner.left + DEFAULT_BUTTON_PADDING_X,
-                 inner.centery - label_surf.get_height() // 2),
-            )
-
-    def get_menu_item_rect(self, label: str) -> Optional[pygame.Rect]:
-        """Return the rect of a drop-down entry matching *label* (if available)."""
-
-        if not self.items:
-            return None
-        self._update_menu_geometry()
-        for idx, item in enumerate(self.items):
-            if item.label == label and idx < len(self._item_rects):
-                return self._item_rects[idx].copy()
-        return None
 
     def _draw_icon(self, surface: pygame.Surface, color: Tuple[int, int, int]) -> None:
         """Draw a hamburger icon using geometry instead of relying on font glyphs."""
@@ -332,6 +182,7 @@ class HamburgerMenuButton(Button):
             pygame.draw.rect(surface, color, line_rect, border_radius=line_thickness // 2)
 
 
+
 def make_toolbar(
     actions: Dict[str, Dict],
     *,
@@ -342,11 +193,11 @@ def make_toolbar(
     width_provider: Optional[Callable[[], int]] = None,
     primary_labels: Optional[Tuple[str, ...]] = ("Undo", "Auto"),
 ) -> Toolbar:
-    """Create a toolbar that collapses secondary actions into a menu."""
+    """Create a toolbar that shows primary actions and a modal menu button."""
 
-    menu_items: List[MenuItem] = []
     direct_buttons: List[Button] = []
     menu_button_tooltip: Optional[str] = None
+    menu_callback: Optional[Callable[[], None]] = None
     visible_labels = set(primary_labels or ())
 
     for label, cfg in actions.items():
@@ -355,6 +206,11 @@ def make_toolbar(
             continue
         enabled = cfg.get("enabled")
         tooltip = cfg.get("tooltip")
+        if label.lower() == "menu":
+            menu_callback = on_click
+            if tooltip:
+                menu_button_tooltip = tooltip
+            continue
         if label in visible_labels:
             direct_buttons.append(
                 Button(
@@ -365,16 +221,12 @@ def make_toolbar(
                     height=height,
                 )
             )
-        else:
-            if label.lower() == "menu" and tooltip:
-                menu_button_tooltip = tooltip
-            menu_items.append(MenuItem(label=label, on_click=on_click, enabled=enabled, tooltip=tooltip))
 
     buttons: List[Button] = []
-    if menu_items:
+    if menu_callback:
         buttons.append(
             HamburgerMenuButton(
-                menu_items,
+                menu_callback,
                 height=height,
                 tooltip=menu_button_tooltip,
             )
@@ -382,6 +234,7 @@ def make_toolbar(
     buttons.extend(direct_buttons)
 
     return Toolbar(buttons, margin=margin, gap=gap, align=align, width_provider=width_provider)
+
 
 
 class ModalHelp:
@@ -505,3 +358,284 @@ class ModalHelp:
         # Close button
         mp = pygame.mouse.get_pos()
         self._close_btn.draw(surface, hover=self._close_btn.hovered(mp))
+
+
+class GameMenuModal:
+    """Modal overlay that exposes in-game actions and quit options."""
+
+    PANEL_WIDTH = 480
+    PANEL_MIN_WIDTH = 340
+    PANEL_PADDING_X = 48
+    PADDING_TOP = 96
+    BUTTON_HEIGHT = 52
+    BUTTON_GAP = 16
+    BOTTOM_PADDING = 48
+
+    def __init__(
+        self,
+        helper,
+        *,
+        new_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
+        restart_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
+        help_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
+        save_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
+        hint_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
+    ) -> None:
+        self.helper = helper
+        self.visible = False
+        self._panel_rect = pygame.Rect(0, 0, 0, 0)
+        self._title_pos: Tuple[int, int] = (0, 0)
+        self._buttons: List[Button] = []
+        self._button_keys: List[str] = []
+        self._actions: Dict[str, Optional[Tuple[str, Mapping[str, Any]]]] = {
+            "new": new_action,
+            "restart": restart_action,
+            "help": help_action,
+            "save": save_action,
+            "hint": hint_action,
+        }
+        self._layout_dirty = True
+        self._confirm_state: Optional[Dict[str, Any]] = None
+        self._build_buttons()
+
+    def _build_buttons(self) -> None:
+        self._buttons = []
+        self._button_keys = []
+        specs: List[Tuple[str, str]] = []
+        if self._actions.get("new"):
+            specs.append(("new", "New Game"))
+        if self._actions.get("restart"):
+            specs.append(("restart", "Restart Game"))
+        if self._actions.get("hint"):
+            specs.append(("hint", "Hint"))
+        specs.append(("options", "Game Options"))
+        if self._actions.get("help"):
+            specs.append(("help", "Help"))
+        if self._actions.get("save"):
+            specs.append(("save", "Save and Exit"))
+        specs.append(("quit_menu", "Quit to Menu"))
+        specs.append(("quit_desktop", "Quit to Desktop"))
+        specs.append(("cancel", "Cancel"))
+
+        for key, label in specs:
+            enabled_fn: Optional[Callable[[], bool]] = None
+            if key in ("new", "restart", "hint", "help", "save"):
+                entry = self._actions.get(key)
+                if entry is None:
+                    continue
+                enabled_fn = (lambda e=entry: self._is_entry_enabled(e))
+            elif key == "options":
+                enabled_fn = self.helper.can_open_options
+            button = Button(
+                label=label,
+                on_click=lambda k=key: self._handle_button(k),
+                enabled_fn=enabled_fn,
+                height=self.BUTTON_HEIGHT,
+                min_width=260,
+            )
+            self._buttons.append(button)
+            self._button_keys.append(key)
+        self._layout_dirty = True
+
+    def relayout(self) -> None:
+        self._layout_dirty = True
+
+    def open(self) -> None:
+        self.visible = True
+        self._confirm_state = None
+        self._layout_dirty = True
+
+    def close(self) -> None:
+        self.visible = False
+        self._confirm_state = None
+
+    def toggle(self) -> None:
+        if self.visible:
+            self.close()
+        else:
+            self.open()
+
+    def _is_entry_enabled(self, entry: Tuple[str, Mapping[str, Any]]) -> bool:
+        enabled = entry[1].get("enabled", True)
+        if callable(enabled):
+            try:
+                return bool(enabled())
+            except Exception:
+                return False
+        return bool(enabled)
+
+    def _execute_entry(self, entry: Optional[Tuple[str, Mapping[str, Any]]]) -> None:
+        if entry is None:
+            return
+        if not self._is_entry_enabled(entry):
+            return
+        callback = entry[1].get("on_click")
+        if not callable(callback):
+            return
+        self.close()
+        callback()
+
+    def _request_confirm(self, message: str, action: Callable[[], None]) -> None:
+        self._confirm_state = {"message": message, "action": action}
+
+    def _handle_button(self, key: str) -> None:
+        if key == "new":
+            entry = self._actions.get("new")
+            if entry is None:
+                return
+            if self.helper.should_confirm_reset():
+                self._request_confirm(
+                    "Start a new game?\nUnsaved progress will be lost.",
+                    lambda e=entry: self._execute_entry(e),
+                )
+            else:
+                self._execute_entry(entry)
+        elif key == "restart":
+            entry = self._actions.get("restart")
+            if entry is None:
+                return
+            if self.helper.should_confirm_reset():
+                self._request_confirm(
+                    "Restart the current game?\nUnsaved progress will be lost.",
+                    lambda e=entry: self._execute_entry(e),
+                )
+            else:
+                self._execute_entry(entry)
+        elif key == "hint":
+            self._execute_entry(self._actions.get("hint"))
+        elif key == "help":
+            self._execute_entry(self._actions.get("help"))
+        elif key == "save":
+            self._execute_entry(self._actions.get("save"))
+        elif key == "options":
+            if self.helper.can_open_options():
+                self.close()
+                self.helper.open_options()
+        elif key == "quit_menu":
+            self.close()
+            self.helper.goto_main_menu()
+        elif key == "quit_desktop":
+            self.close()
+            self.helper.quit_to_desktop()
+        elif key == "cancel":
+            self.close()
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if not self.visible:
+            return False
+        if self._confirm_state:
+            return self._handle_confirm_event(event)
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.close()
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if not self._panel_rect.collidepoint(event.pos):
+                self.close()
+                return True
+        if event.type == pygame.MOUSEMOTION:
+            for btn in self._buttons:
+                btn.handle_event(event)
+            return True
+        for btn in self._buttons:
+            if btn.handle_event(event):
+                return True
+        return True
+
+    def _handle_confirm_event(self, event: pygame.event.Event) -> bool:
+        modal_rect, ok_rect, cancel_rect = self._confirm_geometry()
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_n):
+                self._confirm_state = None
+                return True
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_y):
+                action = self._confirm_state.get("action")
+                self._confirm_state = None
+                if callable(action):
+                    action()
+                return True
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if ok_rect.collidepoint(event.pos):
+                action = self._confirm_state.get("action")
+                self._confirm_state = None
+                if callable(action):
+                    action()
+                return True
+            if cancel_rect.collidepoint(event.pos):
+                self._confirm_state = None
+                return True
+            if not modal_rect.collidepoint(event.pos):
+                return True
+        return True
+
+    def _confirm_geometry(self) -> Tuple[pygame.Rect, pygame.Rect, pygame.Rect]:
+        width, height = 440, 200
+        modal = pygame.Rect(0, 0, width, height)
+        modal.center = (C.SCREEN_W // 2, C.SCREEN_H // 2)
+        btn_w, btn_h = 140, 46
+        gap = 36
+        ok_rect = pygame.Rect(0, 0, btn_w, btn_h)
+        cancel_rect = pygame.Rect(0, 0, btn_w, btn_h)
+        ok_rect.centerx = modal.centerx - (btn_w // 2 + gap)
+        cancel_rect.centerx = modal.centerx + (btn_w // 2 + gap)
+        ok_rect.bottom = modal.bottom - 24
+        cancel_rect.bottom = modal.bottom - 24
+        return modal, ok_rect, cancel_rect
+
+    def _reflow(self) -> None:
+        width = min(self.PANEL_WIDTH, max(self.PANEL_MIN_WIDTH, C.SCREEN_W - 120))
+        button_width = max(220, width - 2 * self.PANEL_PADDING_X)
+        count = len(self._buttons)
+        total_height = count * self.BUTTON_HEIGHT + max(0, count - 1) * self.BUTTON_GAP
+        height = self.PADDING_TOP + total_height + self.BOTTOM_PADDING
+        panel = pygame.Rect(0, 0, width, height)
+        panel.center = (C.SCREEN_W // 2, C.SCREEN_H // 2)
+        self._panel_rect = panel
+        self._title_pos = (panel.centerx, panel.y + 36)
+        y = panel.y + self.PADDING_TOP
+        for btn in self._buttons:
+            btn.rect.size = (button_width, self.BUTTON_HEIGHT)
+            btn.set_position(panel.centerx - button_width // 2, y)
+            y += self.BUTTON_HEIGHT + self.BUTTON_GAP
+        self._layout_dirty = False
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self.visible:
+            return
+        if self._layout_dirty:
+            self._reflow()
+        overlay = pygame.Surface((C.SCREEN_W, C.SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        surface.blit(overlay, (0, 0))
+        pygame.draw.rect(surface, (250, 250, 250), self._panel_rect, border_radius=24)
+        pygame.draw.rect(surface, (80, 80, 90), self._panel_rect, width=2, border_radius=24)
+        title_font = C.FONT_TITLE or pygame.font.SysFont(pygame.font.get_default_font(), 40, bold=True)
+        title_surf = title_font.render("Game Menu", True, (40, 40, 45))
+        surface.blit(title_surf, (self._title_pos[0] - title_surf.get_width() // 2, self._title_pos[1]))
+        for btn in self._buttons:
+            btn.draw(surface)
+        if self._confirm_state:
+            self._draw_confirm(surface)
+
+    def _draw_confirm(self, surface: pygame.Surface) -> None:
+        modal_rect, ok_rect, cancel_rect = self._confirm_geometry()
+        pygame.draw.rect(surface, (245, 245, 245), modal_rect, border_radius=16)
+        pygame.draw.rect(surface, (90, 90, 95), modal_rect, width=2, border_radius=16)
+        title_font = C.FONT_TITLE or pygame.font.SysFont(pygame.font.get_default_font(), 34, bold=True)
+        title = title_font.render("Warning", True, (40, 40, 45))
+        surface.blit(title, (modal_rect.centerx - title.get_width() // 2, modal_rect.y + 18))
+        msg_font = C.FONT_UI or pygame.font.SysFont(pygame.font.get_default_font(), 24)
+        message = self._confirm_state.get("message", "")
+        lines = [line.strip() for line in message.splitlines() if line.strip()] or [message]
+        y = modal_rect.y + 18 + title.get_height() + 12
+        for line in lines:
+            surf = msg_font.render(line, True, (40, 40, 45))
+            surface.blit(surf, (modal_rect.centerx - surf.get_width() // 2, y))
+            y += surf.get_height() + 4
+        def draw_btn(rect: pygame.Rect, label: str) -> None:
+            pygame.draw.rect(surface, (230, 230, 235), rect, border_radius=10)
+            pygame.draw.rect(surface, (90, 90, 95), rect, width=1, border_radius=10)
+            txt = msg_font.render(label, True, (30, 30, 35))
+            surface.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+        draw_btn(ok_rect, "OK")
+        draw_btn(cancel_rect, "Cancel")

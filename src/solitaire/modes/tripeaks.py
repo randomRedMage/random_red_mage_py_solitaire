@@ -493,6 +493,7 @@ class TriPeaksGameScene(C.Scene):
         self.toolbar.draw(screen)
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     # ---------- Events ----------
     def handle_event(self, e):
@@ -502,6 +503,8 @@ class TriPeaksGameScene(C.Scene):
                 return
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
+        if self.ui_helper.handle_menu_event(e):
+            return
         # Toolbar first
         if hasattr(self, "toolbar") and self.toolbar.handle_event(e):
             return

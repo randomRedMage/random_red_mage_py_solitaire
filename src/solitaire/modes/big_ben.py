@@ -598,6 +598,8 @@ class BigBenGameScene(C.Scene):
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN):
                 return
 
+        if self.ui_helper.handle_menu_event(e):
+            return
         if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll_xy):
             self.peek.cancel()
             return
@@ -849,6 +851,7 @@ class BigBenGameScene(C.Scene):
         # Help overlay on top
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
         
     def debug_state(self):
         return {
