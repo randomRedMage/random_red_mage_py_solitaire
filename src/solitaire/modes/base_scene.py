@@ -185,6 +185,7 @@ class ModeUIHelper:
         self._options_class_name: Optional[str] = None
         self._options_cls: Optional[type] = None
         self._return_to_options: bool = True
+        self._game_id: Optional[str] = None
         if game_id is not None:
             meta = GAME_REGISTRY.get(game_id)
             if meta is None:
@@ -192,6 +193,7 @@ class ModeUIHelper:
             self._options_module = meta.options_module
             self._options_class_name = meta.options_class
             self._return_to_options = meta.return_to_options
+            self._game_id = meta.key
         elif options_scene is not None:
             if isinstance(options_scene, str):
                 module_name, class_name = self._split_import_path(options_scene)
@@ -328,6 +330,22 @@ class ModeUIHelper:
         return make_toolbar(actions, **kwargs)
 
     def goto_menu(self) -> None:
+        if self._return_to_options and self._game_id:
+            from solitaire.scenes.menu import MainMenuScene
+
+            proxy = None
+            meta = GAME_REGISTRY.get(self._game_id)
+            if meta is not None:
+                try:
+                    module = __import__(meta.options_module, fromlist=[meta.options_class])
+                    scene_cls = getattr(module, meta.options_class)
+                    proxy = scene_cls(self.scene.app)
+                except Exception:
+                    proxy = None
+            menu_scene = MainMenuScene(self.scene.app)
+            menu_scene._open_game_modal(self._game_id, proxy=proxy)
+            self.scene.next_scene = menu_scene
+            return
         if self._return_to_options:
             scene_cls = self._load_options_scene()
             self.scene.next_scene = scene_cls(self.scene.app)
