@@ -210,6 +210,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
         self.waste_pile.cards.clear()
         self.drag = None
         self.message = ""
+        self.edge_pan.set_active(False)
 
     def deal_new(self) -> None:
         cfg = load_chameleon_config()
@@ -292,6 +293,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
         self.message = snap.get("message", "")
         self.drag = None
         self.reset_scroll()
+        self.edge_pan.set_active(False)
 
     def push_undo(self) -> None:
         snap = self.record_snapshot()
@@ -302,6 +304,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
             self.undo_mgr.undo()
             self.message = ""
             self.drag = None
+            self.edge_pan.set_active(False)
 
     # ----- Save / Load helpers -----
     def _state_dict(self) -> Dict:
@@ -319,6 +322,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
     def _load_from_state(self, state: Dict) -> None:
         self.restore_snapshot(state)
         self.drag = None
+        self.edge_pan.set_active(False)
 
     # ----- Gameplay helpers -----
     def is_completed(self) -> bool:
@@ -469,6 +473,9 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
         return False
 
     def handle_event(self, event) -> None:
+        if event.type == pygame.MOUSEMOTION:
+            self.edge_pan.on_mouse_pos(event.pos)
+
         if self.help.visible:
             if self.help.handle_event(event):
                 return
@@ -509,6 +516,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
                 rect = self.waste_pile.rect_for_index(waste_idx)
                 card = self.waste_pile.cards.pop()
                 self.drag = _DragState([card], ("waste", None), (mxw - rect.x, myw - rect.y), event.pos)
+                self.edge_pan.set_active(True)
                 return
 
             reserve_idx = self.reserve.hit((mxw, myw))
@@ -516,6 +524,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
                 rect = self.reserve.rect_for_index(reserve_idx)
                 card = self.reserve.cards.pop()
                 self.drag = _DragState([card], ("reserve", None), (mxw - rect.x, myw - rect.y), event.pos)
+                self.edge_pan.set_active(True)
                 return
 
             for ti, pile in enumerate(self.tableau):
@@ -530,6 +539,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
                 rect = pile.rect_for_index(hit)
                 pile.cards = pile.cards[:hit]
                 self.drag = _DragState(seq, ("tableau", ti), (mxw - rect.x, myw - rect.y), event.pos)
+                self.edge_pan.set_active(True)
                 return
 
         elif event.type == pygame.MOUSEMOTION:
@@ -541,6 +551,7 @@ class ChameleonGameScene(ScrollableSceneMixin, C.Scene):
                 return
             drag = self.drag
             self.drag = None
+            self.edge_pan.set_active(False)
             stack = drag.cards
             origin, idx = drag.origin
             mxw, myw = self._screen_to_world(event.pos)
