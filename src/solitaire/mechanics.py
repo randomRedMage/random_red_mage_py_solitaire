@@ -299,6 +299,64 @@ class EdgePanDuringDrag:
         return (int(dx * dt), int(dy * dt))
 
 
+class DragPanController:
+    """Handle middle-mouse drag panning for scrollable scenes."""
+
+    def __init__(self, *, button: int = 2) -> None:
+        self.button = int(button)
+        self._active: bool = False
+        self._anchor: Optional[Tuple[int, int]] = None
+        self._scroll_anchor: Optional[Tuple[int, int]] = None
+
+    def handle_event(
+        self,
+        event,
+        *,
+        target,
+        clamp: Callable[[], None],
+        attr_x: Optional[str] = "scroll_x",
+        attr_y: Optional[str] = "scroll_y",
+    ) -> bool:
+        """Process a pygame event and update the target scroll offsets.
+
+        Returns True when the event was consumed by drag panning.
+        """
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == self.button:
+            self._active = True
+            self._anchor = event.pos
+            sx = getattr(target, attr_x, 0) if attr_x else 0
+            sy = getattr(target, attr_y, 0) if attr_y else 0
+            self._scroll_anchor = (int(sx), int(sy))
+            return True
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == self.button:
+            if self._active:
+                self._active = False
+                self._anchor = None
+                self._scroll_anchor = None
+                return True
+            return False
+
+        if (
+            event.type == pygame.MOUSEMOTION
+            and self._active
+            and self._anchor is not None
+            and self._scroll_anchor is not None
+        ):
+            mx, my = event.pos
+            ax, ay = self._anchor
+            sx, sy = self._scroll_anchor
+            if attr_x:
+                setattr(target, attr_x, sx + (mx - ax))
+            if attr_y:
+                setattr(target, attr_y, sy + (my - ay))
+            clamp()
+            return True
+
+        return False
+
+
 def debug_prepare_edge_pan_test(scene):
     """
     Developer-only helper. If a scene has common pile attributes, rearrange

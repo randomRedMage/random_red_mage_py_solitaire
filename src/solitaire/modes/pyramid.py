@@ -4,6 +4,7 @@ import pygame
 import os
 from typing import List, Optional, Tuple
 from solitaire import common as C
+from solitaire import mechanics as M
 from solitaire.modes.base_scene import ModeUIHelper
 from solitaire.help_data import create_modal_help
 
@@ -68,9 +69,7 @@ class PyramidGameScene(C.Scene):
         # 2D scroll offset to accommodate larger cards
         self.scroll_x: int = 0
         self.scroll_y: int = 0
-        self._panning: bool = False
-        self._pan_anchor = (0, 0)
-        self._scroll_anchor = (0, 0)
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll = False
         self._drag_hscroll = False
         # Difficulty / resets
@@ -569,6 +568,9 @@ class PyramidGameScene(C.Scene):
             self._drag_vscroll = False
             self._drag_hscroll = False
 
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll):
+            return
+
         if e.type == pygame.MOUSEMOTION:
             if getattr(self, "_drag_vscroll", False):
                 min_sy, max_sy, track_y, track_h, knob_h = self._vscroll_geom
@@ -588,25 +590,6 @@ class PyramidGameScene(C.Scene):
 
         if e.type == pygame.KEYDOWN:
             self.ui_helper.handle_shortcuts(e)
-
-        # Middle button drag to pan
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 2:
-            self._panning = True
-            self._pan_anchor = e.pos
-            self._scroll_anchor = (self.scroll_x, self.scroll_y)
-            return
-        elif e.type == pygame.MOUSEBUTTONUP and e.button == 2:
-            self._panning = False
-            return
-        elif e.type == pygame.MOUSEMOTION and self._panning:
-            mx, my = e.pos
-            ax, ay = self._pan_anchor
-            dx = mx - ax
-            dy = my - ay
-            self.scroll_x = self._scroll_anchor[0] + dx
-            self.scroll_y = self._scroll_anchor[1] + dy
-            self._clamp_scroll()
-            return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos

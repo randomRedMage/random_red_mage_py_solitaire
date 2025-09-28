@@ -25,6 +25,7 @@ class FreeCellGameScene(C.Scene):
         self._drag_hscroll = False
         self._hscroll_drag_dx = 0
         self._hscroll_geom = None
+        self.drag_pan = M.DragPanController()
 
         # Piles
         self.freecells: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
@@ -308,6 +309,10 @@ class FreeCellGameScene(C.Scene):
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
+            return
+
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll_xy):
+            self.peek.cancel()
             return
 
         if e.type == pygame.MOUSEWHEEL:

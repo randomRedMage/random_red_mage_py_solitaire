@@ -81,6 +81,7 @@ class GateGameScene(C.Scene):
         self._auto_complete_active = False
         # Vertical scrolling
         self.scroll_y = 0
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll = False
         self._vscroll_drag_dy = 0
         self._vscroll_geom: Optional[Tuple[int, int, int, int, int]] = None
@@ -446,6 +447,10 @@ class GateGameScene(C.Scene):
 
         # Update dynamic fan spacing for center piles
         self._update_center_fans()
+
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll, attr_x=None):
+            self.peek.cancel()
+            return
 
         # Mouse wheel vertical scroll
         if e.type == pygame.MOUSEWHEEL:

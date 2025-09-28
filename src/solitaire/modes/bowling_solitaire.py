@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Seque
 import pygame
 
 from solitaire import common as C
+from solitaire import mechanics as M
 from solitaire import ui as UI
 from solitaire.help_data import create_modal_help
 from solitaire.modes.base_scene import ModeUIHelper
@@ -236,6 +237,7 @@ class BowlingSolitaireGameScene(C.Scene):
 
         self.scroll_x: int = 0
         self.scroll_y: int = 0
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll: bool = False
         self._drag_hscroll: bool = False
         self._vscroll_drag_offset: int = 0
@@ -1434,6 +1436,8 @@ class BowlingSolitaireGameScene(C.Scene):
         if self.toolbar and self.toolbar.handle_event(event):
             return
         if self.ui_helper.handle_shortcuts(event):
+            return
+        if self.drag_pan.handle_event(event, target=self, clamp=self._clamp_scroll):
             return
         if self._handle_scroll_event(event):
             return

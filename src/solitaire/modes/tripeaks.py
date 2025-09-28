@@ -14,6 +14,7 @@ Rules (implemented):
 from typing import List, Optional, Tuple
 import pygame
 from solitaire import common as C
+from solitaire import mechanics as M
 from solitaire.modes.base_scene import ModeUIHelper
 from solitaire.help_data import create_modal_help
 
@@ -76,9 +77,7 @@ class TriPeaksGameScene(C.Scene):
         self.scroll_y: int = 0
         self._drag_vscroll = False
         self._drag_hscroll = False
-        self._panning = False
-        self._pan_anchor = (0, 0)
-        self._scroll_anchor = (0, 0)
+        self.drag_pan = M.DragPanController()
 
         # Tableau rows: sizes [3, 6, 9, 10]
         self.rows: List[List[Optional[C.Card]]] = []
@@ -507,6 +506,9 @@ class TriPeaksGameScene(C.Scene):
         if hasattr(self, "toolbar") and self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
+            return
+
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll):
             return
 
         # Mouse wheel scrolling

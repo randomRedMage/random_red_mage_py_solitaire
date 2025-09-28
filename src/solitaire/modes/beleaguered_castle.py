@@ -62,6 +62,7 @@ class BeleagueredCastleGameScene(C.Scene):
         self._auto_active = False
         self.scroll_x = 0
         self.scroll_y = 0
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll = False
         self._drag_hscroll = False
         self._vscroll_geom = None
@@ -523,6 +524,9 @@ class BeleagueredCastleGameScene(C.Scene):
             return
 
         if self.anim.active:
+            return
+
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll_xy):
             return
 
         if e.type == pygame.MOUSEWHEEL:
