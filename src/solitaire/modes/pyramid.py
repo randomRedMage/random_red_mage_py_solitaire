@@ -459,6 +459,7 @@ class PyramidGameScene(C.Scene):
         self.toolbar.draw(screen)
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     # ---------- Scrollbar geometry helpers ----------
     def _vertical_scrollbar(self):
@@ -515,6 +516,8 @@ class PyramidGameScene(C.Scene):
                 return
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
+        if self.ui_helper.handle_menu_event(e):
+            return
         # Toolbar first
         if self.toolbar.handle_event(e):
             return

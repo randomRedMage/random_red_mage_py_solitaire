@@ -8,6 +8,7 @@ shortcuts for in-game scenes.
 from __future__ import annotations
 
 import importlib
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, Mapping, MutableMapping, Optional, Tuple
@@ -16,7 +17,7 @@ import pygame
 
 from solitaire import common as C
 from solitaire import mechanics as M
-from solitaire.ui import DEFAULT_BUTTON_HEIGHT, make_toolbar
+from solitaire.ui import DEFAULT_BUTTON_HEIGHT, GameMenuModal, make_toolbar
 
 
 @dataclass(frozen=True)
@@ -210,6 +211,7 @@ class ModeUIHelper:
         if return_to_options is not None and game_id is not None:
             self._return_to_options = bool(return_to_options)
         self._shortcut_actions: Dict[int, Mapping[str, Any]] = {}
+        self.menu_modal: GameMenuModal | None = None
 
     @staticmethod
     def _split_import_path(path: str) -> Tuple[str, str]:
@@ -265,21 +267,6 @@ class ModeUIHelper:
         shortcut = action_dict.pop("shortcut", default_shortcut)
         return label, action_dict, shortcut
 
-    def _add_action(
-        self,
-        actions: MutableMapping[str, Mapping[str, Any]],
-        default_label: str,
-        spec: ActionSpec,
-        *,
-        default_shortcut: Optional[int] = None,
-    ) -> None:
-        normalised = self._normalise_action(default_label, spec, default_shortcut=default_shortcut)
-        if normalised is None:
-            return
-        label, action_dict, shortcut = normalised
-        actions[label] = action_dict
-        if shortcut is not None:
-            self._shortcut_actions[shortcut] = action_dict
 
     def build_toolbar(
         self,
@@ -295,28 +282,47 @@ class ModeUIHelper:
         menu_tooltip: Optional[str] = None,
         toolbar_kwargs: Optional[Mapping[str, Any]] = None,
     ):
-        """Construct a toolbar with shared buttons and shortcuts."""
+        """Construct a toolbar with shared buttons, shortcuts, and modal menu."""
 
         self._shortcut_actions = {}
 
         actions: Dict[str, Mapping[str, Any]] = {}
-        menu_action: Dict[str, Any] = {"on_click": self.goto_menu}
-        if menu_tooltip:
-            menu_action["tooltip"] = menu_tooltip
-        actions["Menu"] = menu_action
-        self._shortcut_actions[pygame.K_ESCAPE] = menu_action
+        stored: Dict[str, Tuple[str, Mapping[str, Any]]] = {}
 
-        self._add_action(actions, "New", new_action, default_shortcut=pygame.K_n)
-        self._add_action(actions, "Restart", restart_action, default_shortcut=pygame.K_r)
-        self._add_action(actions, "Undo", undo_action, default_shortcut=pygame.K_u)
-        self._add_action(actions, "Auto", auto_action, default_shortcut=pygame.K_a)
-        self._add_action(actions, "Hint", hint_action, default_shortcut=pygame.K_h)
-        self._add_action(actions, "Save", save_action, default_shortcut=pygame.K_s)
-        self._add_action(actions, "Help", help_action)
+        def register(
+            default_label: str,
+            spec: ActionSpec | Mapping[str, Any] | None,
+            *,
+            shortcut: Optional[int] = None,
+            store_key: Optional[str] = None,
+        ) -> Optional[Tuple[str, Mapping[str, Any]]]:
+            normalised = self._normalise_action(default_label, spec, default_shortcut=shortcut)
+            if normalised is None:
+                return None
+            label, action_dict, resolved_shortcut = normalised
+            actions[label] = action_dict
+            if resolved_shortcut is not None:
+                self._shortcut_actions[resolved_shortcut] = action_dict
+            if store_key:
+                stored[store_key] = (label, action_dict)
+            return label, action_dict
+
+        menu_spec: Dict[str, Any] = {"on_click": self.toggle_menu_modal}
+        if menu_tooltip:
+            menu_spec["tooltip"] = menu_tooltip
+        register("Menu", menu_spec, shortcut=pygame.K_ESCAPE)
+
+        register("New", new_action, shortcut=pygame.K_n, store_key="new")
+        register("Restart", restart_action, shortcut=pygame.K_r, store_key="restart")
+        register("Undo", undo_action, shortcut=pygame.K_u)
+        register("Auto", auto_action, shortcut=pygame.K_a)
+        register("Hint", hint_action, shortcut=pygame.K_h, store_key="hint")
+        register("Save", save_action, shortcut=pygame.K_s, store_key="save")
+        register("Help", help_action, store_key="help")
 
         if extra_actions:
             for label, spec in extra_actions:
-                self._add_action(actions, label, spec)
+                register(label, spec)
 
         kwargs = {
             "height": DEFAULT_BUTTON_HEIGHT,
@@ -327,9 +333,88 @@ class ModeUIHelper:
         }
         if toolbar_kwargs:
             kwargs.update(toolbar_kwargs)
+
+        self.menu_modal = GameMenuModal(
+            self,
+            new_action=stored.get("new"),
+            restart_action=stored.get("restart"),
+            help_action=stored.get("help"),
+            save_action=stored.get("save"),
+            hint_action=stored.get("hint"),
+        )
+
         return make_toolbar(actions, **kwargs)
 
+    def toggle_menu_modal(self) -> None:
+        if self.menu_modal is None:
+            return
+        self.menu_modal.toggle()
+
+    def close_menu_modal(self) -> None:
+        if self.menu_modal and self.menu_modal.visible:
+            self.menu_modal.close()
+
+    def handle_menu_event(self, event) -> bool:
+        if self.menu_modal and self.menu_modal.visible:
+            return self.menu_modal.handle_event(event)
+        return False
+
+    def draw_menu_modal(self, surface) -> None:
+        if self.menu_modal and self.menu_modal.visible:
+            self.menu_modal.draw(surface)
+
+    def relayout_menu_modal(self) -> None:
+        if self.menu_modal:
+            self.menu_modal.relayout()
+
+    def can_open_options(self) -> bool:
+        try:
+            self._load_options_scene()
+        except Exception:
+            return False
+        return True
+
+    def open_options(self) -> None:
+        try:
+            scene_cls = self._load_options_scene()
+        except Exception:
+            return
+        self.scene.next_scene = scene_cls(self.scene.app)
+
+    def goto_main_menu(self) -> None:
+        from solitaire.scenes.menu import MainMenuScene
+
+        self.scene.next_scene = MainMenuScene(self.scene.app)
+
+    def quit_to_desktop(self) -> None:
+        pygame.quit()
+        sys.exit(0)
+
+    def is_game_completed(self) -> bool:
+        scene = self.scene
+        if hasattr(scene, "is_game_complete"):
+            try:
+                if scene.is_game_complete():
+                    return True
+            except Exception:
+                pass
+        for attr in ("game_over", "_game_over", "completed"):
+            value = getattr(scene, attr, None)
+            if isinstance(value, bool) and value:
+                return True
+        message = getattr(scene, "message", "")
+        if isinstance(message, str):
+            lower = message.lower()
+            if "congratulations" in lower or "you won" in lower:
+                return True
+        return False
+
+    def should_confirm_reset(self) -> bool:
+        return not self.is_game_completed()
+
+
     def goto_menu(self) -> None:
+        self.close_menu_modal()
         if self._return_to_options and self._game_id:
             from solitaire.scenes.menu import MainMenuScene
 
@@ -357,6 +442,8 @@ class ModeUIHelper:
     def handle_shortcuts(self, event) -> bool:
         if event.type != pygame.KEYDOWN:
             return False
+        if self.menu_modal and self.menu_modal.visible:
+            return True
         action = self._shortcut_actions.get(event.key)
         if action is None:
             return False

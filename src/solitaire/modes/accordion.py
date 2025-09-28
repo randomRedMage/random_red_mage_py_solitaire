@@ -452,6 +452,8 @@ class AccordionGameScene(C.Scene):
             ):
                 return
 
+        if self.ui_helper.handle_menu_event(event):
+            return
         if self.toolbar.handle_event(event):
             return
         if self.ui_helper.handle_shortcuts(event):
@@ -516,6 +518,7 @@ class AccordionGameScene(C.Scene):
 
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     def _draw_dragged_stack(self, screen) -> None:
         info = self.drag_info

@@ -42,11 +42,11 @@ class _GameEntry:
 
 
 class _OptionRowLayout:
-    __slots__ = ("key", "label_pos", "value_rect", "left_rect", "right_rect")
+    __slots__ = ("key", "label_y", "value_rect", "left_rect", "right_rect")
 
-    def __init__(self, key: str, label_pos, value_rect, left_rect, right_rect) -> None:
+    def __init__(self, key: str, label_y: int, value_rect, left_rect, right_rect) -> None:
         self.key = key
-        self.label_pos = label_pos
+        self.label_y = label_y
         self.value_rect = value_rect
         self.left_rect = left_rect
         self.right_rect = right_rect
@@ -125,7 +125,7 @@ class GameOptionsModal:
         self._options_layout = []
         value_width = self.rect.width - 2 * self.PADDING_X - 2 * (self.OPTION_ARROW + self.OPTION_ARROW_GAP)
         for key, label_y, value_y in relative_rows:
-            label_pos = (self.rect.x + self.PADDING_X, self.rect.y + label_y)
+            label_y_abs = self.rect.y + label_y
             value_rect = pygame.Rect(
                 self.rect.x + self.PADDING_X + self.OPTION_ARROW + self.OPTION_ARROW_GAP,
                 self.rect.y + value_y,
@@ -144,7 +144,7 @@ class GameOptionsModal:
                 self.OPTION_ARROW,
                 self.OPTION_HEIGHT,
             )
-            self._options_layout.append(_OptionRowLayout(key, label_pos, value_rect, left_rect, right_rect))
+            self._options_layout.append(_OptionRowLayout(key, label_y_abs, value_rect, left_rect, right_rect))
 
         self._message_rect = pygame.Rect(
             self.rect.x + self.PADDING_X,
@@ -273,7 +273,7 @@ class GameOptionsModal:
             if opt is None:
                 continue
             label_surf = label_font.render(opt.label, True, (60, 60, 65))
-            screen.blit(label_surf, layout.label_pos)
+            screen.blit(label_surf, (self.rect.centerx - label_surf.get_width() // 2, layout.label_y))
             value_text = opt.current_text()
             self._draw_value_box(screen, layout.value_rect, value_text)
             arrows_enabled = len(opt.values) > 1
