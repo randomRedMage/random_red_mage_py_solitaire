@@ -458,6 +458,10 @@ class GameMenuModal:
     def has_pending_confirm(self) -> bool:
         return bool(self._confirm_state)
 
+    def has_pending_quit_confirm(self) -> bool:
+        state = self._confirm_state or {}
+        return state.get("kind") == "quit"
+
     def _execute_confirm_option(self, index: int) -> bool:
         if not self._confirm_state:
             return False
@@ -500,6 +504,7 @@ class GameMenuModal:
         *,
         options: Sequence[Tuple[str, Callable[[], None]]],
         cancel_label: str = "Cancel",
+        kind: Optional[str] = None,
     ) -> None:
         entries: List[Dict[str, Any]] = []
         for label, action in options:
@@ -513,6 +518,8 @@ class GameMenuModal:
             "options": entries,
             "cancel_label": cancel_label,
         }
+        if kind:
+            self._confirm_state["kind"] = kind
 
     def _handle_button(self, key: str) -> None:
         if key == "new":
@@ -687,8 +694,34 @@ class GameMenuModal:
         def draw_btn(rect: pygame.Rect, label: str) -> None:
             pygame.draw.rect(surface, (230, 230, 235), rect, border_radius=10)
             pygame.draw.rect(surface, (90, 90, 95), rect, width=1, border_radius=10)
-            txt = msg_font.render(label, True, (30, 30, 35))
-            surface.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+
+            def wrap_text(text: str, max_width: int) -> List[str]:
+                words = text.split()
+                if not words:
+                    return [""]
+                lines: List[str] = []
+                current = words[0]
+                for word in words[1:]:
+                    candidate = f"{current} {word}".strip()
+                    if msg_font.size(candidate)[0] <= max_width:
+                        current = candidate
+                    else:
+                        lines.append(current)
+                        current = word
+                if current:
+                    lines.append(current)
+                return lines or [""]
+
+            text_lines = wrap_text(label, rect.width - 16)
+            rendered = [msg_font.render(line, True, (30, 30, 35)) for line in text_lines]
+            if rendered:
+                line_gap = 4
+                total_height = sum(s.get_height() for s in rendered) + line_gap * (len(rendered) - 1)
+                y = rect.centery - total_height // 2
+                for surf in rendered:
+                    surface.blit(surf, (rect.centerx - surf.get_width() // 2, y))
+                    y += surf.get_height() + line_gap
+
         for rect, option in zip(option_rects, options):
             draw_btn(rect, str(option.get("label", "OK")))
         if cancel_rect and cancel_label:
@@ -709,7 +742,7 @@ class GameMenuModal:
         )
 
         options: List[Tuple[str, Callable[[], None]]] = [
-            ("Quit without Saving", quit_without_save)
+            ("Quit Without Saving", quit_without_save)
         ]
 
         save_entry = self._actions.get("save")
@@ -721,6 +754,7 @@ class GameMenuModal:
                 else:
                     self.helper.goto_main_menu()
 
-            options.append(("Save and Quit", save_and_quit))
+            options.append(("Save And Quit", save_and_quit))
 
-        self._request_confirm(message, options=options)
+
+        self._request_confirm(message, options=options, kind="quit")

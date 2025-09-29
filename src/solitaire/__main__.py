@@ -138,9 +138,9 @@ def main():
             if e.type == pygame.QUIT:
                 helper = getattr(scene, "ui_helper", None)
                 modal = getattr(helper, "menu_modal", None)
-                if modal and hasattr(modal, "has_pending_confirm"):
+                if modal and hasattr(modal, "has_pending_quit_confirm"):
                     try:
-                        if modal.has_pending_confirm():
+                        if modal.has_pending_quit_confirm():
                             modal.accept_default_confirm()
                     except Exception:
                         pass
