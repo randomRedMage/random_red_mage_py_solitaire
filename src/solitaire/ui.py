@@ -1,7 +1,7 @@
 # ui.py
 import pygame
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 from solitaire import common as C
 
 pygame.font.init()
@@ -455,6 +455,25 @@ class GameMenuModal:
         else:
             self.open()
 
+    def has_pending_confirm(self) -> bool:
+        return bool(self._confirm_state)
+
+    def _execute_confirm_option(self, index: int) -> bool:
+        if not self._confirm_state:
+            return False
+        options: Sequence[Dict[str, Any]] = self._confirm_state.get("options", [])  # type: ignore[index]
+        if not (0 <= index < len(options)):
+            return False
+        action = options[index].get("action")
+        self._confirm_state = None
+        if callable(action):
+            action()
+            return True
+        return False
+
+    def accept_default_confirm(self) -> bool:
+        return self._execute_confirm_option(0)
+
     def _is_entry_enabled(self, entry: Tuple[str, Mapping[str, Any]]) -> bool:
         enabled = entry[1].get("enabled", True)
         if callable(enabled):
@@ -475,8 +494,25 @@ class GameMenuModal:
         self.close()
         callback()
 
-    def _request_confirm(self, message: str, action: Callable[[], None]) -> None:
-        self._confirm_state = {"message": message, "action": action}
+    def _request_confirm(
+        self,
+        message: str,
+        *,
+        options: Sequence[Tuple[str, Callable[[], None]]],
+        cancel_label: str = "Cancel",
+    ) -> None:
+        entries: List[Dict[str, Any]] = []
+        for label, action in options:
+            if not callable(action):
+                continue
+            entries.append({"label": label, "action": action})
+        if not entries:
+            return
+        self._confirm_state = {
+            "message": message,
+            "options": entries,
+            "cancel_label": cancel_label,
+        }
 
     def _handle_button(self, key: str) -> None:
         if key == "new":
@@ -486,7 +522,7 @@ class GameMenuModal:
             if self.helper.should_confirm_reset():
                 self._request_confirm(
                     "Start a new game?\nUnsaved progress will be lost.",
-                    lambda e=entry: self._execute_entry(e),
+                    options=[("OK", lambda e=entry: self._execute_entry(e))],
                 )
             else:
                 self._execute_entry(entry)
@@ -497,7 +533,7 @@ class GameMenuModal:
             if self.helper.should_confirm_reset():
                 self._request_confirm(
                     "Restart the current game?\nUnsaved progress will be lost.",
-                    lambda e=entry: self._execute_entry(e),
+                    options=[("OK", lambda e=entry: self._execute_entry(e))],
                 )
             else:
                 self._execute_entry(entry)
@@ -512,11 +548,9 @@ class GameMenuModal:
                 self.close()
                 self.helper.open_options()
         elif key == "quit_menu":
-            self.close()
-            self.helper.goto_main_menu()
+            self._confirm_quit(target="menu")
         elif key == "quit_desktop":
-            self.close()
-            self.helper.quit_to_desktop()
+            self._confirm_quit(target="desktop")
         elif key == "cancel":
             self.close()
 
@@ -542,45 +576,58 @@ class GameMenuModal:
         return True
 
     def _handle_confirm_event(self, event: pygame.event.Event) -> bool:
-        modal_rect, ok_rect, cancel_rect = self._confirm_geometry()
+        state = self._confirm_state or {}
+        options: Sequence[Dict[str, Any]] = state.get("options", [])
+        cancel_label = state.get("cancel_label")
+        modal_rect, option_rects, cancel_rect = self._confirm_geometry(
+            len(options), bool(cancel_label)
+        )
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_ESCAPE, pygame.K_n):
                 self._confirm_state = None
                 return True
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_y):
-                action = self._confirm_state.get("action")
-                self._confirm_state = None
-                if callable(action):
-                    action()
+                if options:
+                    self._execute_confirm_option(0)
                 return True
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if ok_rect.collidepoint(event.pos):
-                action = self._confirm_state.get("action")
-                self._confirm_state = None
-                if callable(action):
-                    action()
-                return True
-            if cancel_rect.collidepoint(event.pos):
+            for idx, rect in enumerate(option_rects):
+                if rect.collidepoint(event.pos):
+                    self._execute_confirm_option(idx)
+                    return True
+            if cancel_rect and cancel_rect.collidepoint(event.pos):
                 self._confirm_state = None
                 return True
             if not modal_rect.collidepoint(event.pos):
                 return True
         return True
 
-    def _confirm_geometry(self) -> Tuple[pygame.Rect, pygame.Rect, pygame.Rect]:
-        width, height = 440, 200
-        modal = pygame.Rect(0, 0, width, height)
+    def _confirm_geometry(
+        self, option_count: int, include_cancel: bool
+    ) -> Tuple[pygame.Rect, List[pygame.Rect], Optional[pygame.Rect]]:
+        width, height = 460, 220
+        total_buttons = max(1, option_count + (1 if include_cancel else 0))
+        btn_w, btn_h = 150, 46
+        gap = 28
+        total_width = total_buttons * btn_w + max(0, total_buttons - 1) * gap
+        modal_width = max(width, total_width + 80)
+        modal = pygame.Rect(0, 0, modal_width, height)
         modal.center = (C.SCREEN_W // 2, C.SCREEN_H // 2)
-        btn_w, btn_h = 140, 46
-        gap = 36
-        ok_rect = pygame.Rect(0, 0, btn_w, btn_h)
-        cancel_rect = pygame.Rect(0, 0, btn_w, btn_h)
-        ok_rect.centerx = modal.centerx - (btn_w // 2 + gap)
-        cancel_rect.centerx = modal.centerx + (btn_w // 2 + gap)
-        ok_rect.bottom = modal.bottom - 24
-        cancel_rect.bottom = modal.bottom - 24
-        return modal, ok_rect, cancel_rect
+        start_x = modal.centerx - total_width // 2
+        option_rects: List[pygame.Rect] = []
+        for i in range(option_count):
+            rect = pygame.Rect(0, 0, btn_w, btn_h)
+            rect.x = start_x + i * (btn_w + gap)
+            rect.bottom = modal.bottom - 28
+            option_rects.append(rect)
+        cancel_rect: Optional[pygame.Rect] = None
+        if include_cancel:
+            rect = pygame.Rect(0, 0, btn_w, btn_h)
+            rect.x = start_x + option_count * (btn_w + gap)
+            rect.bottom = modal.bottom - 28
+            cancel_rect = rect
+        return modal, option_rects, cancel_rect
 
     def _reflow(self) -> None:
         width = min(self.PANEL_WIDTH, max(self.PANEL_MIN_WIDTH, C.SCREEN_W - 120))
@@ -618,7 +665,12 @@ class GameMenuModal:
             self._draw_confirm(surface)
 
     def _draw_confirm(self, surface: pygame.Surface) -> None:
-        modal_rect, ok_rect, cancel_rect = self._confirm_geometry()
+        state = self._confirm_state or {}
+        options: Sequence[Dict[str, Any]] = state.get("options", [])
+        cancel_label = state.get("cancel_label")
+        modal_rect, option_rects, cancel_rect = self._confirm_geometry(
+            len(options), bool(cancel_label)
+        )
         pygame.draw.rect(surface, (245, 245, 245), modal_rect, border_radius=16)
         pygame.draw.rect(surface, (90, 90, 95), modal_rect, width=2, border_radius=16)
         title_font = C.FONT_TITLE or pygame.font.SysFont(pygame.font.get_default_font(), 34, bold=True)
@@ -637,5 +689,38 @@ class GameMenuModal:
             pygame.draw.rect(surface, (90, 90, 95), rect, width=1, border_radius=10)
             txt = msg_font.render(label, True, (30, 30, 35))
             surface.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
-        draw_btn(ok_rect, "OK")
-        draw_btn(cancel_rect, "Cancel")
+        for rect, option in zip(option_rects, options):
+            draw_btn(rect, str(option.get("label", "OK")))
+        if cancel_rect and cancel_label:
+            draw_btn(cancel_rect, str(cancel_label))
+
+    def _confirm_quit(self, *, target: str) -> None:
+        def quit_without_save() -> None:
+            self.close()
+            if target == "menu":
+                self.helper.goto_main_menu()
+            else:
+                self.helper.quit_to_desktop()
+
+        message = (
+            "Quit to main menu?\nUnsaved progress will be lost."
+            if target == "menu"
+            else "Quit to desktop?\nUnsaved progress will be lost."
+        )
+
+        options: List[Tuple[str, Callable[[], None]]] = [
+            ("Quit without Saving", quit_without_save)
+        ]
+
+        save_entry = self._actions.get("save")
+        if save_entry and self._is_entry_enabled(save_entry):
+            def save_and_quit(entry=save_entry) -> None:
+                self._execute_entry(entry)
+                if target == "desktop":
+                    self.helper.quit_to_desktop()
+                else:
+                    self.helper.goto_main_menu()
+
+            options.append(("Save and Quit", save_and_quit))
+
+        self._request_confirm(message, options=options)
