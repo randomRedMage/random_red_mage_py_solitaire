@@ -324,8 +324,7 @@ class BeleagueredCastleGameScene(C.Scene):
         state = self._state_dict()
         _safe_write_json(_bc_save_path(), state)
         if to_menu:
-            from solitaire.scenes.game_options.beleaguered_castle_options import BeleagueredCastleOptionsScene
-            self.next_scene = BeleagueredCastleOptionsScene(self.app)
+            self.ui_helper.goto_main_menu()
 
     def _load_from_state(self, state: dict):
         def mk(seq):

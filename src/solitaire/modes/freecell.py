@@ -42,7 +42,7 @@ class FreeCellGameScene(C.Scene):
         # Undo manager
         self.undo_mgr = C.UndoManager()
 
-        self.ui_helper = ModeUIHelper(self, game_id="freecell", return_to_options=False)
+        self.ui_helper = ModeUIHelper(self, game_id="freecell")
 
         def can_undo():
             return self.undo_mgr.can_undo()

@@ -315,9 +315,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
     def _save_game(self, to_menu: bool = False) -> None:
         _safe_write_json(_demon_save_path(), self._state_dict())
         if to_menu:
-            from solitaire.scenes.game_options.demon_options import DemonOptionsScene
-
-            self.next_scene = DemonOptionsScene(self.app)
+            self.ui_helper.goto_main_menu()
 
     def _load_from_state(self, state: Dict) -> None:
         self.restore_snapshot(state)

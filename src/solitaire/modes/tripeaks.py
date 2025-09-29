@@ -26,47 +26,6 @@ def rank_adjacent(a: int, b: int) -> bool:
     return abs(a - b) == 1 or (a == 1 and b == 13) or (a == 13 and b == 1)
 
 
-# -----------------------------
-# Options Scene
-# -----------------------------
-class TriPeaksOptionsScene(C.Scene):
-    def __init__(self, app):
-        super().__init__(app)
-        cx = C.SCREEN_W // 2 - 210
-        y = 300
-        # Option: allow A↔K wrap (play a King on an Ace)
-        self.wrap_ak = True
-        self.b_start = C.Button("Start TriPeaks", cx, y, w=420); y += 60
-        self.b_wrap  = C.Button("Wrap A↔K: On", cx, y, w=420); y += 60
-        self.b_back = C.Button("Back", cx, y, w=420)
-
-    def handle_event(self, e):
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            mx, my = e.pos
-            if self.b_start.hovered((mx, my)):
-                self.next_scene = TriPeaksGameScene(self.app, wrap_ak=self.wrap_ak)
-            elif self.b_wrap.hovered((mx, my)):
-                self.wrap_ak = not self.wrap_ak
-                self.b_wrap.text = f"Wrap A↔K: {'On' if self.wrap_ak else 'Off'}"
-            elif self.b_back.hovered((mx, my)):
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
-        elif e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
-
-    def draw(self, screen):
-        screen.fill(C.TABLE_BG)
-        title = C.FONT_TITLE.render("TriPeaks - Options", True, C.WHITE)
-        screen.blit(title, (C.SCREEN_W // 2 - title.get_width() // 2, 140))
-        mp = pygame.mouse.get_pos()
-        for b in [self.b_start, self.b_wrap, self.b_back]:
-            b.draw(screen, hover=b.hovered(mp))
-
-
-# -----------------------------
-# Game Scene
-# -----------------------------
 class TriPeaksGameScene(C.Scene):
     def __init__(self, app, wrap_ak: bool = True):
         super().__init__(app)
@@ -96,7 +55,7 @@ class TriPeaksGameScene(C.Scene):
         self.undo_mgr = C.UndoManager()
         self.message: str = ""
 
-        self.ui_helper = ModeUIHelper(self, game_id="tripeaks", return_to_options=False)
+        self.ui_helper = ModeUIHelper(self, game_id="tripeaks")
 
         def can_undo():
             return self.undo_mgr.can_undo()
