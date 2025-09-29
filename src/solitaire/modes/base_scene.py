@@ -20,6 +20,16 @@ from solitaire import mechanics as M
 from solitaire.ui import DEFAULT_BUTTON_HEIGHT, GameMenuModal, make_toolbar
 
 
+class _InGameMenuProxy:
+    """Lightweight stand-in for main menu when opening game options in-scene."""
+
+    __slots__ = ("app", "next_scene")
+
+    def __init__(self, helper: "ModeUIHelper") -> None:
+        self.app = helper.scene.app
+        self.next_scene = None
+
+
 @dataclass(frozen=True)
 class GameMetadata:
     """Description and options-scene metadata for a solitaire mode."""
@@ -213,6 +223,8 @@ class ModeUIHelper:
         self._shortcut_actions: Dict[int, Mapping[str, Any]] = {}
         self.menu_modal: GameMenuModal | None = None
         self._modal_support: Optional[bool] = None
+        self._options_modal = None
+        self._options_proxy: _InGameMenuProxy | None = None
 
     @staticmethod
     def _split_import_path(path: str) -> Tuple[str, str]:
@@ -361,6 +373,9 @@ class ModeUIHelper:
         return make_toolbar(actions, **kwargs)
 
     def toggle_menu_modal(self) -> None:
+        if self._options_modal is not None:
+            self._close_options_modal()
+            return
         if self.menu_modal is None:
             return
         self.menu_modal.toggle()
@@ -368,19 +383,58 @@ class ModeUIHelper:
     def close_menu_modal(self) -> None:
         if self.menu_modal and self.menu_modal.visible:
             self.menu_modal.close()
+        if self._options_modal is not None:
+            self._close_options_modal()
 
     def handle_menu_event(self, event) -> bool:
+        if self._options_modal is not None:
+            should_close = self._options_modal.handle_event(event)
+            if should_close:
+                self._close_options_modal()
+            return True
         if self.menu_modal and self.menu_modal.visible:
             return self.menu_modal.handle_event(event)
         return False
 
     def draw_menu_modal(self, surface) -> None:
-        if self.menu_modal and self.menu_modal.visible:
+        if self._options_modal is not None:
+            self._options_modal.draw(surface)
+        elif self.menu_modal and self.menu_modal.visible:
             self.menu_modal.draw(surface)
 
     def relayout_menu_modal(self) -> None:
         if self.menu_modal:
             self.menu_modal.relayout()
+
+    def _build_in_game_options_modal(self):
+        if not self._game_id:
+            return None
+        try:
+            from solitaire.scenes import menu_options  # type: ignore
+            from solitaire.scenes.menu import GameOptionsModal  # type: ignore
+        except Exception:
+            return None
+        registry = getattr(menu_options, "CONTROLLER_REGISTRY", {})
+        controller_cls = registry.get(self._game_id)
+        if controller_cls is None:
+            return None
+        metadata = GAME_REGISTRY.get(self._game_id)
+        if metadata is None:
+            return None
+        try:
+            proxy = _InGameMenuProxy(self)
+            controller = controller_cls(proxy, metadata=metadata)
+            modal = GameOptionsModal(self.scene, controller)
+        except Exception:
+            return None
+        return proxy, modal
+
+    def _close_options_modal(self) -> None:
+        proxy = self._options_proxy
+        self._options_modal = None
+        self._options_proxy = None
+        if proxy and proxy.next_scene is not None:
+            self.scene.next_scene = proxy.next_scene
 
     def can_open_options(self) -> bool:
         if self._supports_game_modal():
@@ -393,12 +447,14 @@ class ModeUIHelper:
 
     def open_options(self) -> None:
         if self._supports_game_modal():
-            from solitaire.scenes.menu import MainMenuScene
-
-            menu_scene = MainMenuScene(self.scene.app)
-            game_key = self._game_id
-            if game_key and menu_scene._open_game_modal(game_key):
-                self.scene.next_scene = menu_scene
+            if self._options_modal is not None:
+                return
+            modal_info = self._build_in_game_options_modal()
+            if modal_info is not None:
+                self.close_menu_modal()
+                proxy, modal = modal_info
+                self._options_proxy = proxy
+                self._options_modal = modal
                 return
         try:
             scene_cls = self._load_options_scene()
@@ -468,6 +524,8 @@ class ModeUIHelper:
         if event.type != pygame.KEYDOWN:
             return False
         if self.menu_modal and self.menu_modal.visible:
+            return True
+        if self._options_modal is not None:
             return True
         action = self._shortcut_actions.get(event.key)
         if action is None:
