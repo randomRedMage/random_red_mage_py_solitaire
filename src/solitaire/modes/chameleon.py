@@ -13,10 +13,7 @@ from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 def _chameleon_dir() -> str:
     """Return the directory used to persist Chameleon save data."""
 
-    try:
-        return C._settings_dir()  # type: ignore[attr-defined]
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("chameleon")
 
 
 def _chameleon_save_path() -> str:

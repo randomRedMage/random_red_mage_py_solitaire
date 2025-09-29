@@ -489,9 +489,13 @@ from solitaire.modes import freecell as freecell_mode
 
 
 class FreeCellController(GameOptionsController):
+    def _has_save(self) -> bool:
+        return freecell_mode.has_saved_game()
+
     def buttons(self) -> Sequence[ButtonState]:
         return [
             ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
             ButtonState("start", "Start", variant="primary"),
         ]
 
@@ -499,12 +503,24 @@ class FreeCellController(GameOptionsController):
         if key == "cancel":
             return ActionResult(close_modal=True)
         if key == "start":
+            try:
+                freecell_mode._clear_saved_game()
+            except Exception:
+                pass
             self.menu_scene.next_scene = freecell_mode.FreeCellGameScene(self.app)
             return ActionResult(close_modal=True)
+        if key == "resume" and self._has_save():
+            load_state = freecell_mode.load_saved_game()
+            if load_state:
+                self.menu_scene.next_scene = freecell_mode.FreeCellGameScene(
+                    self.app, load_state=load_state
+                )
+                return ActionResult(close_modal=True)
+            self.set_message("No saved game found.")
         return ActionResult(close_modal=False)
 
     def compatibility_actions(self) -> Dict[str, str]:
-        return {"b_start": "start", "b_back": "cancel"}
+        return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
 
 
 # --- Gate ------------------------------------------------------------
@@ -513,9 +529,13 @@ from solitaire.modes import gate as gate_mode
 
 
 class GateController(GameOptionsController):
+    def _has_save(self) -> bool:
+        return gate_mode.has_saved_game()
+
     def buttons(self) -> Sequence[ButtonState]:
         return [
             ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
             ButtonState("start", "Start", variant="primary"),
         ]
 
@@ -523,12 +543,22 @@ class GateController(GameOptionsController):
         if key == "cancel":
             return ActionResult(close_modal=True)
         if key == "start":
+            try:
+                gate_mode._clear_saved_game()  # type: ignore[attr-defined]
+            except Exception:
+                pass
             self.menu_scene.next_scene = gate_mode.GateGameScene(self.app)
             return ActionResult(close_modal=True)
+        if key == "resume" and self._has_save():
+            state = gate_mode.load_saved_game()
+            if state:
+                self.menu_scene.next_scene = gate_mode.GateGameScene(self.app, load_state=state)
+                return ActionResult(close_modal=True)
+            self.set_message("No saved game found.")
         return ActionResult(close_modal=False)
 
     def compatibility_actions(self) -> Dict[str, str]:
-        return {"b_start": "start", "b_back": "cancel"}
+        return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
 
 
 # --- Golf ------------------------------------------------------------
@@ -648,6 +678,9 @@ class KlondikeController(GameOptionsController):
             ),
         ]
 
+    def _has_save(self) -> bool:
+        return klondike_mode.has_saved_game()
+
     def _format_difficulty(self, value: Any) -> str:
         if value is None:
             return "Unlimited"
@@ -660,6 +693,7 @@ class KlondikeController(GameOptionsController):
     def buttons(self) -> Sequence[ButtonState]:
         return [
             ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
             ButtonState("start", "Start", variant="primary"),
         ]
 
@@ -669,16 +703,33 @@ class KlondikeController(GameOptionsController):
         if key == "start":
             draw_count = int(self._options[1].current_value())
             stock_cycles = self._options[0].current_value()
+            try:
+                klondike_mode._clear_saved_game()  # type: ignore[attr-defined]
+            except Exception:
+                pass
             self.menu_scene.next_scene = klondike_mode.KlondikeGameScene(
                 self.app,
                 draw_count=draw_count,
                 stock_cycles=stock_cycles,
             )
             return ActionResult(close_modal=True)
+        if key == "resume" and self._has_save():
+            state = klondike_mode.load_saved_game()
+            if state:
+                draw_count = int(state.get("draw_count", 3))
+                stock_cycles = state.get("stock_cycles_allowed")
+                self.menu_scene.next_scene = klondike_mode.KlondikeGameScene(
+                    self.app,
+                    draw_count=draw_count,
+                    stock_cycles=stock_cycles,
+                    load_state=state,
+                )
+                return ActionResult(close_modal=True)
+            self.set_message("No saved game found.")
         return ActionResult(close_modal=False)
 
     def compatibility_actions(self) -> Dict[str, str]:
-        return {"b_start": "start", "b_back": "cancel"}
+        return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
 
 
 # --- Pyramid ---------------------------------------------------------
@@ -699,6 +750,9 @@ class PyramidController(GameOptionsController):
             )
         ]
 
+    def _has_save(self) -> bool:
+        return pyramid_mode.has_saved_game()
+
     def _format_value(self, value: Any) -> str:
         if value is None:
             return "Unlimited"
@@ -711,6 +765,7 @@ class PyramidController(GameOptionsController):
     def buttons(self) -> Sequence[ButtonState]:
         return [
             ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
             ButtonState("start", "Start", variant="primary"),
         ]
 
@@ -719,14 +774,29 @@ class PyramidController(GameOptionsController):
             return ActionResult(close_modal=True)
         if key == "start":
             allowed = self._options[0].current_value()
+            try:
+                pyramid_mode._clear_saved_game()  # type: ignore[attr-defined]
+            except Exception:
+                pass
             self.menu_scene.next_scene = pyramid_mode.PyramidGameScene(
                 self.app, allowed_resets=allowed
             )
             return ActionResult(close_modal=True)
+        if key == "resume" and self._has_save():
+            state = pyramid_mode.load_saved_game()
+            if state:
+                allowed = state.get("allowed_resets")
+                self.menu_scene.next_scene = pyramid_mode.PyramidGameScene(
+                    self.app,
+                    allowed_resets=allowed,
+                    load_state=state,
+                )
+                return ActionResult(close_modal=True)
+            self.set_message("No saved game found.")
         return ActionResult(close_modal=False)
 
     def compatibility_actions(self) -> Dict[str, str]:
-        return {"b_start": "start", "b_back": "cancel"}
+        return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
 
 
 # --- TriPeaks --------------------------------------------------------
@@ -747,9 +817,13 @@ class TriPeaksController(GameOptionsController):
             )
         ]
 
+    def _has_save(self) -> bool:
+        return tripeaks_mode.has_saved_game()
+
     def buttons(self) -> Sequence[ButtonState]:
         return [
             ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
             ButtonState("start", "Start", variant="primary"),
         ]
 
@@ -758,14 +832,29 @@ class TriPeaksController(GameOptionsController):
             return ActionResult(close_modal=True)
         if key == "start":
             wrap = bool(self._options[0].current_value())
+            try:
+                tripeaks_mode._clear_saved_game()  # type: ignore[attr-defined]
+            except Exception:
+                pass
             self.menu_scene.next_scene = tripeaks_mode.TriPeaksGameScene(
                 self.app, wrap_ak=wrap
             )
             return ActionResult(close_modal=True)
+        if key == "resume" and self._has_save():
+            state = tripeaks_mode.load_saved_game()
+            if state:
+                wrap = bool(state.get("wrap_ak", True))
+                self.menu_scene.next_scene = tripeaks_mode.TriPeaksGameScene(
+                    self.app,
+                    wrap_ak=wrap,
+                    load_state=state,
+                )
+                return ActionResult(close_modal=True)
+            self.set_message("No saved game found.")
         return ActionResult(close_modal=False)
 
     def compatibility_actions(self) -> Dict[str, str]:
-        return {"b_start": "start", "b_back": "cancel"}
+        return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
 
 
 # --- Yukon -----------------------------------------------------------

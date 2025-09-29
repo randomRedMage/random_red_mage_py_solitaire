@@ -11,12 +11,69 @@ Rules (implemented):
 - Win by clearing all tableau cards.
 """
 
-from typing import List, Optional, Tuple
+import json
+import os
+from typing import Any, Dict, List, Optional, Tuple
+
 import pygame
 from solitaire import common as C
 from solitaire import mechanics as M
 from solitaire.modes.base_scene import ModeUIHelper
 from solitaire.help_data import create_modal_help
+
+
+_SAVE_FILENAME = "tripeaks_save.json"
+
+
+def _tripeaks_dir() -> str:
+    return C.project_saves_dir("tripeaks")
+
+
+def _tripeaks_save_path() -> str:
+    return os.path.join(_tripeaks_dir(), _SAVE_FILENAME)
+
+
+def _safe_write_json(path: str, data: Any) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except Exception:
+        pass
+
+
+def _safe_read_json(path: str) -> Optional[Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def _clear_saved_game() -> None:
+    try:
+        if os.path.isfile(_tripeaks_save_path()):
+            os.remove(_tripeaks_save_path())
+    except Exception:
+        pass
+
+
+def has_saved_game() -> bool:
+    state = _safe_read_json(_tripeaks_save_path())
+    if not isinstance(state, dict):
+        return False
+    if state.get("completed"):
+        return False
+    return True
+
+
+def load_saved_game() -> Optional[Dict[str, Any]]:
+    state = _safe_read_json(_tripeaks_save_path())
+    if not isinstance(state, dict):
+        return None
+    if state.get("completed"):
+        return None
+    return state
 
 
 def rank_adjacent(a: int, b: int) -> bool:
@@ -27,7 +84,7 @@ def rank_adjacent(a: int, b: int) -> bool:
 
 
 class TriPeaksGameScene(C.Scene):
-    def __init__(self, app, wrap_ak: bool = True):
+    def __init__(self, app, wrap_ak: bool = True, load_state: Optional[Dict[str, Any]] = None):
         super().__init__(app)
         self.wrap_ak = wrap_ak
 
@@ -63,6 +120,9 @@ class TriPeaksGameScene(C.Scene):
         def can_hint():
             return self.any_moves_available()
 
+        def save_and_exit() -> None:
+            self._save_game(to_menu=True)
+
         self.toolbar = self.ui_helper.build_toolbar(
             new_action={"on_click": self.new_game},
             restart_action={"on_click": self.restart_deal, "tooltip": "Restart current deal"},
@@ -73,6 +133,13 @@ class TriPeaksGameScene(C.Scene):
                 "tooltip": "Show a playable card",
                 "shortcut": pygame.K_h,
             },
+            save_action=(
+                "Save&Exit",
+                {
+                    "on_click": save_and_exit,
+                    "tooltip": "Save game and return to menu",
+                },
+            ),
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
@@ -82,10 +149,13 @@ class TriPeaksGameScene(C.Scene):
 
         # Deal
         self.compute_layout()
-        self.deal()
-        self._initial_order: List[Tuple[int, int]] = self._deck_order_snapshot[:]
-        self.undo_mgr = C.UndoManager()
-        self.push_undo()
+        if load_state:
+            self._load_from_state(load_state)
+        else:
+            self.deal()
+            self._initial_order: List[Tuple[int, int]] = self._deck_order_snapshot[:]
+            self.undo_mgr = C.UndoManager()
+            self.push_undo()
 
         # Help overlay
         self.help = create_modal_help("tripeaks")
@@ -222,6 +292,7 @@ class TriPeaksGameScene(C.Scene):
             self.waste_pile.cards.append(c0)
 
     def new_game(self):
+        _clear_saved_game()
         self.deal()
         self.undo_mgr = C.UndoManager()
         self.push_undo()
@@ -231,6 +302,47 @@ class TriPeaksGameScene(C.Scene):
             self.deal(self._deck_order_snapshot[:])
             self.undo_mgr = C.UndoManager()
             self.push_undo()
+
+    def _state_dict(self) -> Dict[str, Any]:
+        state = self.record_snapshot()
+        state.update(
+            {
+                "wrap_ak": bool(self.wrap_ak),
+                "deck_order": getattr(self, "_deck_order_snapshot", []),
+                "initial_order": getattr(self, "_initial_order", []),
+                "completed": all(c is None for row in self.rows for c in row),
+            }
+        )
+        return state
+
+    def _save_game(self, to_menu: bool = False) -> None:
+        state = self._state_dict()
+        _safe_write_json(_tripeaks_save_path(), state)
+        if to_menu:
+            self.ui_helper.goto_main_menu()
+
+    def _load_from_state(self, state: Dict[str, Any]) -> None:
+        if not state:
+            self.deal()
+            self._initial_order = self._deck_order_snapshot[:]
+            self.undo_mgr = C.UndoManager()
+            self.push_undo()
+            return
+        self.restore_snapshot(state)
+        self.wrap_ak = bool(state.get("wrap_ak", self.wrap_ak))
+        deck_order = state.get("deck_order")
+        if isinstance(deck_order, list):
+            self._deck_order_snapshot = [(int(s), int(r)) for (s, r) in deck_order]
+        else:
+            self._deck_order_snapshot = getattr(self, "_deck_order_snapshot", [])
+        init = state.get("initial_order")
+        if isinstance(init, list):
+            self._initial_order = [(int(s), int(r)) for (s, r) in init]
+        else:
+            self._initial_order = self._deck_order_snapshot[:]
+        self.undo_mgr = C.UndoManager()
+        self.push_undo()
+        self._clamp_scroll()
 
     # ---------- Undo ----------
     def record_snapshot(self):
@@ -371,10 +483,12 @@ class TriPeaksGameScene(C.Scene):
         # Win when all rows are cleared
         if all(c is None for row in self.rows for c in row):
             self.message = "🎉 You win!"
+            _clear_saved_game()
             return
         # If no stock and no moves, game over
         if not self.stock_pile.cards and not self.any_moves_available():
             self.message = "Game Over"
+            _clear_saved_game()
 
     # ---------- Hint ----------
     def show_hint(self):

@@ -15,10 +15,7 @@ from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 def _duchess_dir() -> str:
     """Return the directory used to persist Duchess save data."""
 
-    try:
-        return C._settings_dir()  # type: ignore[attr-defined]
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("duchess")
 
 
 def _duchess_save_path() -> str:

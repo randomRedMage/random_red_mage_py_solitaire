@@ -1,10 +1,66 @@
 # freecell.py - FreeCell mode (options + game)
 import pygame
-from typing import List, Optional, Tuple
+import json
+import os
+from typing import Any, Dict, List, Optional, Tuple
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
 from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
+
+
+_SAVE_FILENAME = "freecell_save.json"
+
+
+def _freecell_dir() -> str:
+    return C.project_saves_dir("freecell")
+
+
+def _freecell_save_path() -> str:
+    return os.path.join(_freecell_dir(), _SAVE_FILENAME)
+
+
+def _safe_write_json(path: str, data: Any) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except Exception:
+        pass
+
+
+def _safe_read_json(path: str) -> Optional[Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def _clear_saved_game() -> None:
+    try:
+        if os.path.isfile(_freecell_save_path()):
+            os.remove(_freecell_save_path())
+    except Exception:
+        pass
+
+
+def has_saved_game() -> bool:
+    state = _safe_read_json(_freecell_save_path())
+    if not isinstance(state, dict):
+        return False
+    if state.get("completed"):
+        return False
+    return True
+
+
+def load_saved_game() -> Optional[Dict[str, Any]]:
+    state = _safe_read_json(_freecell_save_path())
+    if not isinstance(state, dict):
+        return None
+    if state.get("completed"):
+        return None
+    return state
 
 
 def is_red(suit: int) -> bool:
@@ -15,7 +71,7 @@ def is_red(suit: int) -> bool:
 
 
 class FreeCellGameScene(C.Scene):
-    def __init__(self, app):
+    def __init__(self, app, load_state: Optional[Dict[str, Any]] = None):
         super().__init__(app)
 
         # Scrolling (support tall columns and wide layouts)
@@ -47,17 +103,30 @@ class FreeCellGameScene(C.Scene):
         def can_undo():
             return self.undo_mgr.can_undo()
 
+        def save_and_exit() -> None:
+            self._save_game(to_menu=True)
+
         self.toolbar = self.ui_helper.build_toolbar(
             new_action={"on_click": self.deal_new},
             restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
             undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
             auto_action={"on_click": self.auto_to_foundations, "tooltip": "Auto-move available cards to foundations"},
+            save_action=(
+                "Save&Exit",
+                {
+                    "on_click": save_and_exit,
+                    "tooltip": "Save game and return to menu",
+                },
+            ),
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
         self.message = ""
         self.compute_layout()
-        self.deal_new()
+        if load_state:
+            self._load_from_state(load_state)
+        else:
+            self.deal_new()
         # Double-click tracking
         self._last_click_time = 0
         self._last_click_pos = (0, 0)
@@ -107,6 +176,7 @@ class FreeCellGameScene(C.Scene):
         self.message = ""
 
     def deal_new(self):
+        _clear_saved_game()
         self._clear()
         deck = C.make_deck(shuffle=True)
         # Remember initial order for restart
@@ -128,6 +198,71 @@ class FreeCellGameScene(C.Scene):
                 self.tableau[col].cards.append(c)
             self.undo_mgr = C.UndoManager()
             self.push_undo()
+
+    def _state_dict(self) -> Dict[str, Any]:
+        def cap(cards: List[C.Card]) -> List[Tuple[int, int, bool]]:
+            return [(c.suit, c.rank, c.face_up) for c in cards]
+
+        return {
+            "freecells": [cap(p.cards) for p in self.freecells],
+            "foundations": [cap(p.cards) for p in self.foundations],
+            "tableau": [cap(p.cards) for p in self.tableau],
+            "message": self.message,
+            "scroll_x": self.scroll_x,
+            "scroll_y": self.scroll_y,
+            "initial_order": getattr(self, "_initial_order", None),
+            "foundation_suits": list(self.foundation_suits),
+            "completed": all(len(f.cards) == 13 for f in self.foundations),
+        }
+
+    def _save_game(self, to_menu: bool = False) -> None:
+        state = self._state_dict()
+        _safe_write_json(_freecell_save_path(), state)
+        if to_menu:
+            self.ui_helper.goto_main_menu()
+
+    def _load_from_state(self, state: Dict[str, Any]) -> None:
+        if not state:
+            self.deal_new()
+            return
+
+        def mk(seq: List[Tuple[int, int, bool]]) -> List[C.Card]:
+            return [C.Card(int(s), int(r), bool(f)) for (s, r, f) in seq]
+
+        freecells = state.get("freecells", [])
+        for i, pile in enumerate(self.freecells):
+            if i < len(freecells):
+                pile.cards = mk(freecells[i])
+            else:
+                pile.cards = []
+        foundations = state.get("foundations", [])
+        for i, pile in enumerate(self.foundations):
+            if i < len(foundations):
+                pile.cards = mk(foundations[i])
+            else:
+                pile.cards = []
+        tableau = state.get("tableau", [])
+        for i, pile in enumerate(self.tableau):
+            if i < len(tableau):
+                pile.cards = mk(tableau[i])
+            else:
+                pile.cards = []
+        suits = state.get("foundation_suits")
+        if isinstance(suits, (list, tuple)) and len(suits) >= 4:
+            self.foundation_suits = [int(s) for s in suits[:4]]
+        self.message = state.get("message", "")
+        self.scroll_x = state.get("scroll_x", 0)
+        self.scroll_y = state.get("scroll_y", 0)
+        init_order = state.get("initial_order")
+        if isinstance(init_order, list):
+            self._initial_order = [(int(s), int(r)) for (s, r) in init_order]
+        else:
+            self._initial_order = []
+        self.drag_stack = None
+        self.undo_mgr = C.UndoManager()
+        self.push_undo()
+        self.peek.cancel()
+        self._clamp_scroll_xy()
 
     # ----- Undo -----
     def record_snapshot(self):
