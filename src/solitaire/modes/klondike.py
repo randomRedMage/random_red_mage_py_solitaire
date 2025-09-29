@@ -1,9 +1,67 @@
 # klondike.py - Klondike scenes with flip-on-click, auto-finish, and win message
+import json
+import os
+from typing import Any, Dict, Optional
+
 import pygame
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
 from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
+
+
+_SAVE_FILENAME = "klondike_save.json"
+
+
+def _klondike_dir() -> str:
+    return C.project_saves_dir("klondike")
+
+
+def _klondike_save_path() -> str:
+    return os.path.join(_klondike_dir(), _SAVE_FILENAME)
+
+
+def _safe_write_json(path: str, data: Any) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except Exception:
+        pass
+
+
+def _safe_read_json(path: str) -> Optional[Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def _clear_saved_game() -> None:
+    try:
+        if os.path.isfile(_klondike_save_path()):
+            os.remove(_klondike_save_path())
+    except Exception:
+        pass
+
+
+def has_saved_game() -> bool:
+    state = _safe_read_json(_klondike_save_path())
+    if not isinstance(state, dict):
+        return False
+    if state.get("completed"):
+        return False
+    return True
+
+
+def load_saved_game() -> Optional[Dict[str, Any]]:
+    state = _safe_read_json(_klondike_save_path())
+    if not isinstance(state, dict):
+        return None
+    if state.get("completed"):
+        return None
+    return state
 
 def is_red(suit): return suit in (1,2)
 
@@ -11,14 +69,12 @@ def is_red(suit): return suit in (1,2)
 # Game Scene
 # -----------------------------
 class KlondikeGameScene(C.Scene):
-    def __init__(self, app, draw_count=3, stock_cycles=None):
+    def __init__(self, app, draw_count=3, stock_cycles=None, load_state: Optional[Dict[str, Any]] = None):
         super().__init__(app)
         # 2D scroll for large cards
         self.scroll_x = 0
         self.scroll_y = 0
-        self._panning = False
-        self._pan_anchor = (0, 0)
-        self._scroll_anchor = (0, 0)
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll = False
         self._drag_hscroll = False
         self.draw_count = draw_count
@@ -35,10 +91,13 @@ class KlondikeGameScene(C.Scene):
         self.message = ""
         self.drag_stack = None
 
-        self.ui_helper = ModeUIHelper(self, game_id="klondike", return_to_options=False)
+        self.ui_helper = ModeUIHelper(self, game_id="klondike")
 
         def can_undo():
             return self.undo_mgr.can_undo()
+
+        def save_and_exit() -> None:
+            self._save_game(to_menu=True)
 
         self.toolbar = self.ui_helper.build_toolbar(
             new_action={"on_click": self.deal_new},
@@ -49,6 +108,13 @@ class KlondikeGameScene(C.Scene):
                 "enabled": self.can_autofinish,
                 "tooltip": "Auto-finish to foundations",
             },
+            save_action=(
+                "Save&Exit",
+                {
+                    "on_click": save_and_exit,
+                    "tooltip": "Save game and return to menu",
+                },
+            ),
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
@@ -57,15 +123,19 @@ class KlondikeGameScene(C.Scene):
         self.auto_last_time = 0
         self.auto_interval_ms = 180
 
+        # Klondike-style delayed single-card peek (shared across modes)
+        self.peek = M.PeekController(delay_ms=2000)
+
         # Layout depends on current card size and screen size
         self.compute_layout()
-        self.deal_new()
+        if load_state:
+            self._load_from_state(load_state)
+        else:
+            self.deal_new()
         # Hover peek for face-up cards within a pile
 
         # Help overlay
         self.help = create_modal_help("klondike")
-        # Klondike-style delayed single-card peek (shared across modes)
-        self.peek = M.PeekController(delay_ms=2000)
         # Central edge-panning controller for drag-to-edge auto-scroll
         self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 64))
         # Double-click tracking
@@ -154,6 +224,7 @@ class KlondikeGameScene(C.Scene):
         self.message = ""
 
     def deal_new(self):
+        _clear_saved_game()
         # Reset & redeal
         self._clear_all_piles()
         deck = C.make_deck(shuffle=True)
@@ -185,6 +256,97 @@ class KlondikeGameScene(C.Scene):
             self.auto_play_active = False
             self.undo_mgr = C.UndoManager()
             self.push_undo()
+
+    def _snapshot_to_state(self, snapshot: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not snapshot:
+            return None
+
+        def cap_cards(cards):
+            return [(c.suit, c.rank, c.face_up) for c in cards]
+
+        return {
+            "foundations": [cap_cards(p) for p in snapshot.get("foundations", [])],
+            "stock": cap_cards(snapshot.get("stock", [])),
+            "waste": cap_cards(snapshot.get("waste", [])),
+            "tableau": [cap_cards(p) for p in snapshot.get("tableau", [])],
+            "stock_cycles_used": snapshot.get("stock_cycles_used", 0),
+        }
+
+    def _snapshot_from_state(self, data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not data:
+            return None
+
+        def mk(seq):
+            return [C.Card(int(s), int(r), bool(f)) for (s, r, f) in seq]
+
+        return {
+            "foundations": [mk(p) for p in data.get("foundations", [])],
+            "stock": mk(data.get("stock", [])),
+            "waste": mk(data.get("waste", [])),
+            "tableau": [mk(p) for p in data.get("tableau", [])],
+            "stock_cycles_used": int(data.get("stock_cycles_used", 0)),
+        }
+
+    def _state_dict(self) -> Dict[str, Any]:
+        def cap(cards):
+            return [(c.suit, c.rank, c.face_up) for c in cards]
+
+        return {
+            "foundations": [cap(p.cards) for p in self.foundations],
+            "stock": cap(self.stock_pile.cards),
+            "waste": cap(self.waste_pile.cards),
+            "tableau": [cap(p.cards) for p in self.tableau],
+            "message": self.message,
+            "scroll_x": self.scroll_x,
+            "scroll_y": self.scroll_y,
+            "draw_count": int(self.draw_count),
+            "stock_cycles_allowed": self.stock_cycles_allowed,
+            "stock_cycles_used": int(self.stock_cycles_used),
+            "auto_play_active": bool(self.auto_play_active),
+            "initial_snapshot": self._snapshot_to_state(getattr(self, "_initial_snapshot", None)),
+            "foundation_suits": list(self.foundation_suits),
+            "completed": all(len(f.cards) == 13 for f in self.foundations),
+        }
+
+    def _save_game(self, to_menu: bool = False) -> None:
+        state = self._state_dict()
+        _safe_write_json(_klondike_save_path(), state)
+        if to_menu:
+            self.ui_helper.goto_main_menu()
+
+    def _load_from_state(self, state: Dict[str, Any]) -> None:
+        if not state:
+            self.deal_new()
+            return
+
+        def mk(seq):
+            return [C.Card(int(s), int(r), bool(f)) for (s, r, f) in seq]
+
+        foundations = state.get("foundations", [])
+        for i, pile in enumerate(self.foundations):
+            pile.cards = mk(foundations[i]) if i < len(foundations) else []
+        self.stock_pile.cards = mk(state.get("stock", []))
+        self.waste_pile.cards = mk(state.get("waste", []))
+        tableau = state.get("tableau", [])
+        for i, pile in enumerate(self.tableau):
+            pile.cards = mk(tableau[i]) if i < len(tableau) else []
+        suits = state.get("foundation_suits")
+        if isinstance(suits, (list, tuple)) and len(suits) >= 4:
+            self.foundation_suits = [int(s) for s in suits[:4]]
+        self.message = state.get("message", "")
+        self.scroll_x = state.get("scroll_x", 0)
+        self.scroll_y = state.get("scroll_y", 0)
+        self.draw_count = int(state.get("draw_count", self.draw_count))
+        self.stock_cycles_allowed = state.get("stock_cycles_allowed", self.stock_cycles_allowed)
+        self.stock_cycles_used = int(state.get("stock_cycles_used", 0))
+        self.auto_play_active = bool(state.get("auto_play_active", False))
+        init_snap = self._snapshot_from_state(state.get("initial_snapshot"))
+        self._initial_snapshot = init_snap or self.record_snapshot()
+        self.drag_stack = None
+        self.undo_mgr = C.UndoManager()
+        self.push_undo()
+        self.peek.cancel()
+        self._clamp_scroll_xy()
 
     # ---------- Undo helpers ----------
     def record_snapshot(self):
@@ -322,6 +484,7 @@ class KlondikeGameScene(C.Scene):
                 p.cards[-1].face_up = True
         if all(len(f.cards)==13 for f in self.foundations):
             self.message = "🎉 Congratulations! You won! Press N for a new game."
+            _clear_saved_game()
 
     # ---------- Auto finish ----------
     def can_autofinish(self):
@@ -354,6 +517,7 @@ class KlondikeGameScene(C.Scene):
             self.auto_play_active = False
             if all(len(f.cards)==13 for f in self.foundations):
                 self.message = "🎉 Congratulations! You won! Press N for a new game."
+                _clear_saved_game()
             return
         ti, fi = nxt
         c = self.tableau[ti].cards.pop()
@@ -381,9 +545,15 @@ class KlondikeGameScene(C.Scene):
                 else:
                     self.help.open()
                 return
+        if self.ui_helper.handle_menu_event(e):
+            return
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
+            return
+
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll_xy):
+            self.peek.cancel()
             return
 
         # Mouse wheel scrolling (supports trackpads: e.x horizontal, e.y vertical)
@@ -501,25 +671,6 @@ class KlondikeGameScene(C.Scene):
                     seq = t.cards[hi:]; t.cards = t.cards[:hi]
                     self.drag_stack = (seq, ("tableau", ti)); self.edge_pan.set_active(True); return
 
-        # Middle-button drag panning
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 2:
-            self._panning = True
-            self._pan_anchor = e.pos
-            self._scroll_anchor = (self.scroll_x, self.scroll_y)
-            return
-        elif e.type == pygame.MOUSEBUTTONUP and e.button == 2:
-            self._panning = False
-            return
-        elif e.type == pygame.MOUSEMOTION and self._panning:
-            mx, my = e.pos
-            ax, ay = self._pan_anchor
-            dx = mx - ax
-            dy = my - ay
-            self.scroll_x = self._scroll_anchor[0] + dx
-            self.scroll_y = self._scroll_anchor[1] + dy
-            self._clamp_scroll_xy()
-            return
-
         elif e.type == pygame.MOUSEBUTTONUP and e.button == 1:
             if not self.drag_stack: return
             stack, from_info = self.drag_stack; self.drag_stack = None; self.edge_pan.set_active(False)
@@ -632,6 +783,7 @@ class KlondikeGameScene(C.Scene):
         # Help overlay on top
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     # ---------- Scrollbar geometry helpers ----------
     def _vertical_scrollbar(self):

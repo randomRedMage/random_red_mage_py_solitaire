@@ -31,10 +31,7 @@ REFILL_SEQUENCE = list(range(3, 12)) + list(range(0, 3))
 
 
 def _bb_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("big_ben")
 
 
 def _bb_save_path() -> str:
@@ -105,6 +102,7 @@ class BigBenGameScene(C.Scene):
         self._center = (0, 0)
         self.scroll_x = 0
         self.scroll_y = 0
+        self.drag_pan = M.DragPanController()
         self._drag_vscroll = False
         self._drag_hscroll = False
         self._vscroll_geom = None
@@ -438,8 +436,7 @@ class BigBenGameScene(C.Scene):
         state = self._state_dict()
         _safe_write_json(_bb_save_path(), state)
         if to_main:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+            self.ui_helper.goto_main_menu()
 
     def _load_from_state(self, state: dict):
         self.restore_snapshot(state)
@@ -596,6 +593,12 @@ class BigBenGameScene(C.Scene):
                 return
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN):
                 return
+
+        if self.ui_helper.handle_menu_event(e):
+            return
+        if self.drag_pan.handle_event(e, target=self, clamp=self._clamp_scroll_xy):
+            self.peek.cancel()
+            return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             self.peek.cancel()
@@ -844,6 +847,7 @@ class BigBenGameScene(C.Scene):
         # Help overlay on top
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
         
     def debug_state(self):
         return {
