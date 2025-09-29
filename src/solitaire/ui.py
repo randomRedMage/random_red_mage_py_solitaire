@@ -458,6 +458,10 @@ class GameMenuModal:
     def has_pending_confirm(self) -> bool:
         return bool(self._confirm_state)
 
+    def has_pending_quit_confirm(self) -> bool:
+        state = self._confirm_state or {}
+        return state.get("kind") == "quit"
+
     def _execute_confirm_option(self, index: int) -> bool:
         if not self._confirm_state:
             return False
@@ -500,6 +504,7 @@ class GameMenuModal:
         *,
         options: Sequence[Tuple[str, Callable[[], None]]],
         cancel_label: str = "Cancel",
+        kind: Optional[str] = None,
     ) -> None:
         entries: List[Dict[str, Any]] = []
         for label, action in options:
@@ -513,6 +518,8 @@ class GameMenuModal:
             "options": entries,
             "cancel_label": cancel_label,
         }
+        if kind:
+            self._confirm_state["kind"] = kind
 
     def _handle_button(self, key: str) -> None:
         if key == "new":
@@ -750,4 +757,4 @@ class GameMenuModal:
             options.append(("Save And Quit", save_and_quit))
 
 
-        self._request_confirm(message, options=options)
+        self._request_confirm(message, options=options, kind="quit")
