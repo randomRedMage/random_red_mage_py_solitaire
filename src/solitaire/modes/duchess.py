@@ -294,9 +294,7 @@ class DuchessGameScene(ScrollableSceneMixin, C.Scene):
     def _save_game(self, to_menu: bool = False) -> None:
         _safe_write_json(_duchess_save_path(), self._state_dict())
         if to_menu:
-            from solitaire.scenes.game_options.duchess_options import DuchessOptionsScene
-
-            self.next_scene = DuchessOptionsScene(self.app)
+            self.ui_helper.goto_main_menu()
 
     def _load_from_state(self, state: Dict) -> None:
         self.restore_snapshot(state)

@@ -33,7 +33,7 @@ class KlondikeGameScene(C.Scene):
         self.message = ""
         self.drag_stack = None
 
-        self.ui_helper = ModeUIHelper(self, game_id="klondike", return_to_options=False)
+        self.ui_helper = ModeUIHelper(self, game_id="klondike")
 
         def can_undo():
             return self.undo_mgr.can_undo()

@@ -20,8 +20,6 @@ class _GameEntry:
         "key",
         "label",
         "icon_filename",
-        "module",
-        "scene_cls",
         "surface",
         "rect",
         "label_surf",
@@ -33,8 +31,6 @@ class _GameEntry:
         self.key = metadata.key
         self.label = metadata.label
         self.icon_filename = metadata.icon_filename
-        self.module = metadata.options_module
-        self.scene_cls = metadata.options_class
         self.surface: pygame.Surface | None = None
         self.rect = pygame.Rect(0, 0, 128, 128)
         self.label_surf: pygame.Surface | None = None
@@ -591,15 +587,6 @@ class MainMenuScene(C.Scene):
         self._options_proxy = None
         if self._options_modal is None:
             return
-        if proxy is None:
-            if not entry.scene_cls or not entry.module:
-                return
-            try:
-                module = __import__(entry.module, fromlist=[entry.scene_cls])
-                scene_cls = getattr(module, entry.scene_cls)
-                proxy = scene_cls(self.app)
-            except Exception:
-                return
         mapping = controller.compatibility_actions()
         for attr, action_key in mapping.items():
             btn = getattr(proxy, attr, None)
@@ -615,14 +602,7 @@ class MainMenuScene(C.Scene):
     def _activate_entry(self, entry: _GameEntry):
         if self._modal_open:
             return
-        if not self._open_game_modal_for_entry(entry):
-            try:
-                module = __import__(entry.module, fromlist=[entry.scene_cls])
-                scene_cls = getattr(module, entry.scene_cls)
-                self.next_scene = scene_cls(self.app)
-            except Exception:
-                pass
-            return
+        self._open_game_modal_for_entry(entry)
 
     def _handle_modal_event(self, event):
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:

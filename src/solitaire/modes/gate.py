@@ -48,7 +48,7 @@ class GateGameScene(C.Scene):
         self.message: str = ""
         self.undo_mgr = C.UndoManager()
 
-        self.ui_helper = ModeUIHelper(self, game_id="gate", return_to_options=False)
+        self.ui_helper = ModeUIHelper(self, game_id="gate")
 
         def can_undo():
             return self.undo_mgr.can_undo()

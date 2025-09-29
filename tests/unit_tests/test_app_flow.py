@@ -59,109 +59,73 @@ MODES = [
         "key": "klondike",
         "menu_index": 0,
         "module": "solitaire.modes.klondike",
-        "options_module": "solitaire.scenes.game_options.klondike_options",
-        "options_class": "KlondikeOptionsScene",
         "game_class": "KlondikeGameScene",
-        "start_attr": "b_start",
-        "back_attr": "b_back",
-        "returns_to_options": False,
         "verify": _verify_klondike,
+        "has_save": False,
     },
     {
         "key": "freecell",
         "menu_index": 1,
         "module": "solitaire.modes.freecell",
-        "options_module": "solitaire.scenes.game_options.freecell_options",
-        "options_class": "FreeCellOptionsScene",
         "game_class": "FreeCellGameScene",
-        "start_attr": "b_start",
-        "back_attr": "b_back",
-        "returns_to_options": False,
         "verify": _verify_freecell,
+        "has_save": False,
     },
     {
         "key": "pyramid",
         "menu_index": 2,
         "module": "solitaire.modes.pyramid",
-        "options_module": "solitaire.scenes.game_options.pyramid_options",
-        "options_class": "PyramidOptionsScene",
         "game_class": "PyramidGameScene",
-        "start_attr": "b_start",
-        "back_attr": "b_back",
-        "returns_to_options": False,
         "verify": _verify_pyramid,
+        "has_save": False,
     },
     {
         "key": "tripeaks",
         "menu_index": 3,
         "module": "solitaire.modes.tripeaks",
-        "options_module": "solitaire.scenes.game_options.tripeaks_options",
-        "options_class": "TriPeaksOptionsScene",
         "game_class": "TriPeaksGameScene",
-        "start_attr": "b_start",
-        "back_attr": "b_back",
-        "returns_to_options": False,
         "verify": _verify_tripeaks,
+        "has_save": False,
     },
     {
         "key": "gate",
         "menu_index": 4,
         "module": "solitaire.modes.gate",
-        "options_module": "solitaire.scenes.game_options.gate_options",
-        "options_class": "GateOptionsScene",
         "game_class": "GateGameScene",
-        "start_attr": "b_start",
-        "back_attr": "b_back",
-        "returns_to_options": False,
         "verify": _verify_gate,
+        "has_save": False,
     },
     {
         "key": "beleaguered_castle",
         "menu_index": 5,
         "module": "solitaire.modes.beleaguered_castle",
-        "options_module": "solitaire.scenes.game_options.beleaguered_castle_options",
-        "options_class": "BeleagueredCastleOptionsScene",
         "game_class": "BeleagueredCastleGameScene",
-        "start_attr": "b_start",
-        "back_attr": "b_back",
-        "returns_to_options": True,
         "verify": _verify_beleaguered,
+        "has_save": True,
     },
     {
         "key": "big_ben",
         "menu_index": 6,
         "module": "solitaire.modes.big_ben",
-        "options_module": "solitaire.scenes.game_options.big_ben_options",
-        "options_class": "BigBenOptionsScene",
         "game_class": "BigBenGameScene",
-        "start_attr": "b_start",
-        "back_attr": "b_back",
-        "returns_to_options": True,
         "verify": _verify_big_ben,
+        "has_save": True,
     },
     {
         "key": "golf",
         "menu_index": 7,
         "module": "solitaire.modes.golf",
-        "options_module": "solitaire.scenes.game_options.golf_options",
-        "options_class": "GolfOptionsScene",
         "game_class": "GolfGameScene",
-        "start_attr": "b_new1",
-        "back_attr": "b_back",
-        "returns_to_options": True,
         "verify": _verify_golf,
+        "has_save": True,
     },
     {
         "key": "yukon",
         "menu_index": 8,
         "module": "solitaire.modes.yukon",
-        "options_module": "solitaire.scenes.game_options.yukon_options",
-        "options_class": "YukonOptionsScene",
         "game_class": "YukonGameScene",
-        "start_attr": "b_start",
-        "back_attr": "b_back",
-        "returns_to_options": True,
         "verify": _verify_yukon,
+        "has_save": True,
     },
 ]
 
@@ -211,13 +175,6 @@ def test_application_flow(monkeypatch, mode):
     menu_module = importlib.import_module("solitaire.scenes.menu")
     target_module = importlib.import_module(mode["module"])
 
-    # Prefer new options module path; fall back to mode module if not yet refactored
-    options_module_name = mode.get("options_module", mode["module"])
-    try:
-        options_module = importlib.import_module(options_module_name)
-    except Exception:
-        options_module = target_module
-
     transitions = []
     captured = {}
 
@@ -251,18 +208,14 @@ def test_application_flow(monkeypatch, mode):
             transitions.append("MainMenuScene")
             captured["menu_scene"] = self
 
+        def _open_game_modal(self, game_key: str, *, proxy=None):  # type: ignore[override]
+            opened = super()._open_game_modal(game_key, proxy=proxy)
+            if opened:
+                transitions.append(f"Modal:{game_key}")
+            return opened
+
     monkeypatch.setattr(menu_module, "MainMenuScene", LoggedMainMenu)
     monkeypatch.setattr(entry, "MainMenuScene", LoggedMainMenu)
-
-    orig_options_cls = getattr(options_module, mode["options_class"])
-
-    class LoggedOptionsScene(orig_options_cls):
-        def __init__(self, app):
-            super().__init__(app)
-            transitions.append(mode["options_class"])
-            captured["options_scene"] = self
-
-    monkeypatch.setattr(options_module, mode["options_class"], LoggedOptionsScene)
 
     orig_game_cls = getattr(target_module, mode["game_class"])
 
@@ -283,16 +236,6 @@ def test_application_flow(monkeypatch, mode):
         down = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"pos": (mx, my), "button": 1})
         return [move, down]
 
-    def _click_button(scene_key, attr):
-        scene = captured.get(scene_key)
-        assert scene is not None, f"{scene_key} should be available for {mode['key']}"
-        button = getattr(scene, attr, None)
-        assert button is not None, f"{attr} missing on {scene}"
-        rect = getattr(button, "rect", None)
-        assert rect is not None, f"{attr} missing rect"
-        cx, cy = rect.center
-        return _click_pos((cx, cy))
-
     def _click_toolbar_menu():
         scene = captured.get("game_scene")
         assert scene is not None, "Game scene not captured"
@@ -302,13 +245,7 @@ def test_application_flow(monkeypatch, mode):
             if getattr(button, "label", "") == "Menu":
                 rect = getattr(button, "rect", None)
                 assert rect is not None, "Menu button missing rect"
-                events = _click_pos(rect.center)
-                getter = getattr(button, "get_menu_item_rect", None)
-                if callable(getter):
-                    item_rect = getter("Menu")
-                    if item_rect is not None:
-                        events.extend(_click_pos(item_rect.center))
-                return events
+                return _click_pos(rect.center)
         raise AssertionError("Menu button not found on toolbar")
 
     def _click_menu_entry():
@@ -320,20 +257,50 @@ def test_application_flow(monkeypatch, mode):
         assert rect is not None, f"No entry rect for {mode['key']}"
         return _click_pos(rect.center)
 
+    def _click_modal_button(action_key: str):
+        scene = captured.get("menu_scene")
+        assert scene is not None, "Main menu not captured"
+        modal = getattr(scene, "_options_modal", None)
+        assert modal is not None, "Options modal not available"
+        rect = modal.get_action_rect(action_key)
+        assert rect is not None, f"Modal action {action_key} not found"
+        return _click_pos(rect.center)
+
+    def _click_game_menu_button(action_key: str):
+        scene = captured.get("game_scene")
+        assert scene is not None, "Game scene not captured"
+        helper = getattr(scene, "ui_helper", None)
+        assert helper is not None, "ui_helper missing"
+        modal = getattr(helper, "menu_modal", None)
+        assert modal is not None, "Game menu modal missing"
+        buttons = getattr(modal, "_buttons", [])
+        keys = getattr(modal, "_button_keys", [])
+        for key, button in zip(keys, buttons):
+            if key == action_key:
+                rect = getattr(button, "rect", None)
+                assert rect is not None, f"Button rect missing for {action_key}"
+                return _click_pos(rect.center)
+        raise AssertionError(f"Action {action_key} not found in game menu")
+
+    def _menu_exit_action():
+        scene = captured.get("game_scene")
+        assert scene is not None, "Game scene not captured"
+        helper = getattr(scene, "ui_helper", None)
+        assert helper is not None, "ui_helper missing"
+        modal = helper.menu_modal
+        assert modal is not None, "menu_modal missing"
+        action = "save" if mode["has_save"] and modal._actions.get("save") else "quit_menu"  # type: ignore[attr-defined]
+        return action
+
     event_steps = [
         lambda: [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_RETURN, "mod": 0})],
         _click_menu_entry,
-        lambda: _click_button("options_scene", mode["start_attr"]),
+        lambda: _click_modal_button("start"),
         _click_toolbar_menu,
-    ]
-
-    if mode["returns_to_options"]:
-        event_steps.append(lambda: _click_button("options_scene", mode["back_attr"]))
-
-    event_steps.extend([
+        lambda: _click_game_menu_button(_menu_exit_action()),
         lambda: [pygame.event.Event(pygame.QUIT, {})],
         lambda: [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_RETURN, "mod": 0})],
-    ])
+    ]
 
     index = {"value": 0}
 
@@ -364,13 +331,9 @@ def test_application_flow(monkeypatch, mode):
 
     assert quit_calls, "pygame.quit() should be called"
 
-    expected_prefix = [
-        "TitleScene",
-        "MainMenuScene",
-        mode["options_class"],
-        mode["game_class"],
-    ]
-    assert transitions[: len(expected_prefix)] == expected_prefix
+    assert transitions[0:2] == ["TitleScene", "MainMenuScene"]
+    assert mode["game_class"] in transitions, f"{mode['game_class']} did not start"
+    assert transitions.count("MainMenuScene") >= 2, "Should return to main menu after exiting the game"
 
     game_scene = captured.get("game_scene")
     assert game_scene is not None, "Game scene should be captured"

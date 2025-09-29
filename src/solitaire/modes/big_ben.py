@@ -439,8 +439,7 @@ class BigBenGameScene(C.Scene):
         state = self._state_dict()
         _safe_write_json(_bb_save_path(), state)
         if to_main:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
+            self.ui_helper.goto_main_menu()
 
     def _load_from_state(self, state: dict):
         self.restore_snapshot(state)
