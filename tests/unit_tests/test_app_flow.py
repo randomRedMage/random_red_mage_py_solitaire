@@ -22,6 +22,14 @@ def _verify_tripeaks(scene):
     assert scene.wrap_ak is True
 
 
+def _verify_monte_carlo(scene):
+    assert len(scene.tableau) == 5
+    assert all(len(row) == 5 for row in scene.tableau)
+    assert len(scene.stock_pile.cards) == 27
+    assert not scene.can_compact()
+    assert len(scene.matched_pile.cards) == 0
+
+
 def _verify_gate(scene):
     assert len(scene.center) == 8
     assert len(scene.reserves) == 2
@@ -117,6 +125,14 @@ MODES = [
         "module": "solitaire.modes.golf",
         "game_class": "GolfGameScene",
         "verify": _verify_golf,
+        "has_save": True,
+    },
+    {
+        "key": "monte_carlo",
+        "menu_index": 9,
+        "module": "solitaire.modes.monte_carlo",
+        "game_class": "MonteCarloGameScene",
+        "verify": _verify_monte_carlo,
         "has_save": True,
     },
     {
