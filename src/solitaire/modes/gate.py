@@ -132,6 +132,9 @@ class GateGameScene(C.Scene):
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
+        # Shared animator for single-card moves (needed before loading saved games)
+        self.anim: M.CardAnimator = M.CardAnimator()
+
         self.compute_layout()
         if load_state:
             self._load_from_state(load_state)
@@ -145,8 +148,6 @@ class GateGameScene(C.Scene):
         self._last_click_pos = (0, 0)
         # Klondike-style peek controller (shows single hovered face-up card under delay)
         self.peek = M.PeekController(delay_ms=2000)
-        # Shared animator for single-card moves
-        self.anim: M.CardAnimator = M.CardAnimator()
         # Auto-complete state
         self._auto_complete_active = False
         # Vertical scrolling
