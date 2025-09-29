@@ -572,11 +572,11 @@ class MainMenuScene(C.Scene):
         return rect
 
     # --- interaction ---------------------------------------------------
-    def _open_game_modal(self, game_key: str, *, proxy=None) -> None:
+    def _open_game_modal(self, game_key: str, *, proxy=None) -> bool:
         entry = self._entry_lookup.get(game_key)
         if entry is None:
-            return
-        self._open_game_modal_for_entry(entry, proxy=proxy)
+            return False
+        return self._open_game_modal_for_entry(entry, proxy=proxy)
 
     def _open_game_modal_for_entry(self, entry: _GameEntry, *, proxy=None) -> bool:
         controller_cls = CONTROLLER_REGISTRY.get(entry.key)
