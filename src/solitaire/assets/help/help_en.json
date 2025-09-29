@@ -118,6 +118,18 @@
       "Undo/Restart available from the toolbar. Press Esc/Close to dismiss help."
     ]
   },
+  "monte_carlo": {
+    "title": "Monte Carlo — How to Play",
+    "lines": [
+      "Goal: Remove every card from the tableau and stock by pairing ranks.",
+      "Setup: Deal a 5×5 grid of face-up cards. The remaining deck stays face-down as a stock with a pairs pile beneath it.",
+      "Moves: Select two touching cards (orthogonal or diagonal) of the same rank to discard them to the pairs pile.",
+      "Compacting: Whenever gaps exist you may press Compact or click the stock to slide cards leftward, then upward, repeating until packed.",
+      "After compacting, empty spots refill left-to-right, top-to-bottom from the stock until it is empty.",
+      "Win: All tableau and stock cards are cleared. Lose: the grid is full, the stock is empty, and no adjacent matches remain.",
+      "Toolbar: Menu, New game, Restart, Compact, Save&Exit, and Help."
+    ]
+  },
   "klondike": {
     "title": "Klondike — How to Play",
     "lines": [

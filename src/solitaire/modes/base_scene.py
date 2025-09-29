@@ -107,6 +107,12 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         section="Builders",
     ),
     GameMetadata(
+        key="monte_carlo",
+        label="Monte Carlo",
+        icon_filename="icon_monte_carlo.png",
+        section="Builders",
+    ),
+    GameMetadata(
         key="pyramid",
         label="Pyramid",
         icon_filename="icon_pyramid.png",
@@ -133,7 +139,7 @@ GAME_REGISTRY: Dict[str, GameMetadata] = {meta.key: meta for meta in _GAME_METAD
 # Section definitions preserve the ordering from the original main menu.
 GAME_SECTIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("Packers", ("klondike", "freecell", "gate", "demon", "duchess", "chameleon", "beleaguered_castle", "yukon")),
-    ("Builders", ("big_ben", "golf", "pyramid", "tripeaks")),
+    ("Builders", ("big_ben", "golf", "monte_carlo", "pyramid", "tripeaks")),
     ("Other", ("accordion", "bowling_solitaire")),
 )
 
