@@ -714,6 +714,7 @@ class GameMenuModal:
                 for surf in rendered:
                     surface.blit(surf, (rect.centerx - surf.get_width() // 2, y))
                     y += surf.get_height() + line_gap
+
         for rect, option in zip(option_rects, options):
             draw_btn(rect, str(option.get("label", "OK")))
         if cancel_rect and cancel_label:
@@ -747,5 +748,6 @@ class GameMenuModal:
                     self.helper.goto_main_menu()
 
             options.append(("Save And Quit", save_and_quit))
+
 
         self._request_confirm(message, options=options)
