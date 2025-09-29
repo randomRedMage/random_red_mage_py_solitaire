@@ -1,3 +1,5 @@
+"""Implementation of the Duchess (Canfield) solitaire variant."""
+
 import json
 import os
 from dataclasses import dataclass
@@ -10,18 +12,14 @@ from solitaire.help_data import create_modal_help
 from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 
 
-def _demon_dir() -> str:
-    """Return the directory used to persist Demon save data."""
+def _duchess_dir() -> str:
+    """Return the directory used to persist Duchess save data."""
 
-    return C.project_saves_dir("demon")
-
-
-def _demon_save_path() -> str:
-    return os.path.join(_demon_dir(), "demon_save.json")
+    return C.project_saves_dir("duchess")
 
 
-def _demon_config_path() -> str:
-    return os.path.join(_demon_dir(), "demon_config.json")
+def _duchess_save_path() -> str:
+    return os.path.join(_duchess_dir(), "duchess_save.json")
 
 
 def _safe_write_json(path: str, data: Dict) -> None:
@@ -44,50 +42,18 @@ def _safe_read_json(path: str) -> Optional[Dict]:
     return None
 
 
-DEFAULT_CONFIG: Dict[str, Optional[int]] = {"stock_cycles": None}
-
-
-def load_demon_config() -> Dict[str, Optional[int]]:
-    data = _safe_read_json(_demon_config_path())
-    config = dict(DEFAULT_CONFIG)
-    if not data:
-        return config
-    value = data.get("stock_cycles")
-    if value in (None, 1, 3):
-        config["stock_cycles"] = value
-    elif isinstance(value, int) and value >= 0:
-        config["stock_cycles"] = value
-    return config
-
-
-def save_demon_config(stock_cycles: Optional[int]) -> None:
-    _safe_write_json(_demon_config_path(), {"stock_cycles": stock_cycles})
-
-
-def demon_save_exists() -> bool:
-    state = _safe_read_json(_demon_save_path())
+def duchess_save_exists() -> bool:
+    state = _safe_read_json(_duchess_save_path())
     return bool(state) and not state.get("completed", False)
 
 
-def update_saved_stock_cycles(stock_cycles: Optional[int]) -> None:
-    state = _safe_read_json(_demon_save_path())
-    if not state:
-        return
-    state["stock_cycles_allowed"] = stock_cycles
-    if stock_cycles is not None:
-        used = int(state.get("stock_cycles_used", 0))
-        if used > stock_cycles:
-            state["stock_cycles_used"] = stock_cycles
-    _safe_write_json(_demon_save_path(), state)
-
-
 def load_saved_state() -> Optional[Dict]:
-    return _safe_read_json(_demon_save_path())
+    return _safe_read_json(_duchess_save_path())
 
 
 def clear_saved_state() -> None:
     try:
-        os.remove(_demon_save_path())
+        os.remove(_duchess_save_path())
     except Exception:
         pass
 
@@ -100,25 +66,25 @@ class _DragState:
     position: Tuple[int, int]
 
 
-class DemonGameScene(ScrollableSceneMixin, C.Scene):
-    draw_count: int = 3
+class DuchessGameScene(ScrollableSceneMixin, C.Scene):
+    """Game scene implementing the Duchess variant."""
 
-    def __init__(self, app, *, load_state: Optional[Dict] = None, stock_cycles: Optional[int] = None):
+    draw_count: int = 1
+
+    def __init__(self, app, *, load_state: Optional[Dict] = None):
         super().__init__(app)
 
-        cfg = load_demon_config()
-        if stock_cycles is None:
-            stock_cycles = cfg.get("stock_cycles")
-
-        self.reserve: C.Pile = C.Pile(0, 0, fan_y=0)
+        reserve_fan = max(20, C.CARD_W // 4)
+        self.reserves: List[C.Pile] = [C.Pile(0, 0, fan_x=reserve_fan) for _ in range(4)]
         self.foundations: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
         self.foundation_suits: List[int] = [0, 1, 2, 3]
         self.tableau: List[C.Pile] = [C.Pile(0, 0, fan_y=max(24, int(C.CARD_H * 0.3))) for _ in range(4)]
         self.stock_pile: C.Pile = C.Pile(0, 0)
         self.waste_pile: C.Pile = C.Pile(0, 0)
 
-        self.base_rank: int = 1
-        self.stock_cycles_allowed: Optional[int] = stock_cycles
+        self.base_rank: Optional[int] = None
+        self.waiting_for_base: bool = True
+        self.stock_cycles_allowed: int = 1
         self.stock_cycles_used: int = 0
 
         self.undo_mgr = C.UndoManager()
@@ -128,7 +94,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
         self._last_click_time = 0
         self._last_click_pos: Tuple[int, int] = (0, 0)
 
-        self.ui_helper = ModeUIHelper(self, game_id="demon")
+        self.ui_helper = ModeUIHelper(self, game_id="duchess")
 
         def can_undo() -> bool:
             return self.undo_mgr.can_undo()
@@ -144,7 +110,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             save_action=("Save&Exit", {"on_click": save_and_exit, "tooltip": "Save game and exit to menu"}),
         )
 
-        self.help = create_modal_help("demon")
+        self.help = create_modal_help("duchess")
 
         self.compute_layout()
 
@@ -162,27 +128,35 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
         top_y = max(90, top_bar + 28)
         foundation_gap = max(32, C.CARD_W // 3)
         row_gap = max(36, C.CARD_H // 4)
+        reserve_gap_y = max(26, C.CARD_H // 5)
         column_gap = C.CARD_W // 2
+        
 
         foundation_span = len(self.foundations) * C.CARD_W + (len(self.foundations) - 1) * foundation_gap
         total_width = C.CARD_W + column_gap + foundation_span
         left_edge = max((C.SCREEN_W - total_width) // 2, 24)
 
         column_x = left_edge
-        self.reserve.x = column_x
-        self.reserve.y = top_y
-
         foundation_start_x = column_x + C.CARD_W + column_gap
+
+        reserve_y = top_y
+        for idx, pile in enumerate(self.reserves):
+            #Adjusting gap
+            #pile.x = foundation_start_x + idx * (C.CARD_W + foundation_gap)
+            pile.x = column_x - (C.CARD_W // 2) + idx * (C.CARD_W + (foundation_gap * 3))
+            pile.y = reserve_y
+
+        foundation_y = reserve_y + C.CARD_H + reserve_gap_y
         for idx, pile in enumerate(self.foundations):
             pile.x = foundation_start_x + idx * (C.CARD_W + foundation_gap)
-            pile.y = top_y
+            pile.y = foundation_y
 
-        row2_y = top_y + C.CARD_H + row_gap
+        row2_y = foundation_y + C.CARD_H + row_gap
         self.stock_pile.x = column_x
-        self.stock_pile.y = row2_y
+        self.stock_pile.y = foundation_y
 
         self.waste_pile.x = column_x
-        self.waste_pile.y = row2_y + C.CARD_H + row_gap
+        self.waste_pile.y = row2_y
 
         tableau_start_x = foundation_start_x
         for idx, pile in enumerate(self.tableau):
@@ -190,7 +164,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             pile.y = row2_y
 
     def iter_scroll_piles(self):  # type: ignore[override]
-        yield self.reserve
+        yield from self.reserves
         yield from self.foundations
         yield from self.tableau
         yield self.stock_pile
@@ -198,7 +172,8 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
 
     # ----- Deal / Restart -----
     def _clear(self) -> None:
-        self.reserve.cards.clear()
+        for pile in self.reserves:
+            pile.cards.clear()
         for pile in self.foundations:
             pile.cards.clear()
         for pile in self.tableau:
@@ -210,25 +185,22 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
         self.edge_pan.set_active(False)
 
     def deal_new(self) -> None:
-        cfg = load_demon_config()
-        self.stock_cycles_allowed = cfg.get("stock_cycles")
         self._clear()
         deck = C.make_deck(shuffle=True)
 
-        for _ in range(13):
-            card = deck.pop()
-            card.face_up = True
-            self.reserve.cards.append(card)
+        reserve_counts = [3, 3, 3, 3]
+        for idx, pile in enumerate(self.reserves):
+            count = reserve_counts[idx]
+            for _ in range(count):
+                card = deck.pop()
+                card.face_up = True
+                pile.cards.append(card)
 
-        starter = deck.pop()
-        starter.face_up = True
-        self.base_rank = starter.rank
-        suits = [starter.suit] + [s for s in range(4) if s != starter.suit]
-        self.foundation_suits = suits
-        self.foundations[0].cards.append(starter)
-
-        for idx in range(1, 4):
-            self.foundations[idx].cards.clear()
+        self.base_rank = None
+        self.waiting_for_base = True
+        self.foundation_suits = [0, 1, 2, 3]
+        for pile in self.foundations:
+            pile.cards.clear()
 
         for pile in self.tableau:
             card = deck.pop()
@@ -242,6 +214,8 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
 
         self.stock_cycles_used = 0
         self.reset_scroll()
+        self.message = "Select a reserve card to start the foundations"
+
         self.undo_mgr = C.UndoManager()
         self.push_undo()
         self._initial_snapshot = self.record_snapshot()
@@ -258,13 +232,14 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             return [(card.suit, card.rank, card.face_up) for card in pile.cards]
 
         return {
-            "reserve": cap_pile(self.reserve),
+            "reserves": [cap_pile(p) for p in self.reserves],
             "foundations": [cap_pile(p) for p in self.foundations],
             "foundation_suits": list(self.foundation_suits),
             "tableau": [cap_pile(p) for p in self.tableau],
             "stock": cap_pile(self.stock_pile),
             "waste": cap_pile(self.waste_pile),
             "base_rank": self.base_rank,
+            "waiting_for_base": self.waiting_for_base,
             "stock_cycles_allowed": self.stock_cycles_allowed,
             "stock_cycles_used": self.stock_cycles_used,
             "message": self.message,
@@ -274,7 +249,9 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
         def mk(seq):
             return [C.Card(s, r, f) for (s, r, f) in seq]
 
-        self.reserve.cards = mk(snap.get("reserve", []))
+        reserves = snap.get("reserves", [])
+        for idx, pile in enumerate(self.reserves):
+            pile.cards = mk(reserves[idx] if idx < len(reserves) else [])
         for idx, pile in enumerate(self.foundations):
             data = snap.get("foundations", [])
             pile.cards = mk(data[idx] if idx < len(data) else [])
@@ -284,8 +261,10 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             pile.cards = mk(data[idx] if idx < len(data) else [])
         self.stock_pile.cards = mk(snap.get("stock", []))
         self.waste_pile.cards = mk(snap.get("waste", []))
-        self.base_rank = int(snap.get("base_rank", 1))
-        self.stock_cycles_allowed = snap.get("stock_cycles_allowed")
+        base_rank = snap.get("base_rank")
+        self.base_rank = int(base_rank) if base_rank is not None else None
+        self.waiting_for_base = bool(snap.get("waiting_for_base", False))
+        self.stock_cycles_allowed = int(snap.get("stock_cycles_allowed", 1))
         self.stock_cycles_used = int(snap.get("stock_cycles_used", 0))
         self.message = snap.get("message", "")
         self.drag = None
@@ -310,7 +289,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
         return state
 
     def _save_game(self, to_menu: bool = False) -> None:
-        _safe_write_json(_demon_save_path(), self._state_dict())
+        _safe_write_json(_duchess_save_path(), self._state_dict())
         if to_menu:
             self.ui_helper.goto_main_menu()
 
@@ -321,13 +300,15 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
 
     # ----- Gameplay helpers -----
     def is_completed(self) -> bool:
+        if self.waiting_for_base:
+            return False
         return all(len(pile.cards) == 13 for pile in self.foundations)
 
     def draw_from_stock(self) -> None:
         if not self.stock_pile.cards:
             if not self.waste_pile.cards:
                 return
-            if self.stock_cycles_allowed is not None and self.stock_cycles_used >= self.stock_cycles_allowed:
+            if self.stock_cycles_used >= self.stock_cycles_allowed:
                 self.message = "No more stock replays"
                 return
             self.stock_pile.cards = [C.Card(c.suit, c.rank, False) for c in reversed(self.waste_pile.cards)]
@@ -337,13 +318,9 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             self.stock_cycles_used += 1
             return
 
-        count = min(self.draw_count, len(self.stock_pile.cards))
-        moved: List[C.Card] = []
-        for _ in range(count):
-            card = self.stock_pile.cards.pop()
-            card.face_up = True
-            moved.append(card)
-        self.waste_pile.cards.extend(moved)
+        card = self.stock_pile.cards.pop()
+        card.face_up = True
+        self.waste_pile.cards.append(card)
         self.message = ""
 
     def _foundation_index_for_suit(self, suit: int) -> int:
@@ -353,6 +330,8 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             return 0
 
     def can_move_to_foundation(self, card: C.Card, fi: int) -> bool:
+        if self.waiting_for_base:
+            return False
         if fi < 0 or fi >= len(self.foundations):
             return False
         required_suit = self.foundation_suits[fi]
@@ -393,21 +372,39 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
         return True
 
     def _auto_fill_empty_columns(self) -> None:
-        changed = True
-        while changed:
+        while True:
+            empty_piles = [pile for pile in self.tableau if not pile.cards]
+            if not empty_piles:
+                break
+
+            reserve_with_cards = [pile for pile in self.reserves if pile.cards]
+            reserve_count = len(reserve_with_cards)
             changed = False
-            for pile in self.tableau:
-                if pile.cards:
-                    continue
+
+            for pile in empty_piles:
                 card: Optional[C.Card] = None
-                if self.reserve.cards:
-                    card = self.reserve.cards.pop()
+
+                if reserve_count > 1:
+                    continue
+                if reserve_count == 1:
+                    reserve_pile = reserve_with_cards[0]
+                    card = reserve_pile.cards.pop()
+                    reserve_with_cards = [rp for rp in self.reserves if rp.cards]
+                    reserve_count = len(reserve_with_cards)
                 elif self.waste_pile.cards:
                     card = self.waste_pile.cards.pop()
-                if card is not None:
-                    card.face_up = True
-                    pile.cards.append(card)
-                    changed = True
+                elif self.stock_pile.cards:
+                    card = self.stock_pile.cards.pop()
+
+                if card is None:
+                    continue
+
+                card.face_up = True
+                pile.cards.append(card)
+                changed = True
+
+            if not changed:
+                break
 
     def post_move_cleanup(self) -> None:
         self._auto_fill_empty_columns()
@@ -415,8 +412,10 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             self.message = "You win!"
         self._clamp_scroll()
 
-    # ----- Event handling -----
     def _maybe_auto_to_foundation(self, mx: int, my: int) -> bool:
+        if self.waiting_for_base:
+            return False
+
         now = pygame.time.get_ticks()
         if now - self._last_click_time > 400:
             self._last_click_time = now
@@ -428,7 +427,6 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             self._last_click_pos = (mx, my)
             return False
 
-        # Check waste top first
         if self.waste_pile.cards:
             rect = self.waste_pile.top_rect()
             if rect.collidepoint((mx, my)):
@@ -436,7 +434,6 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
                 if self._try_move_card_to_foundation(card, ("waste", None)):
                     return True
 
-        # Tableau tops
         for idx, pile in enumerate(self.tableau):
             if not pile.cards:
                 continue
@@ -446,11 +443,14 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
                 if self._try_move_card_to_foundation(card, ("tableau", idx)):
                     return True
 
-        # Reserve top
-        if self.reserve.cards and self.reserve.top_rect().collidepoint((mx, my)):
-            card = self.reserve.cards[-1]
-            if self._try_move_card_to_foundation(card, ("reserve", None)):
-                return True
+        for idx, pile in enumerate(self.reserves):
+            if not pile.cards:
+                continue
+            rect = pile.top_rect()
+            if rect.collidepoint((mx, my)):
+                card = pile.cards[-1]
+                if self._try_move_card_to_foundation(card, ("reserve", idx)):
+                    return True
 
         self._last_click_time = now
         self._last_click_pos = (mx, my)
@@ -462,14 +462,29 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             self.push_undo()
             if origin[0] == "waste":
                 self.waste_pile.cards.pop()
-            elif origin[0] == "reserve":
-                self.reserve.cards.pop()
+            elif origin[0] == "reserve" and origin[1] is not None:
+                self.reserves[origin[1]].cards.pop()
             elif origin[0] == "tableau" and origin[1] is not None:
                 self.tableau[origin[1]].cards.pop()
             self.foundations[fi].cards.append(card)
             self.post_move_cleanup()
             return True
         return False
+
+    def _start_foundations_from_reserve(self, reserve_index: int) -> None:
+        pile = self.reserves[reserve_index]
+        if not pile.cards:
+            return
+
+        card = pile.cards.pop()
+        card.face_up = True
+        self.base_rank = card.rank
+        suits = [card.suit] + [s for s in range(4) if s != card.suit]
+        self.foundation_suits = suits
+        self.foundations[0].cards.append(card)
+        self.waiting_for_base = False
+        self.message = ""
+        self.post_move_cleanup()
 
     def handle_event(self, event) -> None:
         if event.type == pygame.MOUSEMOTION:
@@ -502,7 +517,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
                 self._last_click_pos = (mxw, myw)
                 return
 
-            if self._maybe_auto_to_foundation(mxw, myw):
+            if not self.waiting_for_base and self._maybe_auto_to_foundation(mxw, myw):
                 return
 
             stock_rect = pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H)
@@ -520,11 +535,17 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
                 self.edge_pan.set_active(True)
                 return
 
-            reserve_idx = self.reserve.hit((mxw, myw))
-            if reserve_idx is not None and reserve_idx == len(self.reserve.cards) - 1:
-                rect = self.reserve.rect_for_index(reserve_idx)
-                card = self.reserve.cards.pop()
-                self.drag = _DragState([card], ("reserve", None), (mxw - rect.x, myw - rect.y), event.pos)
+            for ri, pile in enumerate(self.reserves):
+                hit = pile.hit((mxw, myw))
+                if hit is None or hit != len(pile.cards) - 1:
+                    continue
+                if self.waiting_for_base:
+                    self.push_undo()
+                    self._start_foundations_from_reserve(ri)
+                    return
+                rect = pile.rect_for_index(hit)
+                card = pile.cards.pop()
+                self.drag = _DragState([card], ("reserve", ri), (mxw - rect.x, myw - rect.y), event.pos)
                 self.edge_pan.set_active(True)
                 return
 
@@ -557,8 +578,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             origin, idx = drag.origin
             mxw, myw = self._screen_to_world(event.pos)
 
-            # Foundations (single card only)
-            if len(stack) == 1:
+            if len(stack) == 1 and not self.waiting_for_base:
                 card = stack[0]
                 for fi, pile in enumerate(self.foundations):
                     if pile.top_rect().collidepoint((mxw, myw)) and self.can_move_to_foundation(card, fi):
@@ -567,68 +587,57 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
                         self.post_move_cleanup()
                         return
 
-            # Tableau drops
             for ti, pile in enumerate(self.tableau):
                 rect = pygame.Rect(pile.x, pile.y, C.CARD_W, max(C.CARD_H, len(pile.cards) * pile.fan_y + C.CARD_H))
                 if rect.collidepoint((mxw, myw)):
                     target = pile.cards[-1] if pile.cards else None
                     if self._tableau_allows(stack[0], target):
+                        if not pile.cards and any(r.cards for r in self.reserves) and origin != "reserve":
+                            continue
                         self.push_undo()
                         pile.cards.extend(stack)
                         self.post_move_cleanup()
                         return
 
-            # Return to origin if move invalid
             if origin == "waste":
                 self.waste_pile.cards.extend(stack)
-            elif origin == "reserve":
-                self.reserve.cards.extend(stack)
+            elif origin == "reserve" and idx is not None:
+                self.reserves[idx].cards.extend(stack)
             elif origin == "tableau" and idx is not None:
                 self.tableau[idx].cards.extend(stack)
 
-    def _draw_reserve_with_count(self, screen: pygame.Surface) -> None:
-        self.reserve.draw(screen)
-        total_cards = len(self.reserve.cards)
-        if total_cards <= 0:
-            return
-        rect = pygame.Rect(
-            self.reserve.x + C.DRAW_OFFSET_X,
-            self.reserve.y + C.DRAW_OFFSET_Y,
-            C.CARD_W,
-            C.CARD_H,
-        )
-        badge_rect = pygame.Rect(rect.right - 34, rect.bottom - 28, 28, 22)
-        pygame.draw.rect(screen, (35, 35, 50), badge_rect, border_radius=8)
-        pygame.draw.rect(screen, (210, 210, 220), badge_rect, width=1, border_radius=8)
-        badge_text = C.FONT_SMALL.render(str(total_cards), True, (235, 235, 245))
-        screen.blit(
-            badge_text,
-            (
-                badge_rect.centerx - badge_text.get_width() // 2,
-                badge_rect.centery - badge_text.get_height() // 2,
-            ),
-        )
+    def _draw_reserves(self, screen: pygame.Surface) -> None:
+        for idx, pile in enumerate(self.reserves):
+            pile.draw(screen)
+            if self.waiting_for_base and pile.cards:
+                rect = pile.top_rect()
+                highlight = pygame.Surface((C.CARD_W, C.CARD_H), pygame.SRCALPHA)
+                highlight.fill((255, 220, 120, 60))
+                screen.blit(highlight, (rect.x + C.DRAW_OFFSET_X, rect.y + C.DRAW_OFFSET_Y))
 
     # ----- Draw -----
     def draw(self, screen) -> None:
         screen.fill(C.TABLE_BG)
 
-        extra = (
-            "Stock replays: unlimited"
-            if self.stock_cycles_allowed is None
-            else f"Stock replays used: {self.stock_cycles_used}/{self.stock_cycles_allowed}"
-        )
+        extra = f"Stock replays used: {self.stock_cycles_used}/{self.stock_cycles_allowed}"
 
         with self.scrolling_draw_offset():
+            self._draw_reserves(screen)
+
             for fi, pile in enumerate(self.foundations):
                 pile.draw(screen)
                 if not pile.cards:
-                    suit = self.foundation_suits[fi]
-                    txt = C.FONT_CENTER_SUIT.render(C.SUITS[suit], True, (245, 245, 245))
-                    cx, cy = self._world_to_screen((pile.x + C.CARD_W // 2, pile.y + C.CARD_H // 2))
-                    screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
+                    if self.waiting_for_base:
+                        if fi == 0:
+                            txt = C.FONT_SMALL.render("Select base", True, (245, 245, 245))
+                            cx, cy = self._world_to_screen((pile.x + C.CARD_W // 2, pile.y + C.CARD_H // 2))
+                            screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
+                    else:
+                        suit = self.foundation_suits[fi]
+                        txt = C.FONT_CENTER_SUIT.render(C.SUITS[suit], True, (245, 245, 245))
+                        cx, cy = self._world_to_screen((pile.x + C.CARD_W // 2, pile.y + C.CARD_H // 2))
+                        screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
 
-            self._draw_reserve_with_count(screen)
             self.stock_pile.draw(screen)
             self.waste_pile.draw(screen)
             for pile in self.tableau:
@@ -638,15 +647,16 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             cards = self.drag.cards
             mx, my = self.drag.position
             ox, oy = self.drag.offset
+            fan = self.tableau[0].fan_y if self.tableau else 0
             for idx, card in enumerate(cards):
                 surf = C.get_card_surface(card)
-                screen.blit(surf, (mx - ox, my - oy + idx * self.tableau[0].fan_y))
+                screen.blit(surf, (mx - ox, my - oy + idx * fan))
 
         if self.message:
             msg = C.FONT_UI.render(self.message, True, (255, 255, 210))
             screen.blit(msg, (C.SCREEN_W // 2 - msg.get_width() // 2, C.SCREEN_H - 48))
 
-        C.Scene.draw_top_bar(self, screen, "Demon (Canfield)", extra)
+        C.Scene.draw_top_bar(self, screen, "Duchess (Canfield)", extra)
         self.toolbar.draw(screen)
         if self.help.visible:
             self.help.draw(screen)
@@ -657,11 +667,8 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
 
 
 __all__ = [
-    "DemonGameScene",
-    "demon_save_exists",
+    "DuchessGameScene",
+    "duchess_save_exists",
     "load_saved_state",
-    "load_demon_config",
     "clear_saved_state",
-    "save_demon_config",
-    "update_saved_stock_cycles",
 ]
