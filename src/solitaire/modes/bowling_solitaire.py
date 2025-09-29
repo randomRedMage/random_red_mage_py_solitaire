@@ -24,10 +24,7 @@ from .bowling_scoring import calculate_frame_totals
 
 
 def _data_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("bowling")
 
 
 def _save_path() -> str:

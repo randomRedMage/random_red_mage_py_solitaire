@@ -15,10 +15,7 @@ def is_red(suit: int) -> bool:
 
 
 def _yukon_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("yukon")
 
 
 def _yukon_save_path() -> str:

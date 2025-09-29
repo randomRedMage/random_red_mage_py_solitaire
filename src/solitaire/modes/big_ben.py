@@ -31,10 +31,7 @@ REFILL_SEQUENCE = list(range(3, 12)) + list(range(0, 3))
 
 
 def _bb_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("big_ben")
 
 
 def _bb_save_path() -> str:

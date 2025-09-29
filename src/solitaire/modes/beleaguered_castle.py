@@ -11,10 +11,7 @@ from solitaire import mechanics as M
 
 
 def _bc_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("beleaguered_castle")
 
 
 def _bc_save_path() -> str:

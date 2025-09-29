@@ -27,10 +27,7 @@ def get_difficulty_label(key: str) -> str:
 
 
 def _data_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("accordion")
 
 
 def _save_path() -> str:

@@ -13,10 +13,7 @@ from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 def _demon_dir() -> str:
     """Return the directory used to persist Demon save data."""
 
-    try:
-        return C._settings_dir()  # type: ignore[attr-defined]
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("demon")
 
 
 def _demon_save_path() -> str:

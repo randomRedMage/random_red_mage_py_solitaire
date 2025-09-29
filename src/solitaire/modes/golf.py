@@ -12,11 +12,7 @@ from solitaire.help_data import create_modal_help
 
 def _golf_dir() -> str:
     # Reuse the app settings dir for saves/history
-    try:
-        return C._settings_dir()
-    except Exception:
-        # Fallback to user home if not available
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("golf")
 
 
 def _golf_save_path() -> str:
