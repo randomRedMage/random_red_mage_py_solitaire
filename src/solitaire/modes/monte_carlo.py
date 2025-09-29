@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import pygame
 
 from solitaire import common as C
-from solitaire.modes.base_scene import ModeUIHelper
+from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 from solitaire.help_data import create_modal_help
 
 
@@ -83,7 +83,151 @@ def _card_from_dict(data: Dict[str, Any]) -> C.Card:
     return C.Card(suit, rank, face_up)
 
 
-class MonteCarloGameScene(C.Scene):
+class _FoundationModal:
+    """Modal overlay that displays the collected foundation cards."""
+
+    def __init__(self, title: str = "Foundation") -> None:
+        self.title = title
+        self.visible: bool = False
+        self.cards: List[C.Card] = []
+        self._close_btn = C.Button("Close", 0, 0, w=200, h=46, center=False)
+
+    def open(self, cards: Sequence[C.Card]) -> None:
+        self.cards = list(cards)
+        self.visible = True
+
+    def close(self) -> None:
+        self.visible = False
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if not self.visible:
+            return False
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_KP_ENTER):
+                self.close()
+                return True
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._close_btn.hovered(event.pos):
+                self.close()
+            return True
+        if event.type == pygame.MOUSEMOTION:
+            self._layout()
+        return True
+
+    def draw(self, screen: pygame.Surface) -> None:
+        if not self.visible:
+            return
+
+        dim = pygame.Surface((C.SCREEN_W, C.SCREEN_H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 180))
+        screen.blit(dim, (0, 0))
+
+        panel, positions, card_size, title_surf, info_surf = self._layout()
+
+        pygame.draw.rect(screen, (242, 242, 247), panel, border_radius=14)
+        pygame.draw.rect(screen, (118, 118, 130), panel, width=1, border_radius=14)
+
+        y = panel.top + 18
+        screen.blit(title_surf, (panel.centerx - title_surf.get_width() // 2, y))
+        y += title_surf.get_height() + 6
+        if info_surf is not None:
+            screen.blit(info_surf, (panel.centerx - info_surf.get_width() // 2, y))
+            y += info_surf.get_height() + 6
+
+        for card, (cx, cy) in zip(self.cards, positions):
+            surf = C.get_card_surface(card)
+            if card_size != (C.CARD_W, C.CARD_H):
+                surf = pygame.transform.smoothscale(surf, card_size)
+            screen.blit(surf, (cx, cy))
+
+        mouse_pos = pygame.mouse.get_pos()
+        self._close_btn.draw(screen, hover=self._close_btn.hovered(mouse_pos))
+
+    def _layout(
+        self,
+    ) -> Tuple[pygame.Rect, List[Tuple[int, int]], Tuple[int, int], pygame.Surface, Optional[pygame.Surface]]:
+        pad = 28
+        gap = max(12, C.CARD_W // 8)
+        title_font = C.FONT_TITLE if C.FONT_TITLE is not None else pygame.font.SysFont(pygame.font.get_default_font(), 38, bold=True)
+        title_surf = title_font.render(self.title, True, (28, 28, 34))
+
+        total_cards = len(self.cards)
+        if total_cards:
+            info_text = f"Pairs removed: {total_cards // 2}" if total_cards % 2 == 0 else f"Cards: {total_cards}"
+            info_font = C.FONT_UI if C.FONT_UI is not None else pygame.font.SysFont(pygame.font.get_default_font(), 24, bold=True)
+            info_surf: Optional[pygame.Surface] = info_font.render(info_text, True, (42, 42, 52))
+        else:
+            info_surf = None
+
+        top_height = pad + title_surf.get_height() + 6 + (info_surf.get_height() + 6 if info_surf is not None else 0)
+        btn_h = self._close_btn.rect.height
+        bottom_height = btn_h + pad
+
+        avail_w = max(480, C.SCREEN_W - 80)
+        avail_h = max(360, C.SCREEN_H - 100)
+
+        if not self.cards:
+            panel = pygame.Rect(0, 0, min(520, avail_w), min(320, avail_h))
+            panel.center = (C.SCREEN_W // 2, C.SCREEN_H // 2)
+            btn_x = panel.centerx - self._close_btn.rect.width // 2
+            btn_y = panel.bottom - pad - btn_h
+            self._close_btn.rect.topleft = (btn_x, btn_y)
+            return panel, [], (C.CARD_W, C.CARD_H), title_surf, info_surf
+
+        best_layout: Optional[Tuple[int, int, float]] = None
+        max_cols = len(self.cards)
+        for cols in range(1, max_cols + 1):
+            rows = (len(self.cards) + cols - 1) // cols
+            inner_w = cols * C.CARD_W
+            inner_h = rows * C.CARD_H
+            scale_w = min(1.0, (avail_w - 2 * pad - (cols - 1) * gap) / inner_w)
+            usable_h = avail_h - top_height - bottom_height - (rows - 1) * gap
+            if usable_h <= 0:
+                continue
+            scale_h = min(1.0, usable_h / inner_h)
+            scale = min(scale_w, scale_h)
+            if scale <= 0:
+                continue
+            if best_layout is None or scale > best_layout[2]:
+                best_layout = (cols, rows, scale)
+
+        if best_layout is None:
+            cols = min(len(self.cards), 6)
+            rows = (len(self.cards) + cols - 1) // cols
+            scale = 0.6
+        else:
+            cols, rows, scale = best_layout
+
+        scaled_w = max(12, int(round(C.CARD_W * scale)))
+        scaled_h = max(12, int(round(C.CARD_H * scale)))
+
+        content_w = cols * scaled_w + (cols - 1) * gap
+        content_h = rows * scaled_h + (rows - 1) * gap
+        panel_w = min(avail_w, max(content_w + 2 * pad, 360))
+        panel_h = min(avail_h, max(top_height + content_h + bottom_height, 300))
+        panel = pygame.Rect(0, 0, panel_w, panel_h)
+        panel.center = (C.SCREEN_W // 2, C.SCREEN_H // 2)
+
+        start_x = panel.centerx - content_w // 2
+        start_y = panel.top + top_height
+
+        positions: List[Tuple[int, int]] = []
+        for index in range(len(self.cards)):
+            row = index // cols
+            col = index % cols
+            cx = start_x + col * (scaled_w + gap)
+            cy = start_y + row * (scaled_h + gap)
+            positions.append((cx, cy))
+
+        btn_x = panel.centerx - self._close_btn.rect.width // 2
+        btn_y = panel.bottom - pad - btn_h
+        self._close_btn.rect.topleft = (btn_x, btn_y)
+
+        return panel, positions, (scaled_w, scaled_h), title_surf, info_surf
+
+
+class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
     rows: int = _ROWS
     cols: int = _COLS
 
@@ -91,8 +235,7 @@ class MonteCarloGameScene(C.Scene):
         super().__init__(app)
         self.tableau: List[List[Optional[C.Card]]] = [[None for _ in range(self.cols)] for _ in range(self.rows)]
         self.stock_pile = C.Pile(0, 0)
-        # Show a shallow upward fan so removed pairs form a neat stack.
-        self.matched_pile = C.Pile(0, 0, fan_y=-max(4, C.CARD_H // 10))
+        self.matched_pile = C.Pile(0, 0, fan_y=0)
         self.selection: Optional[Tuple[int, int]] = None
         self.message: str = ""
         self.game_over: bool = False
@@ -105,6 +248,7 @@ class MonteCarloGameScene(C.Scene):
 
         self.ui_helper = ModeUIHelper(self, game_id="monte_carlo")
         self.help = create_modal_help("monte_carlo")
+        self.foundation_modal = _FoundationModal("Foundation")
 
         def can_compact() -> bool:
             return self.can_compact()
@@ -166,6 +310,7 @@ class MonteCarloGameScene(C.Scene):
         if hasattr(self, "toolbar") and self.toolbar:
             self.toolbar.relayout()
         self.ui_helper.relayout_menu_modal()
+        self._clamp_scroll()
 
     def new_game(self, *, clear_save: bool = True) -> None:
         deck = C.make_deck(shuffle=True)
@@ -199,6 +344,8 @@ class MonteCarloGameScene(C.Scene):
         self.message = ""
         self.game_over = False
         self.did_win = False
+        self.foundation_modal.close()
+        self.reset_scroll()
 
     # ----- Persistence -----
     def _serialise_state(self, *, completed: Optional[bool] = None) -> Dict[str, Any]:
@@ -298,6 +445,9 @@ class MonteCarloGameScene(C.Scene):
         else:
             self._initial_order = []
 
+        self.reset_scroll()
+        self.foundation_modal.close()
+
     # ----- Helpers -----
     def can_compact(self) -> bool:
         if self.game_over:
@@ -314,13 +464,26 @@ class MonteCarloGameScene(C.Scene):
     def _is_full(self) -> bool:
         return not self._has_gaps()
 
+    def iter_scroll_piles(self):  # type: ignore[override]
+        yield self.stock_pile
+        yield self.matched_pile
+
+    def _scroll_content_bounds(self) -> Tuple[int, int, int, int]:  # type: ignore[override]
+        grid_right = self._grid_left + (self.cols - 1) * (C.CARD_W + self._gap_x) + C.CARD_W
+        grid_bottom = self._grid_top + (self.rows - 1) * (C.CARD_H + self._gap_y) + C.CARD_H
+        left = min(self.stock_pile.x, self.matched_pile.x, self._grid_left)
+        top = min(self.stock_pile.y, self.matched_pile.y, self._grid_top)
+        right = max(self.stock_pile.x + C.CARD_W, self.matched_pile.x + C.CARD_W, grid_right)
+        bottom = max(self.stock_pile.y + C.CARD_H, self.matched_pile.y + C.CARD_H, grid_bottom)
+        return left, top, right, bottom
+
     def _cell_rect(self, row: int, col: int) -> pygame.Rect:
         x = self._grid_left + col * (C.CARD_W + self._gap_x)
         y = self._grid_top + row * (C.CARD_H + self._gap_y)
         return pygame.Rect(x, y, C.CARD_W, C.CARD_H)
 
     def _cell_at_point(self, pos: Tuple[int, int]) -> Optional[Tuple[int, int]]:
-        px, py = pos
+        px, py = self._screen_to_world(pos)
         for row in range(self.rows):
             for col in range(self.cols):
                 rect = self._cell_rect(row, col)
@@ -355,12 +518,14 @@ class MonteCarloGameScene(C.Scene):
     def _compact_rows(self) -> bool:
         changed = False
         for idx, row in enumerate(self.tableau):
-            filtered = [card for card in row if card is not None]
-            if len(filtered) != len(row):
-                filtered.extend([None] * (len(row) - len(filtered)))
-                if filtered != row:
-                    self.tableau[idx] = filtered
-                    changed = True
+            cards = [card for card in row if card is not None]
+            if len(cards) == len(row):
+                continue
+            padding = len(row) - len(cards)
+            new_row: List[Optional[C.Card]] = [None] * padding + cards
+            if new_row != row:
+                self.tableau[idx] = new_row
+                changed = True
         return changed
 
     def _compact_columns(self) -> bool:
@@ -383,22 +548,21 @@ class MonteCarloGameScene(C.Scene):
             if not self.game_over:
                 self.message = "No gaps to compact."
             return
-        changed = True
-        while changed:
-            changed = False
-            if self._compact_rows():
-                changed = True
-            if self._compact_columns():
-                changed = True
-        self._fill_from_stock()
+        self._compact_rows()
+        self._compact_columns()
+        self._compact_rows()
+        if self.stock_pile.cards:
+            self._fill_from_stock()
         if not self.game_over:
             self.message = "Tableau compacted."
         self._check_game_end()
 
     def _fill_from_stock(self) -> None:
         for row in range(self.rows):
-            for col in range(self.cols):
-                if self.tableau[row][col] is None and self.stock_pile.cards:
+            for col in reversed(range(self.cols)):
+                if not self.stock_pile.cards:
+                    return
+                if self.tableau[row][col] is None:
                     card = self.stock_pile.cards.pop()
                     card.face_up = True
                     self.tableau[row][col] = card
@@ -438,31 +602,44 @@ class MonteCarloGameScene(C.Scene):
     def draw(self, screen) -> None:
         screen.fill(C.TABLE_BG)
 
-        # Draw tableau grid
-        for row in range(self.rows):
-            for col in range(self.cols):
-                rect = self._cell_rect(row, col)
-                card = self.tableau[row][col]
-                if card is None:
-                    pygame.draw.rect(screen, (255, 255, 255, 60), rect, border_radius=C.CARD_RADIUS, width=2)
-                else:
-                    surf = C.get_card_surface(card)
-                    screen.blit(surf, rect.topleft)
-        if self.selection is not None:
-            sr, sc = self.selection
-            rect = self._cell_rect(sr, sc)
-            pygame.draw.rect(screen, C.GOLD, rect, width=4, border_radius=C.CARD_RADIUS)
+        with self.scrolling_draw_offset():
+            for row in range(self.rows):
+                for col in range(self.cols):
+                    rect = self._cell_rect(row, col)
+                    screen_rect = pygame.Rect(self._world_to_screen(rect.topleft), rect.size)
+                    card = self.tableau[row][col]
+                    if card is None:
+                        pygame.draw.rect(screen, (255, 255, 255, 60), screen_rect, border_radius=C.CARD_RADIUS, width=2)
+                    else:
+                        surf = C.get_card_surface(card)
+                        screen.blit(surf, screen_rect.topleft)
 
-        # Draw piles
-        self.stock_pile.draw(screen)
-        self.matched_pile.draw(screen)
+            if self.selection is not None:
+                sr, sc = self.selection
+                rect = self._cell_rect(sr, sc)
+                screen_rect = pygame.Rect(self._world_to_screen(rect.topleft), rect.size)
+                pygame.draw.rect(screen, C.GOLD, screen_rect, width=4, border_radius=C.CARD_RADIUS)
 
-        # Labels
-        font = C.FONT_SMALL if C.FONT_SMALL is not None else pygame.font.SysFont(pygame.font.get_default_font(), 20, bold=True)
-        stock_label = font.render("Stock", True, C.WHITE)
-        screen.blit(stock_label, (self.stock_pile.x + (C.CARD_W - stock_label.get_width()) // 2, self.stock_pile.y - 24))
-        pairs_label = font.render("Pairs", True, C.WHITE)
-        screen.blit(pairs_label, (self.matched_pile.x + (C.CARD_W - pairs_label.get_width()) // 2, self.matched_pile.y - 24))
+            self.stock_pile.draw(screen)
+            self.matched_pile.draw(screen)
+
+            font = C.FONT_SMALL if C.FONT_SMALL is not None else pygame.font.SysFont(pygame.font.get_default_font(), 20, bold=True)
+            stock_label = font.render("Stock", True, C.WHITE)
+            stock_pos = self._world_to_screen(
+                (
+                    self.stock_pile.x + (C.CARD_W - stock_label.get_width()) // 2,
+                    self.stock_pile.y - 24,
+                )
+            )
+            screen.blit(stock_label, stock_pos)
+            foundation_label = font.render("Foundation", True, C.WHITE)
+            foundation_pos = self._world_to_screen(
+                (
+                    self.matched_pile.x + (C.CARD_W - foundation_label.get_width()) // 2,
+                    self.matched_pile.y - 24,
+                )
+            )
+            screen.blit(foundation_label, foundation_pos)
 
         if self.message:
             msg_font = C.FONT_UI if C.FONT_UI is not None else pygame.font.SysFont(pygame.font.get_default_font(), 24, bold=True)
@@ -475,15 +652,26 @@ class MonteCarloGameScene(C.Scene):
         if self.help.visible:
             self.help.draw(screen)
         self.ui_helper.draw_menu_modal(screen)
+        if self.foundation_modal.visible:
+            self.foundation_modal.draw(screen)
 
     # ----- Event handling -----
     def handle_event(self, event) -> None:
+        if event.type == pygame.MOUSEMOTION:
+            self.edge_pan.on_mouse_pos(event.pos)
+
+        if self.foundation_modal.visible:
+            if self.foundation_modal.handle_event(event):
+                return
+
         if self.help.visible:
             if self.help.handle_event(event):
                 return
             if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN):
                 return
         if self.ui_helper.handle_menu_event(event):
+            return
+        if self.handle_scroll_event(event):
             return
         if self.toolbar and self.toolbar.handle_event(event):
             return
@@ -500,11 +688,13 @@ class MonteCarloGameScene(C.Scene):
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.help.visible:
-                return
-            if self.stock_pile.top_rect().collidepoint(event.pos):
+            world_pos = self._screen_to_world(event.pos)
+            if self.stock_pile.top_rect().collidepoint(world_pos):
                 if self.can_compact():
                     self.compact_and_fill()
+                return
+            if self.matched_pile.top_rect().collidepoint(world_pos) and self.matched_pile.cards:
+                self.foundation_modal.open(self.matched_pile.cards)
                 return
             if self.game_over:
                 return
