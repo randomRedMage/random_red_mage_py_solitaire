@@ -212,6 +212,7 @@ class ModeUIHelper:
             self._return_to_options = bool(return_to_options)
         self._shortcut_actions: Dict[int, Mapping[str, Any]] = {}
         self.menu_modal: GameMenuModal | None = None
+        self._modal_support: Optional[bool] = None
 
     @staticmethod
     def _split_import_path(path: str) -> Tuple[str, str]:
@@ -228,6 +229,20 @@ class ModeUIHelper:
             module = importlib.import_module(self._options_module)
             self._options_cls = getattr(module, self._options_class_name)
         return self._options_cls
+
+    def _supports_game_modal(self) -> bool:
+        if not self._game_id:
+            return False
+        if self._modal_support is not None:
+            return self._modal_support
+        try:
+            from solitaire.scenes import menu_options  # type: ignore
+        except Exception:
+            self._modal_support = False
+            return False
+        registry = getattr(menu_options, "CONTROLLER_REGISTRY", {})
+        self._modal_support = self._game_id in registry
+        return self._modal_support
 
     def _invoke_action(self, action: Mapping[str, Any]) -> bool:
         enabled = action.get("enabled", True)
@@ -368,6 +383,8 @@ class ModeUIHelper:
             self.menu_modal.relayout()
 
     def can_open_options(self) -> bool:
+        if self._supports_game_modal():
+            return True
         try:
             self._load_options_scene()
         except Exception:
@@ -375,6 +392,14 @@ class ModeUIHelper:
         return True
 
     def open_options(self) -> None:
+        if self._supports_game_modal():
+            from solitaire.scenes.menu import MainMenuScene
+
+            menu_scene = MainMenuScene(self.scene.app)
+            game_key = self._game_id
+            if game_key and menu_scene._open_game_modal(game_key):
+                self.scene.next_scene = menu_scene
+                return
         try:
             scene_cls = self._load_options_scene()
         except Exception:
