@@ -11,10 +11,7 @@ from solitaire import mechanics as M
 
 
 def _bc_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("beleaguered_castle")
 
 
 def _bc_save_path() -> str:
@@ -324,8 +321,7 @@ class BeleagueredCastleGameScene(C.Scene):
         state = self._state_dict()
         _safe_write_json(_bc_save_path(), state)
         if to_menu:
-            from solitaire.scenes.game_options.beleaguered_castle_options import BeleagueredCastleOptionsScene
-            self.next_scene = BeleagueredCastleOptionsScene(self.app)
+            self.ui_helper.goto_main_menu()
 
     def _load_from_state(self, state: dict):
         def mk(seq):
@@ -518,6 +514,8 @@ class BeleagueredCastleGameScene(C.Scene):
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN):
                 return
 
+        if self.ui_helper.handle_menu_event(e):
+            return
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
@@ -703,6 +701,7 @@ class BeleagueredCastleGameScene(C.Scene):
         self.toolbar.draw(screen)
         if self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
         # Draw scrollbars last
         vsb = self._vertical_scrollbar()

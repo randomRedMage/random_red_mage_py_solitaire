@@ -7,7 +7,7 @@ shortcuts for in-game scenes.
 
 from __future__ import annotations
 
-import importlib
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, Mapping, MutableMapping, Optional, Tuple
@@ -16,20 +16,27 @@ import pygame
 
 from solitaire import common as C
 from solitaire import mechanics as M
-from solitaire.ui import DEFAULT_BUTTON_HEIGHT, make_toolbar
+from solitaire.ui import DEFAULT_BUTTON_HEIGHT, GameMenuModal, make_toolbar
+
+
+class _InGameMenuProxy:
+    """Lightweight stand-in for main menu when opening game options in-scene."""
+
+    __slots__ = ("app", "next_scene")
+
+    def __init__(self, helper: "ModeUIHelper") -> None:
+        self.app = helper.scene.app
+        self.next_scene = None
 
 
 @dataclass(frozen=True)
 class GameMetadata:
-    """Description and options-scene metadata for a solitaire mode."""
+    """Description metadata for a solitaire mode."""
 
     key: str
     label: str
     icon_filename: str
-    options_module: str
-    options_class: str
     section: str
-    return_to_options: bool = True
 
 
 _GAME_METADATA: Tuple[GameMetadata, ...] = (
@@ -37,120 +44,85 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         key="accordion",
         label="Accordion",
         icon_filename="icon_accordion.png",
-        options_module="solitaire.scenes.game_options.accordion_options",
-        options_class="AccordionOptionsScene",
         section="Other",
-        return_to_options=True,
     ),
     GameMetadata(
         key="klondike",
         label="Klondike",
         icon_filename="icon_klondike.png",
-        options_module="solitaire.scenes.game_options.klondike_options",
-        options_class="KlondikeOptionsScene",
         section="Packers",
-        return_to_options=True,
     ),
     GameMetadata(
         key="freecell",
         label="FreeCell",
         icon_filename="icon_freecell.png",
-        options_module="solitaire.scenes.game_options.freecell_options",
-        options_class="FreeCellOptionsScene",
         section="Packers",
-        return_to_options=True,
     ),
     GameMetadata(
         key="gate",
         label="Gate",
         icon_filename="icon_gate.png",
-        options_module="solitaire.scenes.game_options.gate_options",
-        options_class="GateOptionsScene",
         section="Packers",
-        return_to_options=True,
     ),
     GameMetadata(
         key="demon",
         label="Demon\n(Canfield)",
         icon_filename="icon_demon.png",
-        options_module="solitaire.scenes.game_options.demon_options",
-        options_class="DemonOptionsScene",
         section="Packers",
     ),
     GameMetadata(
         key="duchess",
         label="Duchess",
         icon_filename="icon_duchess.png",
-        options_module="solitaire.scenes.game_options.duchess_options",
-        options_class="DuchessOptionsScene",
         section="Packers",
     ),
     GameMetadata(
         key="chameleon",
         label="Chameleon",
         icon_filename="icon_chameleon.png",
-        options_module="solitaire.scenes.game_options.chameleon_options",
-        options_class="ChameleonOptionsScene",
         section="Packers",
     ),
     GameMetadata(
         key="beleaguered_castle",
         label="Beleaguered\nCastle",
         icon_filename="icon_beleagured_castle.png",
-        options_module="solitaire.scenes.game_options.beleaguered_castle_options",
-        options_class="BeleagueredCastleOptionsScene",
         section="Packers",
     ),
     GameMetadata(
         key="yukon",
         label="Yukon",
         icon_filename="icon_yukon.png",
-        options_module="solitaire.scenes.game_options.yukon_options",
-        options_class="YukonOptionsScene",
         section="Packers",
     ),
     GameMetadata(
         key="big_ben",
         label="Big Ben",
         icon_filename="icon_big_ben.png",
-        options_module="solitaire.scenes.game_options.big_ben_options",
-        options_class="BigBenOptionsScene",
         section="Builders",
     ),
     GameMetadata(
         key="golf",
         label="Golf",
         icon_filename="icon_golf.png",
-        options_module="solitaire.scenes.game_options.golf_options",
-        options_class="GolfOptionsScene",
         section="Builders",
     ),
     GameMetadata(
         key="pyramid",
         label="Pyramid",
         icon_filename="icon_pyramid.png",
-        options_module="solitaire.scenes.game_options.pyramid_options",
-        options_class="PyramidOptionsScene",
         section="Builders",
-        return_to_options=True,
     ),
     GameMetadata(
         key="tripeaks",
         label="TriPeaks",
         icon_filename="icon_tripeaks.png",
-        options_module="solitaire.scenes.game_options.tripeaks_options",
-        options_class="TriPeaksOptionsScene",
         section="Builders",
-        return_to_options=True,
     ),
     GameMetadata(
         key="bowling_solitaire",
         label="Bowling\nSolitaire",
         icon_filename="icon_bowling_solitaire.png",
-        options_module="solitaire.scenes.game_options.bowling_solitaire_options",
-        options_class="BowlingSolitaireOptionsScene",
         section="Other",
-        return_to_options=True,
     ),
 )
 
@@ -176,54 +148,33 @@ class ModeUIHelper:
         self,
         scene,
         *,
-        game_id: Optional[str] = None,
-        options_scene: Optional[str | type] = None,
-        return_to_options: Optional[bool] = None,
+        game_id: str,
     ) -> None:
         self.scene = scene
-        self._options_module: Optional[str] = None
-        self._options_class_name: Optional[str] = None
-        self._options_cls: Optional[type] = None
-        self._return_to_options: bool = True
-        if game_id is not None:
-            meta = GAME_REGISTRY.get(game_id)
-            if meta is None:
-                raise KeyError(f"Unknown solitaire game id: {game_id}")
-            self._options_module = meta.options_module
-            self._options_class_name = meta.options_class
-            self._return_to_options = meta.return_to_options
-        elif options_scene is not None:
-            if isinstance(options_scene, str):
-                module_name, class_name = self._split_import_path(options_scene)
-                self._options_module = module_name
-                self._options_class_name = class_name
-            else:
-                self._options_cls = options_scene
-                self._options_module = options_scene.__module__
-                self._options_class_name = options_scene.__name__
-            if return_to_options is not None:
-                self._return_to_options = bool(return_to_options)
-        else:
-            raise ValueError("ModeUIHelper requires either a game_id or an options_scene")
-        if return_to_options is not None and game_id is not None:
-            self._return_to_options = bool(return_to_options)
+        self._game_id: Optional[str] = None
+        meta = GAME_REGISTRY.get(game_id)
+        if meta is None:
+            raise KeyError(f"Unknown solitaire game id: {game_id}")
+        self._game_id = meta.key
         self._shortcut_actions: Dict[int, Mapping[str, Any]] = {}
+        self.menu_modal: GameMenuModal | None = None
+        self._modal_support: Optional[bool] = None
+        self._options_modal = None
+        self._options_proxy: _InGameMenuProxy | None = None
 
-    @staticmethod
-    def _split_import_path(path: str) -> Tuple[str, str]:
-        if ":" in path:
-            module_name, class_name = path.split(":", 1)
-        else:
-            module_name, class_name = path.rsplit(".", 1)
-        return module_name, class_name
-
-    def _load_options_scene(self):
-        if self._options_cls is None:
-            if not self._options_module or not self._options_class_name:
-                raise RuntimeError("Options scene information is missing")
-            module = importlib.import_module(self._options_module)
-            self._options_cls = getattr(module, self._options_class_name)
-        return self._options_cls
+    def _supports_game_modal(self) -> bool:
+        if not self._game_id:
+            return False
+        if self._modal_support is not None:
+            return self._modal_support
+        try:
+            from solitaire.scenes import menu_options  # type: ignore
+        except Exception:
+            self._modal_support = False
+            return False
+        registry = getattr(menu_options, "CONTROLLER_REGISTRY", {})
+        self._modal_support = self._game_id in registry
+        return self._modal_support
 
     def _invoke_action(self, action: Mapping[str, Any]) -> bool:
         enabled = action.get("enabled", True)
@@ -263,21 +214,6 @@ class ModeUIHelper:
         shortcut = action_dict.pop("shortcut", default_shortcut)
         return label, action_dict, shortcut
 
-    def _add_action(
-        self,
-        actions: MutableMapping[str, Mapping[str, Any]],
-        default_label: str,
-        spec: ActionSpec,
-        *,
-        default_shortcut: Optional[int] = None,
-    ) -> None:
-        normalised = self._normalise_action(default_label, spec, default_shortcut=default_shortcut)
-        if normalised is None:
-            return
-        label, action_dict, shortcut = normalised
-        actions[label] = action_dict
-        if shortcut is not None:
-            self._shortcut_actions[shortcut] = action_dict
 
     def build_toolbar(
         self,
@@ -293,28 +229,47 @@ class ModeUIHelper:
         menu_tooltip: Optional[str] = None,
         toolbar_kwargs: Optional[Mapping[str, Any]] = None,
     ):
-        """Construct a toolbar with shared buttons and shortcuts."""
+        """Construct a toolbar with shared buttons, shortcuts, and modal menu."""
 
         self._shortcut_actions = {}
 
         actions: Dict[str, Mapping[str, Any]] = {}
-        menu_action: Dict[str, Any] = {"on_click": self.goto_menu}
-        if menu_tooltip:
-            menu_action["tooltip"] = menu_tooltip
-        actions["Menu"] = menu_action
-        self._shortcut_actions[pygame.K_ESCAPE] = menu_action
+        stored: Dict[str, Tuple[str, Mapping[str, Any]]] = {}
 
-        self._add_action(actions, "New", new_action, default_shortcut=pygame.K_n)
-        self._add_action(actions, "Restart", restart_action, default_shortcut=pygame.K_r)
-        self._add_action(actions, "Undo", undo_action, default_shortcut=pygame.K_u)
-        self._add_action(actions, "Auto", auto_action, default_shortcut=pygame.K_a)
-        self._add_action(actions, "Hint", hint_action, default_shortcut=pygame.K_h)
-        self._add_action(actions, "Save", save_action, default_shortcut=pygame.K_s)
-        self._add_action(actions, "Help", help_action)
+        def register(
+            default_label: str,
+            spec: ActionSpec | Mapping[str, Any] | None,
+            *,
+            shortcut: Optional[int] = None,
+            store_key: Optional[str] = None,
+        ) -> Optional[Tuple[str, Mapping[str, Any]]]:
+            normalised = self._normalise_action(default_label, spec, default_shortcut=shortcut)
+            if normalised is None:
+                return None
+            label, action_dict, resolved_shortcut = normalised
+            actions[label] = action_dict
+            if resolved_shortcut is not None:
+                self._shortcut_actions[resolved_shortcut] = action_dict
+            if store_key:
+                stored[store_key] = (label, action_dict)
+            return label, action_dict
+
+        menu_spec: Dict[str, Any] = {"on_click": self.toggle_menu_modal}
+        if menu_tooltip:
+            menu_spec["tooltip"] = menu_tooltip
+        register("Menu", menu_spec, shortcut=pygame.K_ESCAPE)
+
+        register("New", new_action, shortcut=pygame.K_n, store_key="new")
+        register("Restart", restart_action, shortcut=pygame.K_r, store_key="restart")
+        register("Undo", undo_action, shortcut=pygame.K_u)
+        register("Auto", auto_action, shortcut=pygame.K_a)
+        register("Hint", hint_action, shortcut=pygame.K_h, store_key="hint")
+        register("Save", save_action, shortcut=pygame.K_s, store_key="save")
+        register("Help", help_action, store_key="help")
 
         if extra_actions:
             for label, spec in extra_actions:
-                self._add_action(actions, label, spec)
+                register(label, spec)
 
         kwargs = {
             "height": DEFAULT_BUTTON_HEIGHT,
@@ -325,20 +280,151 @@ class ModeUIHelper:
         }
         if toolbar_kwargs:
             kwargs.update(toolbar_kwargs)
+
+        self.menu_modal = GameMenuModal(
+            self,
+            new_action=stored.get("new"),
+            restart_action=stored.get("restart"),
+            help_action=stored.get("help"),
+            save_action=stored.get("save"),
+            hint_action=stored.get("hint"),
+        )
+
         return make_toolbar(actions, **kwargs)
 
-    def goto_menu(self) -> None:
-        if self._return_to_options:
-            scene_cls = self._load_options_scene()
-            self.scene.next_scene = scene_cls(self.scene.app)
-        else:
-            from solitaire.scenes.menu import MainMenuScene
+    def toggle_menu_modal(self) -> None:
+        if self._options_modal is not None:
+            self._close_options_modal()
+            return
+        if self.menu_modal is None:
+            return
+        self.menu_modal.toggle()
 
-            self.scene.next_scene = MainMenuScene(self.scene.app)
+    def close_menu_modal(self) -> None:
+        if self.menu_modal and self.menu_modal.visible:
+            self.menu_modal.close()
+        if self._options_modal is not None:
+            self._close_options_modal()
+
+    def handle_menu_event(self, event) -> bool:
+        if self._options_modal is not None:
+            should_close = self._options_modal.handle_event(event)
+            if should_close:
+                self._close_options_modal()
+            return True
+        if self.menu_modal and self.menu_modal.visible:
+            return self.menu_modal.handle_event(event)
+        return False
+
+    def draw_menu_modal(self, surface) -> None:
+        if self._options_modal is not None:
+            self._options_modal.draw(surface)
+        elif self.menu_modal and self.menu_modal.visible:
+            self.menu_modal.draw(surface)
+
+    def relayout_menu_modal(self) -> None:
+        if self.menu_modal:
+            self.menu_modal.relayout()
+
+    def _build_in_game_options_modal(self):
+        if not self._game_id:
+            return None
+        try:
+            from solitaire.scenes import menu_options  # type: ignore
+            from solitaire.scenes.menu import GameOptionsModal  # type: ignore
+        except Exception:
+            return None
+        registry = getattr(menu_options, "CONTROLLER_REGISTRY", {})
+        controller_cls = registry.get(self._game_id)
+        if controller_cls is None:
+            return None
+        metadata = GAME_REGISTRY.get(self._game_id)
+        if metadata is None:
+            return None
+        try:
+            proxy = _InGameMenuProxy(self)
+            controller = controller_cls(proxy, metadata=metadata)
+            modal = GameOptionsModal(self.scene, controller)
+        except Exception:
+            return None
+        return proxy, modal
+
+    def _close_options_modal(self) -> None:
+        proxy = self._options_proxy
+        self._options_modal = None
+        self._options_proxy = None
+        if proxy and proxy.next_scene is not None:
+            self.scene.next_scene = proxy.next_scene
+
+    def can_open_options(self) -> bool:
+        if self._supports_game_modal():
+            return True
+        return False
+
+    def open_options(self) -> None:
+        if self._supports_game_modal():
+            if self._options_modal is not None:
+                return
+            modal_info = self._build_in_game_options_modal()
+            if modal_info is not None:
+                self.close_menu_modal()
+                proxy, modal = modal_info
+                self._options_proxy = proxy
+                self._options_modal = modal
+                return
+        self.goto_main_menu()
+
+    def goto_main_menu(self) -> None:
+        from solitaire.scenes.menu import MainMenuScene
+
+        self.scene.next_scene = MainMenuScene(self.scene.app)
+
+    def quit_to_desktop(self) -> None:
+        pygame.quit()
+        sys.exit(0)
+
+    def is_game_completed(self) -> bool:
+        scene = self.scene
+        if hasattr(scene, "is_game_complete"):
+            try:
+                if scene.is_game_complete():
+                    return True
+            except Exception:
+                pass
+        for attr in ("game_over", "_game_over", "completed"):
+            value = getattr(scene, attr, None)
+            if isinstance(value, bool) and value:
+                return True
+        message = getattr(scene, "message", "")
+        if isinstance(message, str):
+            lower = message.lower()
+            if "congratulations" in lower or "you won" in lower:
+                return True
+        return False
+
+    def should_confirm_reset(self) -> bool:
+        return not self.is_game_completed()
+
+
+    def goto_menu(self) -> None:
+        self.close_menu_modal()
+        from solitaire.scenes.menu import MainMenuScene
+
+        menu_scene = MainMenuScene(self.scene.app)
+        if self._game_id:
+            try:
+                menu_scene._open_game_modal(self._game_id)
+            except Exception:
+                pass
+        self.scene.next_scene = menu_scene
 
     def handle_shortcuts(self, event) -> bool:
         if event.type != pygame.KEYDOWN:
             return False
+        if self.menu_modal and self.menu_modal.visible:
+            return True
+        if self._options_modal is not None:
+            return True
         action = self._shortcut_actions.get(event.key)
         if action is None:
             return False

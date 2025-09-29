@@ -1,10 +1,67 @@
+import json
+import os
+from typing import Any, Dict, List, Optional, Tuple
+
 import pygame
-from typing import List, Optional, Tuple
 
 from solitaire import common as C
 from solitaire.modes.base_scene import ModeUIHelper
 from solitaire.help_data import create_modal_help
 from solitaire import mechanics as M
+
+
+_SAVE_FILENAME = "gate_save.json"
+
+
+def _gate_dir() -> str:
+    return C.project_saves_dir("gate")
+
+
+def _gate_save_path() -> str:
+    return os.path.join(_gate_dir(), _SAVE_FILENAME)
+
+
+def _safe_write_json(path: str, data: Any) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except Exception:
+        pass
+
+
+def _safe_read_json(path: str) -> Optional[Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def _clear_saved_game() -> None:
+    try:
+        if os.path.isfile(_gate_save_path()):
+            os.remove(_gate_save_path())
+    except Exception:
+        pass
+
+
+def has_saved_game() -> bool:
+    state = _safe_read_json(_gate_save_path())
+    if not isinstance(state, dict):
+        return False
+    if state.get("completed"):
+        return False
+    return True
+
+
+def load_saved_game() -> Optional[Dict[str, Any]]:
+    state = _safe_read_json(_gate_save_path())
+    if not isinstance(state, dict):
+        return None
+    if state.get("completed"):
+        return None
+    return state
 
 
 def is_red(suit: int) -> bool:
@@ -26,7 +83,7 @@ class GateGameScene(C.Scene):
     - Objective: complete all foundations A->K of their suit. Cards cannot be removed from foundations.
     """
 
-    def __init__(self, app):
+    def __init__(self, app, load_state: Optional[Dict[str, Any]] = None):
         super().__init__(app)
 
         # Piles
@@ -48,10 +105,13 @@ class GateGameScene(C.Scene):
         self.message: str = ""
         self.undo_mgr = C.UndoManager()
 
-        self.ui_helper = ModeUIHelper(self, game_id="gate", return_to_options=False)
+        self.ui_helper = ModeUIHelper(self, game_id="gate")
 
         def can_undo():
             return self.undo_mgr.can_undo()
+
+        def save_and_exit() -> None:
+            self._save_game(to_menu=True)
 
         self.toolbar = self.ui_helper.build_toolbar(
             new_action={"on_click": self.deal_new},
@@ -62,11 +122,24 @@ class GateGameScene(C.Scene):
                 "enabled": self.can_autocomplete,
                 "tooltip": "Auto-finish to foundations",
             },
+            save_action=(
+                "Save&Exit",
+                {
+                    "on_click": save_and_exit,
+                    "tooltip": "Save game and return to menu",
+                },
+            ),
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
+        # Shared animator for single-card moves (needed before loading saved games)
+        self.anim: M.CardAnimator = M.CardAnimator()
+
         self.compute_layout()
-        self.deal_new()
+        if load_state:
+            self._load_from_state(load_state)
+        else:
+            self.deal_new()
         # Help overlay
         self.help = create_modal_help("gate")
 
@@ -75,8 +148,6 @@ class GateGameScene(C.Scene):
         self._last_click_pos = (0, 0)
         # Klondike-style peek controller (shows single hovered face-up card under delay)
         self.peek = M.PeekController(delay_ms=2000)
-        # Shared animator for single-card moves
-        self.anim: M.CardAnimator = M.CardAnimator()
         # Auto-complete state
         self._auto_complete_active = False
         # Vertical scrolling
@@ -173,6 +244,7 @@ class GateGameScene(C.Scene):
         self.message = ""
 
     def deal_new(self):
+        _clear_saved_game()
         self._clear()
         deck = C.make_deck(shuffle=True)
 
@@ -207,6 +279,45 @@ class GateGameScene(C.Scene):
             self.message = ""
             self.undo_mgr = C.UndoManager()
             self.push_undo()
+
+    def _state_dict(self) -> Dict[str, Any]:
+        state = self.record_snapshot()
+        state.update(
+            {
+                "scroll_y": self.scroll_y,
+                "initial_snapshot": getattr(self, "_initial_snapshot", None),
+                "foundation_suits": list(self.foundation_suits),
+                "completed": all(len(f.cards) == 13 for f in self.foundations),
+            }
+        )
+        return state
+
+    def _save_game(self, to_menu: bool = False) -> None:
+        state = self._state_dict()
+        _safe_write_json(_gate_save_path(), state)
+        if to_menu:
+            self.ui_helper.goto_main_menu()
+
+    def _load_from_state(self, state: Dict[str, Any]) -> None:
+        if not state:
+            self.deal_new()
+            return
+        self.restore_snapshot(state)
+        self.scroll_y = state.get("scroll_y", 0)
+        suits = state.get("foundation_suits")
+        if isinstance(suits, (list, tuple)) and len(suits) >= 4:
+            self.foundation_suits = [int(s) for s in suits[:4]]
+        init = state.get("initial_snapshot")
+        if isinstance(init, dict):
+            self._initial_snapshot = init
+        else:
+            self._initial_snapshot = self.record_snapshot()
+        self.undo_mgr = C.UndoManager()
+        self.push_undo()
+        self.message = state.get("message", self.message)
+        self._auto_complete_active = False
+        self.anim.cancel()
+        self._clamp_scroll()
 
     # ----- Undo -----
     def record_snapshot(self):
@@ -436,6 +547,8 @@ class GateGameScene(C.Scene):
                 return
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
+        if self.ui_helper.handle_menu_event(e):
+            return
         if self.toolbar.handle_event(e):
             return
         if self.ui_helper.handle_shortcuts(e):
@@ -608,10 +721,12 @@ class GateGameScene(C.Scene):
         self._fill_center_vacancies()
         if all(len(f.cards) == 13 for f in self.foundations):
             self.message = "Congratulations! You won!"
+            _clear_saved_game()
             return
         if not self.stock_pile.cards:
             if not self._has_legal_moves_when_stock_empty():
                 self.message = "No more legal moves. You lose."
+                _clear_saved_game()
 
     # ----- Draw -----
     def draw(self, screen):
@@ -680,6 +795,7 @@ class GateGameScene(C.Scene):
         self.toolbar.draw(screen)
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
         # Activate any pending peek by time
         self.peek.maybe_activate(pygame.time.get_ticks())

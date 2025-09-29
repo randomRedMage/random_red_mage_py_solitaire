@@ -13,10 +13,7 @@ from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 def _demon_dir() -> str:
     """Return the directory used to persist Demon save data."""
 
-    try:
-        return C._settings_dir()  # type: ignore[attr-defined]
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("demon")
 
 
 def _demon_save_path() -> str:
@@ -315,9 +312,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
     def _save_game(self, to_menu: bool = False) -> None:
         _safe_write_json(_demon_save_path(), self._state_dict())
         if to_menu:
-            from solitaire.scenes.game_options.demon_options import DemonOptionsScene
-
-            self.next_scene = DemonOptionsScene(self.app)
+            self.ui_helper.goto_main_menu()
 
     def _load_from_state(self, state: Dict) -> None:
         self.restore_snapshot(state)
@@ -486,6 +481,8 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
             if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
 
+        if self.ui_helper.handle_menu_event(event):
+            return
         if self.handle_scroll_event(event):
             return
 
@@ -653,6 +650,7 @@ class DemonGameScene(ScrollableSceneMixin, C.Scene):
         self.toolbar.draw(screen)
         if self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     def update(self, dt):
         pass

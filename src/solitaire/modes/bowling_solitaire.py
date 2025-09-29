@@ -24,10 +24,7 @@ from .bowling_scoring import calculate_frame_totals
 
 
 def _data_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("bowling")
 
 
 def _save_path() -> str:
@@ -1157,6 +1154,7 @@ class BowlingSolitaireGameScene(C.Scene):
         self._draw_status(screen)
         if self._discard_modal_visible:
             self._draw_discard_modal(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     def _draw_scoreboard(self, screen: pygame.Surface) -> None:
         sx = self.scroll_x
@@ -1433,6 +1431,8 @@ class BowlingSolitaireGameScene(C.Scene):
                 return
             if event.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
                 return
+        if self.ui_helper.handle_menu_event(event):
+            return
         if self.toolbar and self.toolbar.handle_event(event):
             return
         if self.ui_helper.handle_shortcuts(event):

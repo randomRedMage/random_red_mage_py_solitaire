@@ -136,6 +136,14 @@ def main():
         dt = clock.tick(60) / 1000.0
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
+                helper = getattr(scene, "ui_helper", None)
+                modal = getattr(helper, "menu_modal", None)
+                if modal and hasattr(modal, "has_pending_quit_confirm"):
+                    try:
+                        if modal.has_pending_quit_confirm():
+                            modal.accept_default_confirm()
+                    except Exception:
+                        pass
                 confirm_quit = True
                 continue
             elif e.type == pygame.VIDEORESIZE:

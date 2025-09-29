@@ -1,12 +1,68 @@
 
 # pyramid.py - Pyramid Solitaire scenes
-import pygame
+import json
 import os
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+import pygame
 from solitaire import common as C
 from solitaire import mechanics as M
 from solitaire.modes.base_scene import ModeUIHelper
 from solitaire.help_data import create_modal_help
+
+
+_SAVE_FILENAME = "pyramid_save.json"
+
+
+def _pyramid_dir() -> str:
+    return C.project_saves_dir("pyramid")
+
+
+def _pyramid_save_path() -> str:
+    return os.path.join(_pyramid_dir(), _SAVE_FILENAME)
+
+
+def _safe_write_json(path: str, data: Any) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except Exception:
+        pass
+
+
+def _safe_read_json(path: str) -> Optional[Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def _clear_saved_game() -> None:
+    try:
+        if os.path.isfile(_pyramid_save_path()):
+            os.remove(_pyramid_save_path())
+    except Exception:
+        pass
+
+
+def has_saved_game() -> bool:
+    state = _safe_read_json(_pyramid_save_path())
+    if not isinstance(state, dict):
+        return False
+    if state.get("completed"):
+        return False
+    return True
+
+
+def load_saved_game() -> Optional[Dict[str, Any]]:
+    state = _safe_read_json(_pyramid_save_path())
+    if not isinstance(state, dict):
+        return None
+    if state.get("completed"):
+        return None
+    return state
 
 # Helper value rules
 def card_value(card: C.Card) -> int:
@@ -18,53 +74,8 @@ def is_king(card: C.Card) -> bool:
 def pair_to_13(a: C.Card, b: C.Card) -> bool:
     return (card_value(a) + card_value(b)) == 13
 
-# -----------------------------
-# Options Scene
-# -----------------------------
-class PyramidOptionsScene(C.Scene):
-    def __init__(self, app):
-        super().__init__(app)
-        self.diff_index = 0  # 0: Easy(∞), 1: Normal(2), 2: Hard(1)
-        cx = C.SCREEN_W//2 - 210
-        y  = 260
-        self.b_start = C.Button("Start Pyramid", cx, y); y += 60
-        self.b_diff  = C.Button("Difficulty: Easy (Unlimited resets)", cx, y, w=420); y += 70
-        self.b_back  = C.Button("Back", cx, y)
-
-    def handle_event(self, e):
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            mx, my = e.pos
-            # Clear any existing hint on click
-            self.hint_srcs = None
-            if self.b_start.hovered((mx, my)):
-                allowed = [None, 2, 1][self.diff_index]  # Easy=None, Normal=2, Hard=1
-                self.next_scene = PyramidGameScene(self.app, allowed_resets=allowed)
-            elif self.b_diff.hovered((mx, my)):
-                self.diff_index = (self.diff_index + 1) % 3
-                text = ["Easy (Unlimited resets)", "Normal (2 resets)", "Hard (1 reset)"][self.diff_index]
-                self.b_diff.text = "Difficulty: " + text
-            elif self.b_back.hovered((mx, my)):
-                from solitaire.scenes.menu import MainMenuScene
-                self.next_scene = MainMenuScene(self.app)
-        elif e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-            from solitaire.scenes.menu import MainMenuScene
-            self.next_scene = MainMenuScene(self.app)
-
-    def draw(self, screen):
-        screen.fill(C.TABLE_BG)
-        title = C.FONT_TITLE.render("Pyramid – Options", True, C.WHITE)
-        # Override garbled title with a clean one
-        title = C.FONT_TITLE.render("Pyramid - Options", True, C.WHITE)
-        screen.blit(title, (C.SCREEN_W//2 - title.get_width()//2, 120))
-        mp = pygame.mouse.get_pos()
-        for b in [self.b_start, self.b_diff, self.b_back]:
-            b.draw(screen, hover=b.hovered(mp))
-
-# -----------------------------
-# Game Scene
-# -----------------------------
 class PyramidGameScene(C.Scene):
-    def __init__(self, app, allowed_resets: Optional[int] = None):
+    def __init__(self, app, allowed_resets: Optional[int] = None, load_state: Optional[Dict[str, Any]] = None):
         super().__init__(app)
         # 2D scroll offset to accommodate larger cards
         self.scroll_x: int = 0
@@ -94,10 +105,13 @@ class PyramidGameScene(C.Scene):
         self.undo_mgr = C.UndoManager()
 
         # Toolbar (right-aligned)
-        self.ui_helper = ModeUIHelper(self, game_id="pyramid", return_to_options=False)
+        self.ui_helper = ModeUIHelper(self, game_id="pyramid")
 
         def _can_undo():
             return self.undo_mgr.can_undo()
+
+        def save_and_exit() -> None:
+            self._save_game(to_menu=True)
 
         self.toolbar = self.ui_helper.build_toolbar(
             new_action={"on_click": self.new_game},
@@ -109,6 +123,13 @@ class PyramidGameScene(C.Scene):
                 "tooltip": "Highlight a possible move",
                 "shortcut": pygame.K_h,
             },
+            save_action=(
+                "Save&Exit",
+                {
+                    "on_click": save_and_exit,
+                    "tooltip": "Save game and return to menu",
+                },
+            ),
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
         )
 
@@ -130,10 +151,13 @@ class PyramidGameScene(C.Scene):
 
         # Deal initial game
         self.initial_order: List[Tuple[int,int]] = []  # (suit, rank) for restart
-        self.deal()
-        # Initialize undo stack with starting state
-        self.undo_mgr = C.UndoManager()
-        self.push_undo()
+        if load_state:
+            self._load_from_state(load_state)
+        else:
+            self.deal()
+            # Initialize undo stack with starting state
+            self.undo_mgr = C.UndoManager()
+            self.push_undo()
 
         # Help overlay
         self.help = create_modal_help("pyramid")
@@ -241,6 +265,7 @@ class PyramidGameScene(C.Scene):
         self.resets_used = 0 if self.allowed_resets is not None else self.resets_used
 
     def new_game(self):
+        _clear_saved_game()
         self.deal()
         self.undo_mgr = C.UndoManager()
         self.push_undo()
@@ -250,6 +275,44 @@ class PyramidGameScene(C.Scene):
             self.deal(self.initial_order[:])
             self.undo_mgr = C.UndoManager()
             self.push_undo()
+
+    def _state_dict(self) -> Dict[str, Any]:
+        state = self.record_snapshot()
+        state.update(
+            {
+                "scroll_x": self.scroll_x,
+                "scroll_y": self.scroll_y,
+                "allowed_resets": self.allowed_resets,
+                "initial_order": getattr(self, "initial_order", []),
+                "completed": all(card is None for row in self.pyramid for card in row),
+            }
+        )
+        return state
+
+    def _save_game(self, to_menu: bool = False) -> None:
+        state = self._state_dict()
+        _safe_write_json(_pyramid_save_path(), state)
+        if to_menu:
+            self.ui_helper.goto_main_menu()
+
+    def _load_from_state(self, state: Dict[str, Any]) -> None:
+        if not state:
+            self.deal()
+            self.undo_mgr = C.UndoManager()
+            self.push_undo()
+            return
+        self.restore_snapshot(state)
+        self.scroll_x = state.get("scroll_x", 0)
+        self.scroll_y = state.get("scroll_y", 0)
+        self.allowed_resets = state.get("allowed_resets", self.allowed_resets)
+        init = state.get("initial_order")
+        if isinstance(init, list):
+            self.initial_order = [(int(s), int(r)) for (s, r) in init]
+        else:
+            self.initial_order = []
+        self.undo_mgr = C.UndoManager()
+        self.push_undo()
+        self._clamp_scroll()
 
     # ---------- Undo helpers ----------
     def record_snapshot(self):
@@ -459,6 +522,7 @@ class PyramidGameScene(C.Scene):
         self.toolbar.draw(screen)
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     # ---------- Scrollbar geometry helpers ----------
     def _vertical_scrollbar(self):
@@ -515,6 +579,8 @@ class PyramidGameScene(C.Scene):
                 return
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.KEYDOWN, pygame.MOUSEWHEEL):
                 return
+        if self.ui_helper.handle_menu_event(e):
+            return
         # Toolbar first
         if self.toolbar.handle_event(e):
             return
@@ -713,10 +779,12 @@ class PyramidGameScene(C.Scene):
     def after_move_checks(self):
         if all(card is None for row in self.pyramid for card in row):
             self.message = "🎉 You win!"
+            _clear_saved_game()
             return
         if (not self.stock_pile.cards) and (self.allowed_resets is not None and self.resets_used >= self.allowed_resets):
             if not self.any_moves_available():
                 self.message = "Game Over"
+                _clear_saved_game()
 
     # ---------- Move search ----------
     def free_pyramid_cards(self) -> List[C.Card]:
