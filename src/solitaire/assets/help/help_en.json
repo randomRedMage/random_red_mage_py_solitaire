@@ -65,6 +65,46 @@
       "Press H/Esc to close this help."
     ]
   },
+  "chameleon": {
+    "title": "Chameleon — How to Play",
+    "lines": [
+      "Goal: Build each foundation by suit starting from the starter card and wrapping K→A.",
+      "Setup: Deal 12 face-up cards to the reserve at the upper left, then flip the next card to start the first foundation and set the base rank.",
+      "Tableau: Three columns beneath the foundations build down by 1 regardless of suit, wrapping A→K, and may move in complete descending sequences.",
+      "Reserve: Only the top card may be played. Empty tableau columns auto-fill from the reserve, then from the waste if the reserve is empty.",
+      "Stock/Waste: Click the stock to deal one card face-up to the waste. When the stock is empty, turn the waste over to form a new stock until redeals run out.",
+      "Moves: Drag single cards or valid descending sequences between tableau columns, or play any eligible card to its foundation.",
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+    ],
+    "max_width": 880
+  },
+  "demon": {
+    "title": "Demon (Canfield) — How to Play",
+    "lines": [
+      "Goal: Build each foundation by suit starting from the starter card and wrapping K→A.",
+      "Setup: Deal 13 face-up cards to the Demon reserve at the upper left, then flip the next card to start the first foundation and set the base rank.",
+      "Tableau: Four face-up columns beneath the foundations build down by 1 with alternating colors, wrapping A→K.",
+      "Reserve: Only the top card of the Demon may be played. Empty tableau columns auto-fill from the reserve, then from the waste if the reserve is empty.",
+      "Stock/Waste: Click the stock to deal up to three cards face-up to the waste. When the stock is empty, turn the waste over to form a new stock until replays run out.",
+      "Moves: Drag single cards or ordered alternating sequences between tableau columns, or play any eligible card to its foundation.",
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+    ],
+    "max_width": 880
+  },
+  "duchess": {
+    "title": "Duchess — How to Play",
+    "lines": [
+      "Goal: Build each foundation by suit starting from the chosen base rank, wrapping K→A.",
+      "Setup: Deal four horizontal reserve fans of 4/3/3/3 cards above the foundations, and one face-up card to each tableau column.",
+      "Starter: Choose one reserve top card to begin the first foundation and define the base rank; the remaining foundations follow suit order.",
+      "Tableau: Four face-up columns beneath the foundations build down by 1 with alternating colors, wrapping A→K, and may move in complete alternating sequences.",
+      "Reserve: Only the top card of each reserve fan may be played. Empty tableau columns auto-fill from the reserves, then the waste, then the stock if available.",
+      "Stock/Waste: Click the stock to deal one card face-up to the waste. When empty, turn the waste over once to form a new stock.",
+      "Moves: Drag single cards or valid descending alternating sequences between tableau columns, or play any eligible card to its foundation.",
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+    ],
+    "max_width": 880
+  },
   "golf": {
     "title": "Golf — How to Play",
     "lines": [

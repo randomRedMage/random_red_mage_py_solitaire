@@ -4,7 +4,7 @@ import os
 import json
 import pygame
 from collections import deque
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 # --- Settings / Image card settings ---
 USE_IMAGE_CARDS = True
@@ -27,6 +27,21 @@ def _settings_dir() -> str:
 
 def _settings_path() -> str:
     return os.path.join(_settings_dir(), "settings.json")
+
+
+def _project_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def project_saves_dir(subdir: Optional[str] = None) -> str:
+    base = os.path.join(_project_root(), "saves")
+    if subdir:
+        base = os.path.join(base, subdir)
+    try:
+        os.makedirs(base, exist_ok=True)
+    except Exception:
+        pass
+    return base
 
 def get_current_settings():
     return dict(_CURRENT_SETTINGS)
