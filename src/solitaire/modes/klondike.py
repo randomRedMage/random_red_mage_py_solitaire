@@ -123,6 +123,9 @@ class KlondikeGameScene(C.Scene):
         self.auto_last_time = 0
         self.auto_interval_ms = 180
 
+        # Klondike-style delayed single-card peek (shared across modes)
+        self.peek = M.PeekController(delay_ms=2000)
+
         # Layout depends on current card size and screen size
         self.compute_layout()
         if load_state:
@@ -133,8 +136,6 @@ class KlondikeGameScene(C.Scene):
 
         # Help overlay
         self.help = create_modal_help("klondike")
-        # Klondike-style delayed single-card peek (shared across modes)
-        self.peek = M.PeekController(delay_ms=2000)
         # Central edge-panning controller for drag-to-edge auto-scroll
         self.edge_pan = M.EdgePanDuringDrag(edge_margin_px=28, top_inset_px=getattr(C, "TOP_BAR_H", 64))
         # Double-click tracking
