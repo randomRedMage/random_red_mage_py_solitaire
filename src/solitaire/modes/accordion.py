@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 import pygame
 
 from solitaire import common as C
+from solitaire import mechanics as M
 from solitaire.help_data import create_modal_help
 from solitaire.modes.base_scene import ModeUIHelper
 
@@ -26,10 +27,7 @@ def get_difficulty_label(key: str) -> str:
 
 
 def _data_dir() -> str:
-    try:
-        return C._settings_dir()
-    except Exception:
-        return os.path.join(os.path.expanduser("~"), ".random_red_mage_solitaire")
+    return C.project_saves_dir("accordion")
 
 
 def _save_path() -> str:
@@ -123,6 +121,11 @@ class AccordionGameScene(C.Scene):
         self.piles: List[C.Pile] = []
         self.scroll_y: int = 0
         self._min_scroll_y: int = 0
+        self.drag_pan = M.DragPanController()
+        self.edge_pan = M.EdgePanDuringDrag(
+            edge_margin_px=28,
+            top_inset_px=getattr(C, "TOP_BAR_H", 60),
+        )
         self.undo_mgr = C.UndoManager()
         self.undo_after_deal_allowed: bool = self.difficulty == "easy"
         self.drag_info: Optional[Dict[str, Any]] = None
@@ -192,6 +195,7 @@ class AccordionGameScene(C.Scene):
         self.undo_mgr = C.UndoManager()
         self.drag_info = None
         self._update_layout()
+        self.edge_pan.set_active(False)
         delete_saved_game()
 
     def _save_and_exit(self) -> None:
@@ -214,6 +218,7 @@ class AccordionGameScene(C.Scene):
         self.undo_mgr = C.UndoManager()
         self.undo_after_deal_allowed = self.difficulty == "easy"
         self.drag_info = None
+        self.edge_pan.set_active(False)
         self.message = ""
         self.game_over = False
         self.did_win = False
@@ -292,6 +297,7 @@ class AccordionGameScene(C.Scene):
             else:
                 self.undo_after_deal_allowed = bool(snapshot.get("undo_after_deal", False))
             self.drag_info = None
+            self.edge_pan.set_active(False)
             self._update_layout()
 
         self.undo_mgr.push(undo_snapshot)
@@ -373,6 +379,7 @@ class AccordionGameScene(C.Scene):
             "pos": (rect.x, rect.y),
             "cards": list(pile.cards),
         }
+        self.edge_pan.set_active(True)
 
     def _update_drag(self, mouse_pos: Tuple[int, int]) -> None:
         if not self.drag_info:
@@ -387,6 +394,7 @@ class AccordionGameScene(C.Scene):
             return
         src_index = self.drag_info.get("index")
         self.drag_info = None
+        self.edge_pan.set_active(False)
         if src_index is None or src_index < 0 or src_index >= len(self.piles):
             return
         world_pos = self._world_pos(mouse_pos)
@@ -426,6 +434,9 @@ class AccordionGameScene(C.Scene):
 
     # ----- Event handling ------------------------------------------------------
     def handle_event(self, event) -> None:
+        if event.type == pygame.MOUSEMOTION:
+            self.edge_pan.on_mouse_pos(event.pos)
+
         if getattr(self, "help", None) and self.help.visible:
             if self.help.handle_event(event):
                 return
@@ -438,9 +449,14 @@ class AccordionGameScene(C.Scene):
             ):
                 return
 
+        if self.ui_helper.handle_menu_event(event):
+            return
         if self.toolbar.handle_event(event):
             return
         if self.ui_helper.handle_shortcuts(event):
+            return
+
+        if self.drag_pan.handle_event(event, target=self, clamp=self._clamp_scroll, attr_x=None):
             return
 
         if event.type == pygame.MOUSEWHEEL:
@@ -472,6 +488,14 @@ class AccordionGameScene(C.Scene):
     def draw(self, screen) -> None:
         screen.fill(C.TABLE_BG)
 
+        # Edge panning while dragging near screen edges
+        self.edge_pan.on_mouse_pos(pygame.mouse.get_pos())
+        has_v_scroll = self._min_scroll_y < 0
+        _, dy = self.edge_pan.step(has_h_scroll=False, has_v_scroll=has_v_scroll)
+        if dy:
+            self.scroll_y += dy
+            self._clamp_scroll()
+
         prev_offset_y = C.DRAW_OFFSET_Y
         C.DRAW_OFFSET_Y = self.scroll_y
 
@@ -491,6 +515,7 @@ class AccordionGameScene(C.Scene):
 
         if getattr(self, "help", None) and self.help.visible:
             self.help.draw(screen)
+        self.ui_helper.draw_menu_modal(screen)
 
     def _draw_dragged_stack(self, screen) -> None:
         info = self.drag_info
