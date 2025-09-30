@@ -362,6 +362,9 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         def can_undo() -> bool:
             return self.can_undo()
 
+        def can_save() -> bool:
+            return not self._is_busy()
+
         def save_and_exit() -> None:
             self._save_game(to_menu=True)
 
@@ -378,7 +381,11 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
             ),
             save_action=(
                 "Save&Exit",
-                {"on_click": save_and_exit, "tooltip": "Save progress and return to the main menu"},
+                {
+                    "on_click": save_and_exit,
+                    "enabled": can_save,
+                    "tooltip": "Save progress and return to the main menu",
+                },
             ),
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
             extra_actions=[
