@@ -349,6 +349,10 @@ def make_toolbar(
     menu_button_tooltip: Optional[str] = None
     visible_labels = set(primary_labels or ())
 
+    hint_cfg = actions.get("Hint")
+    if hint_cfg and callable(hint_cfg.get("on_click")):
+        visible_labels.add("Hint")
+
     for label, cfg in actions.items():
         on_click = cfg.get("on_click")
         if not callable(on_click):
