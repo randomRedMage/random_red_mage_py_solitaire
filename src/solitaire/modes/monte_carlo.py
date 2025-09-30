@@ -350,6 +350,8 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self._post_queue_callback: Optional[Callable[[], None]] = None
         self._pending_layout_after_compact: Optional[List[List[Optional[C.Card]]]] = None
         self._undo_stack: List[Dict[str, Any]] = []
+        self.hint_cells: Optional[List[Tuple[int, int]]] = None
+        self.hint_expires_at: int = 0
 
         self.ui_helper = ModeUIHelper(self, game_id="monte_carlo")
         self.help = create_modal_help("monte_carlo")
@@ -365,6 +367,11 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         def can_save() -> bool:
             return not self._is_busy()
 
+        def can_hint() -> bool:
+            if self.game_over or self._is_busy():
+                return False
+            return self._has_matching_pairs()
+
         def save_and_exit() -> None:
             self._save_game(to_menu=True)
 
@@ -379,6 +386,11 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
                     "tooltip": "Undo the last pair removed",
                 },
             ),
+            hint_action={
+                "on_click": self.show_hint,
+                "enabled": can_hint,
+                "tooltip": "Highlight an adjacent matching pair",
+            },
             save_action=(
                 "Save&Exit",
                 {
@@ -473,6 +485,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.game_over_prompt.close()
         self._undo_stack.clear()
         self.foundation_modal.close()
+        self._clear_hint()
         self.reset_scroll()
 
     def _cancel_animations(self) -> None:
@@ -480,6 +493,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self._move_queue.clear()
         self._post_queue_callback = None
         self._pending_layout_after_compact = None
+        self._clear_hint()
 
     # ----- Persistence -----
     def _serialise_state(self, *, completed: Optional[bool] = None) -> Dict[str, Any]:
@@ -903,6 +917,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.matched_pile.cards.append(card2)
         self.selection = None
         self.message = "Pair removed."
+        self._clear_hint()
         self._check_game_end()
 
     def _compact_rows(self) -> bool:
@@ -931,6 +946,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.selection = None
         self.message = ""
         self._undo_stack.clear()
+        self._clear_hint()
 
         layout, _ = self._simulate_compact_layout()
         self._pending_layout_after_compact = layout
@@ -954,6 +970,44 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
                                 return True
         return False
 
+    def _find_adjacent_matching_pair(
+        self,
+    ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        for row in range(self.rows):
+            for col in range(self.cols):
+                card = self.tableau[row][col]
+                if card is None:
+                    continue
+                for dr in (-1, 0, 1):
+                    for dc in (-1, 0, 1):
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr = row + dr
+                        nc = col + dc
+                        if 0 <= nr < self.rows and 0 <= nc < self.cols:
+                            other = self.tableau[nr][nc]
+                            if other is not None and other.rank == card.rank:
+                                return (row, col), (nr, nc)
+        return None
+
+    def _clear_hint(self) -> None:
+        self.hint_cells = None
+        self.hint_expires_at = 0
+
+    def show_hint(self) -> None:
+        if self.game_over or self._is_busy():
+            return
+        self._clear_hint()
+        pair = self._find_adjacent_matching_pair()
+        if pair is None:
+            if not self.game_over:
+                self.message = "No matching pairs available."
+            return
+        self.hint_cells = [pair[0], pair[1]]
+        self.hint_expires_at = pygame.time.get_ticks() + 2500
+        if not self.message:
+            self.message = "Try matching these cards."
+
     def _check_game_end(self) -> None:
         if all(card is None for row in self.tableau for card in row) and not self.stock_pile.cards:
             self.game_over = True
@@ -971,6 +1025,9 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
     def draw(self, screen) -> None:
         screen.fill(C.TABLE_BG)
 
+        if self.hint_cells and pygame.time.get_ticks() > self.hint_expires_at:
+            self._clear_hint()
+
         with self.scrolling_draw_offset():
             for row in range(self.rows):
                 for col in range(self.cols):
@@ -982,6 +1039,14 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
                     else:
                         surf = C.get_card_surface(card)
                         screen.blit(surf, screen_rect.topleft)
+                        if self.hint_cells and (row, col) in self.hint_cells:
+                            pygame.draw.rect(
+                                screen,
+                                (70, 200, 255),
+                                screen_rect,
+                                width=4,
+                                border_radius=C.CARD_RADIUS,
+                            )
 
             if self.selection is not None:
                 sr, sc = self.selection
@@ -1067,6 +1132,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             self.selection = None
             self.message = ""
+            self._clear_hint()
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1092,23 +1158,28 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
             if self.selection is None:
                 self.selection = (row, col)
                 self.message = "Select a matching neighbor."
+                self._clear_hint()
                 return
             if self.selection == (row, col):
                 self.selection = None
                 self.message = ""
+                self._clear_hint()
                 return
             current = self.selection
             first_card = self.tableau[current[0]][current[1]]
             if first_card is None:
                 self.selection = (row, col)
+                self._clear_hint()
                 return
             if not self._cells_adjacent(current, (row, col)):
                 self.selection = (row, col)
                 self.message = "Cards must touch to pair."
+                self._clear_hint()
                 return
             if first_card.rank != card.rank:
                 self.selection = (row, col)
                 self.message = "Ranks must match."
+                self._clear_hint()
                 return
             self._remove_pair(current, (row, col))
             return
