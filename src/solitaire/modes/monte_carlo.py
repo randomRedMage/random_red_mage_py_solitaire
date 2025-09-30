@@ -688,33 +688,72 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
 
     def _simulate_compact_layout(
         self,
-    ) -> Tuple[List[List[Optional[C.Card]]], Dict[C.Card, Tuple[int, int]]]:
+    ) -> Tuple[
+        List[List[Optional[C.Card]]],
+        List[Tuple[C.Card, Tuple[int, int], Tuple[int, int]]],
+    ]:
         layout = [list(row) for row in self.tableau]
-        self._compact_rows_on_grid(layout)
-        self._compact_columns_on_grid(layout)
-        self._compact_rows_on_grid(layout)
-        positions: Dict[C.Card, Tuple[int, int]] = {}
-        for r, row in enumerate(layout):
-            for c, card in enumerate(row):
-                if card is not None:
-                    positions[card] = (r, c)
-        return layout, positions
+        moves: List[Tuple[C.Card, Tuple[int, int], Tuple[int, int]]] = []
+        self._compact_rows_on_grid(layout, moves)
+        self._compact_columns_on_grid(layout, moves)
+        self._compact_rows_on_grid(layout, moves)
+        return layout, moves
 
-    def _compact_rows_on_grid(self, grid: List[List[Optional[C.Card]]]) -> None:
-        for idx, row in enumerate(grid):
-            cards = [card for card in row if card is not None]
-            padding = len(row) - len(cards)
-            grid[idx] = [None] * padding + cards
+    def _compact_rows_on_grid(
+        self,
+        grid: List[List[Optional[C.Card]]],
+        moves: Optional[List[Tuple[C.Card, Tuple[int, int], Tuple[int, int]]]] = None,
+    ) -> None:
+        if not grid:
+            return
+        cols = len(grid[0])
+        for row_idx, row in enumerate(grid):
+            while True:
+                leftmost = next((c for c, card in enumerate(row) if card is not None), None)
+                if leftmost is None:
+                    break
+                moved = False
+                for col in range(cols - 1, leftmost, -1):
+                    if row[col] is not None:
+                        continue
+                    source_col = None
+                    for src in range(col - 1, -1, -1):
+                        if row[src] is not None:
+                            source_col = src
+                            break
+                    if source_col is None:
+                        continue
+                    card = row[source_col]
+                    row[source_col] = None
+                    row[col] = card
+                    if moves is not None and card is not None:
+                        moves.append((card, (row_idx, source_col), (row_idx, col)))
+                    moved = True
+                    break
+                if not moved:
+                    break
 
-    def _compact_columns_on_grid(self, grid: List[List[Optional[C.Card]]]) -> None:
+    def _compact_columns_on_grid(
+        self,
+        grid: List[List[Optional[C.Card]]],
+        moves: Optional[List[Tuple[C.Card, Tuple[int, int], Tuple[int, int]]]] = None,
+    ) -> None:
         if not grid:
             return
         rows = len(grid)
         cols = len(grid[0])
-        for col in range(cols):
-            column_cards = [grid[row][col] for row in range(rows) if grid[row][col] is not None]
+        for col in reversed(range(cols)):
             for row in range(rows):
-                grid[row][col] = column_cards[row] if row < len(column_cards) else None
+                card = grid[row][col]
+                if card is None:
+                    continue
+                current_row = row
+                while current_row > 0 and grid[current_row - 1][col] is None:
+                    grid[current_row - 1][col] = card
+                    grid[current_row][col] = None
+                    if moves is not None:
+                        moves.append((card, (current_row, col), (current_row - 1, col)))
+                    current_row -= 1
 
     def _apply_compacted_layout_and_fill(self) -> None:
         layout = self._pending_layout_after_compact
@@ -867,32 +906,20 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self._check_game_end()
 
     def _compact_rows(self) -> bool:
-        changed = False
-        for idx, row in enumerate(self.tableau):
-            cards = [card for card in row if card is not None]
-            if len(cards) == len(row):
-                continue
-            padding = len(row) - len(cards)
-            new_row: List[Optional[C.Card]] = [None] * padding + cards
-            if new_row != row:
-                self.tableau[idx] = new_row
-                changed = True
-        return changed
+        layout = [list(row) for row in self.tableau]
+        self._compact_rows_on_grid(layout)
+        if layout != self.tableau:
+            self.tableau = layout
+            return True
+        return False
 
     def _compact_columns(self) -> bool:
-        changed = False
-        for col in range(self.cols):
-            column_cards: List[C.Card] = []
-            for row in range(self.rows):
-                card = self.tableau[row][col]
-                if card is not None:
-                    column_cards.append(card)
-            for row in range(self.rows):
-                new_card = column_cards[row] if row < len(column_cards) else None
-                if self.tableau[row][col] is not new_card:
-                    self.tableau[row][col] = new_card
-                    changed = True
-        return changed
+        layout = [list(row) for row in self.tableau]
+        self._compact_columns_on_grid(layout)
+        if layout != self.tableau:
+            self.tableau = layout
+            return True
+        return False
 
     def compact_and_fill(self) -> None:
         if not self.can_compact():
@@ -905,35 +932,22 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.message = ""
         self._undo_stack.clear()
 
-        original_positions: Dict[C.Card, Tuple[int, int]] = {}
-        for row in range(self.rows):
-            for col in range(self.cols):
-                card = self.tableau[row][col]
-                if card is not None:
-                    original_positions[card] = (row, col)
-
-        layout, target_positions = self._simulate_compact_layout()
+        layout, move_steps = self._simulate_compact_layout()
         self._pending_layout_after_compact = layout
 
-        moves: List[Tuple[C.Card, Tuple[int, int], Tuple[int, int], Tuple[int, int]]] = []
-        for card, start in original_positions.items():
-            end = target_positions.get(card, start)
-            if end != start:
-                sr, sc = start
-                er, ec = end
+        if move_steps:
+            for card, (sr, sc), (er, ec) in move_steps:
                 start_rect = self._cell_rect(sr, sc)
                 end_rect = self._cell_rect(er, ec)
-                moves.append((card, (start_rect.x, start_rect.y), (end_rect.x, end_rect.y), (sr, sc)))
 
-        if moves:
-            for card, from_xy, to_xy, (sr, sc) in moves:
                 def _clear_source(r: int = sr, c: int = sc) -> None:
-                    self.tableau[r][c] = None
+                    if 0 <= r < self.rows and 0 <= c < self.cols:
+                        self.tableau[r][c] = None
 
                 self._queue_move(
                     card,
-                    from_xy,
-                    to_xy,
+                    (start_rect.x, start_rect.y),
+                    (end_rect.x, end_rect.y),
                     on_start=_clear_source,
                     dur_ms=220,
                 )
