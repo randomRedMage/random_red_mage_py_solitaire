@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import pygame
 
 from solitaire import common as C
+from solitaire import mechanics as M
 from solitaire.modes.base_scene import ModeUIHelper, ScrollableSceneMixin
 from solitaire.help_data import create_modal_help
 
@@ -227,6 +228,105 @@ class _FoundationModal:
         return panel, positions, (scaled_w, scaled_h), title_surf, info_surf
 
 
+class _GameOverPrompt:
+    """Simple modal prompt displayed when no moves remain."""
+
+    def __init__(self, on_new_game: Callable[[], None], on_quit: Callable[[], None]) -> None:
+        self.visible: bool = False
+        self.message: str = ""
+        self._panel_rect = pygame.Rect(0, 0, 0, 0)
+        self._on_new_game = on_new_game
+        self._on_quit = on_quit
+        self._new_btn = C.Button("New Game", 0, 0, w=220, h=52, center=False)
+        self._quit_btn = C.Button("Quit", 0, 0, w=220, h=52, center=False)
+
+    def open(self, message: str) -> None:
+        self.message = message
+        self.visible = True
+        self._layout()
+
+    def close(self) -> None:
+        self.visible = False
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if not self.visible:
+            return False
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_y):
+                self._on_new_game()
+                return True
+            if event.key in (pygame.K_ESCAPE, pygame.K_n):
+                self.close()
+                return True
+            if event.key in (pygame.K_q,):
+                self._on_quit()
+                return True
+            return True
+        if event.type == pygame.MOUSEMOTION:
+            self._layout()
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._new_btn.hovered(event.pos):
+                self._on_new_game()
+                return True
+            if self._quit_btn.hovered(event.pos):
+                self._on_quit()
+                return True
+            if not self._panel_rect.collidepoint(event.pos):
+                self.close()
+                return True
+            return True
+        return False
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self.visible:
+            return
+
+        overlay = pygame.Surface((C.SCREEN_W, C.SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        surface.blit(overlay, (0, 0))
+
+        self._layout()
+        panel = self._panel_rect
+        pygame.draw.rect(surface, (245, 245, 250), panel, border_radius=18)
+        pygame.draw.rect(surface, (90, 90, 100), panel, width=2, border_radius=18)
+
+        title_font = C.FONT_TITLE or pygame.font.SysFont(pygame.font.get_default_font(), 38, bold=True)
+        title = title_font.render("No Moves Remaining", True, (40, 40, 50))
+        surface.blit(title, (panel.centerx - title.get_width() // 2, panel.top + 24))
+
+        msg_font = C.FONT_UI or pygame.font.SysFont(pygame.font.get_default_font(), 24)
+        lines = [line.strip() for line in self.message.splitlines() if line.strip()] or [self.message]
+        y = panel.top + 24 + title.get_height() + 16
+        for line in lines:
+            surf = msg_font.render(line, True, (40, 40, 45))
+            surface.blit(surf, (panel.centerx - surf.get_width() // 2, y))
+            y += surf.get_height() + 6
+
+        mouse_pos = pygame.mouse.get_pos()
+        self._new_btn.draw(surface, hover=self._new_btn.hovered(mouse_pos))
+        self._quit_btn.draw(surface, hover=self._quit_btn.hovered(mouse_pos))
+
+    def _layout(self) -> None:
+        width = min(520, max(420, C.SCREEN_W - 160))
+        height = 260
+        panel = pygame.Rect(0, 0, width, height)
+        panel.center = (C.SCREEN_W // 2, C.SCREEN_H // 2)
+        self._panel_rect = panel
+
+        btn_w = 200
+        btn_h = 52
+        gap = 32
+        total_width = btn_w * 2 + gap
+        start_x = panel.centerx - total_width // 2
+        y = panel.bottom - btn_h - 28
+
+        self._new_btn.rect.size = (btn_w, btn_h)
+        self._new_btn.rect.topleft = (start_x, y)
+
+        self._quit_btn.rect.size = (btn_w, btn_h)
+        self._quit_btn.rect.topleft = (start_x + btn_w + gap, y)
+
 class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
     rows: int = _ROWS
     cols: int = _COLS
@@ -245,13 +345,22 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self._grid_top: int = 0
         self._gap_x: int = getattr(C, "CARD_GAP_X", max(16, C.CARD_W // 6))
         self._gap_y: int = getattr(C, "CARD_GAP_Y", max(20, C.CARD_H // 6))
+        self.anim: M.CardAnimator = M.CardAnimator()
+        self._move_queue: List[Dict[str, Any]] = []
+        self._post_queue_callback: Optional[Callable[[], None]] = None
+        self._pending_layout_after_compact: Optional[List[List[Optional[C.Card]]]] = None
+        self._undo_stack: List[Dict[str, Any]] = []
 
         self.ui_helper = ModeUIHelper(self, game_id="monte_carlo")
         self.help = create_modal_help("monte_carlo")
         self.foundation_modal = _FoundationModal("Foundation")
+        self.game_over_prompt = _GameOverPrompt(self._prompt_new_game_from_prompt, self._prompt_quit_to_menu)
 
         def can_compact() -> bool:
             return self.can_compact()
+
+        def can_undo() -> bool:
+            return self.can_undo()
 
         def save_and_exit() -> None:
             self._save_game(to_menu=True)
@@ -259,6 +368,14 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.toolbar = self.ui_helper.build_toolbar(
             new_action={"on_click": self.new_game},
             restart_action={"on_click": self.restart_current_deal, "tooltip": "Redeal the current layout"},
+            undo_action=(
+                "Undo",
+                {
+                    "on_click": self.undo_last_pair,
+                    "enabled": can_undo,
+                    "tooltip": "Undo the last pair removed",
+                },
+            ),
             save_action=(
                 "Save&Exit",
                 {"on_click": save_and_exit, "tooltip": "Save progress and return to the main menu"},
@@ -275,13 +392,14 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
                     },
                 )
             ],
-            toolbar_kwargs={"primary_labels": ("Compact",)},
+            toolbar_kwargs={"primary_labels": ("Compact", "Undo")},
         )
 
         self.compute_layout()
 
         if load_state:
             self._load_from_state(load_state)
+            self._undo_stack.clear()
         else:
             self.new_game(clear_save=True)
 
@@ -328,6 +446,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         _clear_saved_game()
 
     def _deal_from_deck(self, deck_cards: Sequence[C.Card]) -> None:
+        self._cancel_animations()
         deck: List[C.Card] = [C.Card(card.suit, card.rank, False) for card in deck_cards]
         self.tableau = [[None for _ in range(self.cols)] for _ in range(self.rows)]
         for row in range(self.rows):
@@ -344,8 +463,16 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.message = ""
         self.game_over = False
         self.did_win = False
+        self.game_over_prompt.close()
+        self._undo_stack.clear()
         self.foundation_modal.close()
         self.reset_scroll()
+
+    def _cancel_animations(self) -> None:
+        self.anim.cancel()
+        self._move_queue.clear()
+        self._post_queue_callback = None
+        self._pending_layout_after_compact = None
 
     # ----- Persistence -----
     def _serialise_state(self, *, completed: Optional[bool] = None) -> Dict[str, Any]:
@@ -375,6 +502,8 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
             self.ui_helper.goto_main_menu()
 
     def _load_from_state(self, state: Dict[str, Any]) -> None:
+        self._cancel_animations()
+        self.game_over_prompt.close()
         tableau_data = state.get("tableau", [])
         rows: List[List[Optional[C.Card]]] = []
         for row in tableau_data:
@@ -448,9 +577,185 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.reset_scroll()
         self.foundation_modal.close()
 
+    # ----- Undo & animation helpers -----
+    def _set_post_queue_callback(self, callback: Optional[Callable[[], None]]) -> None:
+        self._post_queue_callback = callback
+        if callback is not None:
+            self._check_queue_complete()
+
+    def _check_queue_complete(self) -> None:
+        if self._post_queue_callback and not self.anim.active and not self._move_queue:
+            cb = self._post_queue_callback
+            self._post_queue_callback = None
+            cb()
+
+    def _queue_move(
+        self,
+        card: C.Card,
+        from_xy: Tuple[int, int],
+        to_xy: Tuple[int, int],
+        *,
+        on_complete: Optional[Callable[[], None]] = None,
+        dur_ms: int = 240,
+    ) -> None:
+        move = {
+            "card": card,
+            "from": from_xy,
+            "to": to_xy,
+            "dur": max(60, int(dur_ms)),
+            "on_complete": on_complete,
+        }
+        self._move_queue.append(move)
+        if not self.anim.active:
+            self._start_next_move()
+
+    def _start_next_move(self) -> None:
+        if self.anim.active:
+            return
+        if not self._move_queue:
+            self._check_queue_complete()
+            return
+        move = self._move_queue.pop(0)
+
+        def _finish(m=move) -> None:
+            callback = m.get("on_complete")
+            if callable(callback):
+                callback()
+            self._start_next_move()
+
+        self.anim.start_move(
+            move["card"],
+            move["from"],
+            move["to"],
+            dur_ms=move.get("dur", 240),
+            on_complete=_finish,
+        )
+
+    def _is_busy(self) -> bool:
+        return self.anim.active or bool(self._move_queue)
+
+    def can_undo(self) -> bool:
+        if not self._undo_stack:
+            return False
+        if self._is_busy() or self.game_over or self.game_over_prompt.visible:
+            return False
+        return True
+
+    def undo_last_pair(self) -> None:
+        if not self.can_undo():
+            return
+        state = self._undo_stack.pop()
+        self._load_from_state(state)
+        self.message = "Previous move restored."
+
+    def _push_undo_state(self) -> None:
+        snapshot = self._serialise_state(completed=False)
+        self._undo_stack.append(snapshot)
+        max_depth = 20
+        if len(self._undo_stack) > max_depth:
+            self._undo_stack.pop(0)
+
+    def _simulate_compact_layout(
+        self,
+    ) -> Tuple[List[List[Optional[C.Card]]], Dict[C.Card, Tuple[int, int]]]:
+        layout = [list(row) for row in self.tableau]
+        self._compact_rows_on_grid(layout)
+        self._compact_columns_on_grid(layout)
+        self._compact_rows_on_grid(layout)
+        positions: Dict[C.Card, Tuple[int, int]] = {}
+        for r, row in enumerate(layout):
+            for c, card in enumerate(row):
+                if card is not None:
+                    positions[card] = (r, c)
+        return layout, positions
+
+    def _compact_rows_on_grid(self, grid: List[List[Optional[C.Card]]]) -> None:
+        for idx, row in enumerate(grid):
+            cards = [card for card in row if card is not None]
+            padding = len(row) - len(cards)
+            grid[idx] = [None] * padding + cards
+
+    def _compact_columns_on_grid(self, grid: List[List[Optional[C.Card]]]) -> None:
+        if not grid:
+            return
+        rows = len(grid)
+        cols = len(grid[0])
+        for col in range(cols):
+            column_cards = [grid[row][col] for row in range(rows) if grid[row][col] is not None]
+            for row in range(rows):
+                grid[row][col] = column_cards[row] if row < len(column_cards) else None
+
+    def _apply_compacted_layout_and_fill(self) -> None:
+        layout = self._pending_layout_after_compact
+        self._pending_layout_after_compact = None
+        if layout is not None:
+            self.tableau = [list(row) for row in layout]
+        if not self.stock_pile.cards or not self._has_gaps():
+            self._on_compact_sequence_complete()
+            return
+        self._start_fill_animation()
+
+    def _start_fill_animation(self) -> None:
+        moves_added = False
+        for row in range(self.rows):
+            for col in reversed(range(self.cols)):
+                if not self.stock_pile.cards:
+                    break
+                if self.tableau[row][col] is None:
+                    card = self.stock_pile.cards.pop()
+                    card.face_up = True
+                    dest_rect = self._cell_rect(row, col)
+
+                    def _place(card_ref: C.Card = card, r: int = row, c: int = col) -> None:
+                        self.tableau[r][c] = card_ref
+
+                    self._queue_move(
+                        card,
+                        (self.stock_pile.x, self.stock_pile.y),
+                        (dest_rect.x, dest_rect.y),
+                        on_complete=_place,
+                        dur_ms=260,
+                    )
+                    moves_added = True
+            if not self.stock_pile.cards:
+                break
+        if moves_added:
+            self._set_post_queue_callback(self._on_compact_sequence_complete)
+        else:
+            self._on_compact_sequence_complete()
+
+    def _on_compact_sequence_complete(self) -> None:
+        if not self.game_over and self._should_prompt_after_compact():
+            self._prompt_game_over()
+        else:
+            self._check_game_end()
+
+    def _should_prompt_after_compact(self) -> bool:
+        if self._has_matching_pairs():
+            return False
+        if not self._is_full():
+            return False
+        return True
+
+    def _prompt_game_over(self) -> None:
+        self.game_over = True
+        self.did_win = False
+        self.selection = None
+        self.message = "No more moves."
+        _clear_saved_game()
+        self.game_over_prompt.open("No more moves remain. Start a new game or quit?")
+
+    def _prompt_new_game_from_prompt(self) -> None:
+        self.game_over_prompt.close()
+        self.new_game()
+
+    def _prompt_quit_to_menu(self) -> None:
+        self.game_over_prompt.close()
+        self.ui_helper.goto_main_menu()
+
     # ----- Helpers -----
     def can_compact(self) -> bool:
-        if self.game_over:
+        if self.game_over or self._is_busy():
             return False
         return self._has_gaps()
 
@@ -505,6 +810,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         card2 = self.tableau[r2][c2]
         if card1 is None or card2 is None:
             return
+        self._push_undo_state()
         self.tableau[r1][c1] = None
         self.tableau[r2][c2] = None
         card1.face_up = True
@@ -548,24 +854,43 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
             if not self.game_over:
                 self.message = "No gaps to compact."
             return
-        self._compact_rows()
-        self._compact_columns()
-        self._compact_rows()
-        if self.stock_pile.cards:
-            self._fill_from_stock()
-        if not self.game_over:
-            self.message = "Tableau compacted."
-        self._check_game_end()
+        if self._is_busy():
+            return
+        self.selection = None
+        self.message = ""
+        self._undo_stack.clear()
 
-    def _fill_from_stock(self) -> None:
+        original_positions: Dict[C.Card, Tuple[int, int]] = {}
         for row in range(self.rows):
-            for col in reversed(range(self.cols)):
-                if not self.stock_pile.cards:
-                    return
-                if self.tableau[row][col] is None:
-                    card = self.stock_pile.cards.pop()
-                    card.face_up = True
-                    self.tableau[row][col] = card
+            for col in range(self.cols):
+                card = self.tableau[row][col]
+                if card is not None:
+                    original_positions[card] = (row, col)
+
+        layout, target_positions = self._simulate_compact_layout()
+        self._pending_layout_after_compact = layout
+
+        moves: List[Tuple[C.Card, Tuple[int, int], Tuple[int, int]]] = []
+        for card, start in original_positions.items():
+            end = target_positions.get(card, start)
+            if end != start:
+                sr, sc = start
+                er, ec = end
+                start_rect = self._cell_rect(sr, sc)
+                end_rect = self._cell_rect(er, ec)
+                moves.append((card, (start_rect.x, start_rect.y), (end_rect.x, end_rect.y)))
+
+        for card, start in original_positions.items():
+            if target_positions.get(card, start) != start:
+                sr, sc = start
+                self.tableau[sr][sc] = None
+
+        if moves:
+            for card, from_xy, to_xy in moves:
+                self._queue_move(card, from_xy, to_xy, dur_ms=220)
+            self._set_post_queue_callback(self._apply_compacted_layout_and_fill)
+        else:
+            self._apply_compacted_layout_and_fill()
 
     def _has_matching_pairs(self) -> bool:
         for row in range(self.rows):
@@ -623,6 +948,8 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
             self.stock_pile.draw(screen)
             self.matched_pile.draw(screen)
 
+            self.anim.draw(screen, scroll_x=self.scroll_x, scroll_y=self.scroll_y)
+
             font = C.FONT_SMALL if C.FONT_SMALL is not None else pygame.font.SysFont(pygame.font.get_default_font(), 20, bold=True)
             stock_label = font.render("Stock", True, C.WHITE)
             stock_pos = self._world_to_screen(
@@ -654,11 +981,19 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.ui_helper.draw_menu_modal(screen)
         if self.foundation_modal.visible:
             self.foundation_modal.draw(screen)
+        if self.game_over_prompt.visible:
+            self.game_over_prompt.draw(screen)
 
     # ----- Event handling -----
     def handle_event(self, event) -> None:
         if event.type == pygame.MOUSEMOTION:
             self.edge_pan.on_mouse_pos(event.pos)
+
+        if self.game_over_prompt.visible:
+            if event.type in (pygame.VIDEORESIZE, getattr(pygame, "WINDOWRESIZED", pygame.NOEVENT)):
+                self.compute_layout()
+            self.game_over_prompt.handle_event(event)
+            return
 
         if self.foundation_modal.visible:
             if self.foundation_modal.handle_event(event):
@@ -676,6 +1011,9 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         if self.toolbar and self.toolbar.handle_event(event):
             return
         if self.ui_helper.handle_shortcuts(event):
+            return
+
+        if self._is_busy():
             return
 
         if event.type in (pygame.VIDEORESIZE, getattr(pygame, "WINDOWRESIZED", pygame.NOEVENT)):
