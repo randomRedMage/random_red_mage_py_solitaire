@@ -78,8 +78,8 @@ class GateGameScene(C.Scene):
     - 2 reserve piles (left/right of the 8 center piles), start with 5 face-up cards; cannot place onto reserves.
     - 4 foundations with dedicated suits (Spades, Hearts, Diamonds, Clubs) above the top row of 4 center piles.
     - Stock (above) and Waste (below) on the far left; click stock to draw 1 card (no redeal).
-    - When a center pile becomes empty, it is immediately filled from Stock, else from Waste. If both are empty, it stays
-      empty; the player may manually move a reserve top card into the empty center (optional).
+    - When a center pile becomes empty, it is immediately filled by the nearest reserve's top card if available, otherwise
+      by the other reserve. If both reserves are empty, fill from Waste, then Stock. If no cards remain, it stays empty.
     - Objective: complete all foundations A->K of their suit. Cards cannot be removed from foundations.
     """
 
@@ -384,37 +384,92 @@ class GateGameScene(C.Scene):
         for ti, p in enumerate(self.center):
             if p.cards:
                 continue
+
+            # Reserves take priority based on proximity to the vacancy
+            reserve_order = sorted(
+                range(len(self.reserves)),
+                key=lambda ri: (abs(self.reserves[ri].x - p.x), ri),
+            )
+            for ri in reserve_order:
+                reserve = self.reserves[ri]
+                if not reserve.cards:
+                    continue
+                # Compute the source position using the card's current rect
+                from_rect = reserve.rect_for_index(len(reserve.cards) - 1)
+                card = reserve.cards.pop()
+                card.face_up = True
+
+                def _done(ci=card, t_index=ti):
+                    self.center[t_index].cards.append(ci)
+                    self._fill_center_vacancies()
+                    self._maybe_auto_move_revealed_aces()
+
+                self.anim.start_move(
+                    card,
+                    (from_rect.x, from_rect.y),
+                    (p.x, p.y),
+                    dur_ms=320,
+                    on_complete=_done,
+                )
+                return
+
+            if self.waste_pile.cards:
+                card = self.waste_pile.cards.pop()
+                card.face_up = True
+
+                def _done(ci=card, t_index=ti):
+                    self.center[t_index].cards.append(ci)
+                    self._fill_center_vacancies()
+                    self._maybe_auto_move_revealed_aces()
+
+                self.anim.start_move(
+                    card,
+                    (self.waste_pile.x, self.waste_pile.y),
+                    (p.x, p.y),
+                    dur_ms=300,
+                    on_complete=_done,
+                )
+                return
+
             if self.stock_pile.cards:
                 card = self.stock_pile.cards.pop()
                 # If it's an Ace, route to foundation instead
                 if card.rank == 1:
                     fi = self._foundation_index_for_suit(card.suit)
                     card.face_up = True
+
                     def _done(ci=card, ffi=fi):
                         self.foundations[ffi].cards.append(ci)
                         # Chain next fill and auto-move aces
                         self._fill_center_vacancies()
                         self._maybe_auto_move_revealed_aces()
-                    self.anim.start_move(card, (self.stock_pile.x, self.stock_pile.y), (self.foundations[fi].x, self.foundations[fi].y), dur_ms=320, on_complete=_done)
+
+                    self.anim.start_move(
+                        card,
+                        (self.stock_pile.x, self.stock_pile.y),
+                        (self.foundations[fi].x, self.foundations[fi].y),
+                        dur_ms=320,
+                        on_complete=_done,
+                    )
                 else:
                     # Flip mid animation from back to face-up
+
                     def _done(ci=card, t_index=ti):
                         self.center[t_index].cards.append(ci)
                         self._fill_center_vacancies()
                         self._maybe_auto_move_revealed_aces()
-                    self.anim.start_move(card, (self.stock_pile.x, self.stock_pile.y), (p.x, p.y), dur_ms=350, on_complete=_done, flip_mid=True)
+
+                    self.anim.start_move(
+                        card,
+                        (self.stock_pile.x, self.stock_pile.y),
+                        (p.x, p.y),
+                        dur_ms=350,
+                        on_complete=_done,
+                        flip_mid=True,
+                    )
                 return
-            elif self.waste_pile.cards:
-                card = self.waste_pile.cards.pop()
-                card.face_up = True
-                def _done(ci=card, t_index=ti):
-                    self.center[t_index].cards.append(ci)
-                    self._fill_center_vacancies()
-                    self._maybe_auto_move_revealed_aces()
-                self.anim.start_move(card, (self.waste_pile.x, self.waste_pile.y), (p.x, p.y), dur_ms=300, on_complete=_done)
-                return
-            else:
-                return
+
+            return
 
     def _has_legal_moves_when_stock_empty(self) -> bool:
         # Any move from waste to foundation or center?
