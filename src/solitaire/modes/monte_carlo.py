@@ -932,28 +932,9 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         self.message = ""
         self._undo_stack.clear()
 
-        layout, move_steps = self._simulate_compact_layout()
+        layout, _ = self._simulate_compact_layout()
         self._pending_layout_after_compact = layout
-
-        if move_steps:
-            for card, (sr, sc), (er, ec) in move_steps:
-                start_rect = self._cell_rect(sr, sc)
-                end_rect = self._cell_rect(er, ec)
-
-                def _clear_source(r: int = sr, c: int = sc) -> None:
-                    if 0 <= r < self.rows and 0 <= c < self.cols:
-                        self.tableau[r][c] = None
-
-                self._queue_move(
-                    card,
-                    (start_rect.x, start_rect.y),
-                    (end_rect.x, end_rect.y),
-                    on_start=_clear_source,
-                    dur_ms=220,
-                )
-            self._set_post_queue_callback(self._apply_compacted_layout_and_fill)
-        else:
-            self._apply_compacted_layout_and_fill()
+        self._apply_compacted_layout_and_fill()
 
     def _has_matching_pairs(self) -> bool:
         for row in range(self.rows):
