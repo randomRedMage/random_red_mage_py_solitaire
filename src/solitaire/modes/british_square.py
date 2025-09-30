@@ -91,7 +91,7 @@ class BritishSquareGameScene(C.Scene):
         self.foundations: List[C.Pile] = [C.Pile(0, 0) for _ in range(4)]
         self.foundation_suits: List[int] = [0, 1, 2, 3]  # Spades, Hearts, Diamonds, Clubs
         self.foundation_progress: List[int] = [0, 0, 0, 0]
-        self.tableau: List[C.Pile] = [C.Pile(0, 0, fan_y=max(26, int(C.CARD_H * 0.22))) for _ in range(16)]
+        self.tableau: List[C.Pile] = [C.Pile(0, 0, fan_y=0) for _ in range(16)]
         self.tableau_dirs: List[int] = [0 for _ in range(16)]  # 0 = not set, 1 = building up, -1 = down
         self.stock_pile: C.Pile = C.Pile(0, 0)
         self.waste_pile: C.Pile = C.Pile(0, 0)
@@ -129,6 +129,19 @@ class BritishSquareGameScene(C.Scene):
 
         # UI helper / toolbar
         self.ui_helper = ModeUIHelper(self, game_id="british_square")
+
+        font_path = os.path.join(
+            os.path.dirname(__file__), "..", "assets", "fonts", "DejaVuSans.ttf"
+        )
+        font_path = os.path.abspath(font_path)
+        try:
+            self.tableau_info_font = pygame.font.Font(font_path, 22)
+        except Exception:
+            self.tableau_info_font = pygame.font.SysFont("DejaVu Sans", 22, bold=True)
+        self._tableau_arrow_glyphs = {
+            1: self.tableau_info_font.render("\u2B06", True, (255, 255, 255)),
+            -1: self.tableau_info_font.render("\u2B07", True, (255, 255, 255)),
+        }
 
         def can_undo() -> bool:
             return self.undo_mgr.can_undo()
@@ -190,7 +203,7 @@ class BritishSquareGameScene(C.Scene):
                 pile = self.tableau[idx]
                 pile.x = left + c * (C.CARD_W + gap_x)
                 pile.y = top_y + r * (C.CARD_H + gap_y)
-                pile.fan_y = max(28, int(C.CARD_H * 0.22))
+                pile.fan_y = 0
 
         # Foundations column to the right with full card width gap
         rightmost = left + (cols - 1) * (C.CARD_W + gap_x)
@@ -475,30 +488,57 @@ class BritishSquareGameScene(C.Scene):
         return card.rank == top.rank - 1
 
     def _fill_empty_piles(self) -> None:
+        if self.animator.active:
+            return
         for idx, pile in enumerate(self.tableau):
             if pile.cards:
                 continue
-            replacement = None
+            source_pile: Optional[C.Pile] = None
             if self.waste_pile.cards:
-                replacement = self.waste_pile.cards.pop()
+                source_pile = self.waste_pile
             elif self.stock_pile.cards:
-                replacement = self.stock_pile.cards.pop()
-                replacement.face_up = True
-            if replacement:
-                replacement.face_up = True
-                pile.cards.append(replacement)
-                self.tableau_dirs[idx] = 0
+                source_pile = self.stock_pile
+            if source_pile is None or not source_pile.cards:
+                continue
+
+            src_index = len(source_pile.cards) - 1
+            if src_index >= 0:
+                src_rect = source_pile.rect_for_index(src_index)
+            else:
+                src_rect = pygame.Rect(source_pile.x, source_pile.y, C.CARD_W, C.CARD_H)
+            card = source_pile.cards.pop()
+            card.face_up = True
+
+            dest_rect = pygame.Rect(pile.x, pile.y, C.CARD_W, C.CARD_H)
+
+            def _on_complete(card_ref: C.Card = card, dest_idx: int = idx) -> None:
+                self.tableau[dest_idx].cards.append(card_ref)
+                self.tableau_dirs[dest_idx] = 0
+                self._fill_empty_piles()
+
+            self.animator.start_move(
+                card,
+                (src_rect.x, src_rect.y),
+                (dest_rect.x, dest_rect.y),
+                dur_ms=260,
+                on_complete=_on_complete,
+            )
+            return
 
     def _try_move_to_foundation(self, src_kind: str, src_index: int) -> bool:
+        if self.animator.active:
+            return False
         if src_kind == "tableau":
             pile = self.tableau[src_index]
             if not pile.cards:
                 return False
             card = pile.cards[-1]
+            from_rect = pile.rect_for_index(len(pile.cards) - 1)
         elif src_kind == "waste":
             if not self.waste_pile.cards:
                 return False
             card = self.waste_pile.cards[-1]
+            from_rect = self.waste_pile.rect_for_index(len(self.waste_pile.cards) - 1)
         else:
             return False
         fi = self._foundation_index_for_suit(card.suit)
@@ -511,9 +551,24 @@ class BritishSquareGameScene(C.Scene):
             self._reset_tableau_dir(src_index)
         else:
             self.waste_pile.cards.pop()
-        self._advance_foundation(card, fi)
-        self._fill_empty_piles()
-        self._check_for_completion()
+        card.face_up = True
+
+        dest_pile = self.foundations[fi]
+        dest_rect = dest_pile.rect_for_index(len(dest_pile.cards)) if dest_pile.cards else pygame.Rect(dest_pile.x, dest_pile.y, C.CARD_W, C.CARD_H)
+
+        def _on_complete(card_ref: C.Card = card, foundation_index: int = fi) -> None:
+            self._advance_foundation(card_ref, foundation_index)
+            self._fill_empty_piles()
+            self._check_for_completion()
+            self._check_for_loss()
+
+        self.animator.start_move(
+            card,
+            (from_rect.x, from_rect.y),
+            (dest_rect.x, dest_rect.y),
+            dur_ms=260,
+            on_complete=_on_complete,
+        )
         return True
 
     def _check_for_completion(self) -> None:
@@ -610,6 +665,8 @@ class BritishSquareGameScene(C.Scene):
             return
         if self._result_modal:
             self.auto_active = False
+            return
+        if self.animator.active:
             return
         now = pygame.time.get_ticks()
         if now - self.auto_last_time < self.auto_interval_ms:
@@ -763,9 +820,6 @@ class BritishSquareGameScene(C.Scene):
                 now = pygame.time.get_ticks()
                 if now - self._last_click_time < 350 and (abs(world[0] - self._last_click_pos[0]) < 6 and abs(world[1] - self._last_click_pos[1]) < 6):
                     if self._try_move_to_foundation("waste", 0):
-                        self._fill_empty_piles()
-                        self._check_for_completion()
-                        self._check_for_loss()
                         return
                 self.drag_state = _DragState(
                     cards=[self.waste_pile.cards[-1]],
@@ -800,9 +854,6 @@ class BritishSquareGameScene(C.Scene):
                 if self._try_move_to_foundation("tableau", idx):
                     self.drag_state = None
                     self.edge_pan.set_active(False)
-                    self._fill_empty_piles()
-                    self._check_for_completion()
-                    self._check_for_loss()
                     return
             self.edge_pan.set_active(True)
             self._last_click_time = pygame.time.get_ticks()
@@ -890,16 +941,12 @@ class BritishSquareGameScene(C.Scene):
         screen.fill(C.TABLE_BG)
 
         # Draw piles
-        all_piles = [
-            (self.stock_pile, "Stock"),
-            (self.waste_pile, "Waste"),
-        ]
-        for idx in range(16):
-            all_piles.append((self.tableau[idx], ""))
-        for pile, _ in all_piles:
-            self._draw_pile(screen, pile)
-        for pile in self.foundations:
-            self._draw_pile(screen, pile)
+        self._draw_pile(screen, self.stock_pile, "stock", 0)
+        self._draw_pile(screen, self.waste_pile, "waste", 0)
+        for idx, pile in enumerate(self.tableau):
+            self._draw_pile(screen, pile, "tableau", idx)
+        for fi, pile in enumerate(self.foundations):
+            self._draw_pile(screen, pile, "foundation", fi)
 
         # Draw dragged card on top
         if self.drag_state:
@@ -959,8 +1006,15 @@ class BritishSquareGameScene(C.Scene):
                 surf = C.get_card_surface(card)
                 screen.blit(surf, (px + self.scroll_x, py + self.scroll_y))
 
-    def _draw_pile(self, screen, pile: C.Pile) -> None:
-        if not pile.cards:
+    def _draw_pile(self, screen, pile: C.Pile, kind: str = "", index: int = -1) -> None:
+        skip_top = (
+            kind == "tableau"
+            and self.drag_state
+            and self.drag_state.src_kind == "tableau"
+            and self.drag_state.src_index == index
+        )
+        visible_count = len(pile.cards) - (1 if skip_top else 0)
+        if visible_count <= 0:
             pygame.draw.rect(
                 screen,
                 (255, 255, 255, 50),
@@ -968,11 +1022,73 @@ class BritishSquareGameScene(C.Scene):
                 width=2,
                 border_radius=C.CARD_RADIUS,
             )
+        else:
+            for idx_card, card in enumerate(pile.cards):
+                if skip_top and idx_card == len(pile.cards) - 1:
+                    continue
+                rect = pile.rect_for_index(idx_card)
+                surf = C.get_card_surface(card)
+                screen.blit(surf, (rect.x + self.scroll_x, rect.y + self.scroll_y))
+        if kind == "tableau":
+            self._draw_tableau_indicators(screen, pile, index, skip_top)
+
+    def _draw_tableau_indicators(
+        self, screen, pile: C.Pile, index: int, skip_top: bool
+    ) -> None:
+        if not hasattr(self, "tableau_info_font"):
             return
-        for idx, card in enumerate(pile.cards):
-            rect = pile.rect_for_index(idx)
-            surf = C.get_card_surface(card)
-            screen.blit(surf, (rect.x + self.scroll_x, rect.y + self.scroll_y))
+        base_x = pile.x + self.scroll_x
+        base_y = pile.y + self.scroll_y
+        display_count = max(0, len(pile.cards) - (1 if skip_top else 0))
+
+        count_text = self.tableau_info_font.render(str(display_count), True, (255, 255, 255))
+        count_box = pygame.Surface(
+            (count_text.get_width() + 8, count_text.get_height() + 4), pygame.SRCALPHA
+        )
+        pygame.draw.rect(count_box, (0, 0, 0, 170), count_box.get_rect(), border_radius=4)
+        count_box.blit(
+            count_text,
+            (
+                (count_box.get_width() - count_text.get_width()) // 2,
+                (count_box.get_height() - count_text.get_height()) // 2,
+            ),
+        )
+        screen.blit(
+            count_box,
+            (
+                base_x + C.CARD_W - count_box.get_width() - 4,
+                base_y + C.CARD_H - count_box.get_height() - 4,
+            ),
+        )
+
+        direction = 0
+        if 0 <= index < len(self.tableau_dirs):
+            direction = self.tableau_dirs[index]
+        if direction == 0 or display_count <= 0:
+            return
+        arrow_surf = self._tableau_arrow_glyphs.get(direction)
+        if arrow_surf is None:
+            glyph = "\u2B06" if direction > 0 else "\u2B07"
+            arrow_surf = self.tableau_info_font.render(glyph, True, (255, 255, 255))
+            self._tableau_arrow_glyphs[direction] = arrow_surf
+        arrow_box = pygame.Surface(
+            (arrow_surf.get_width() + 8, arrow_surf.get_height() + 4), pygame.SRCALPHA
+        )
+        pygame.draw.rect(arrow_box, (0, 0, 0, 170), arrow_box.get_rect(), border_radius=4)
+        arrow_box.blit(
+            arrow_surf,
+            (
+                (arrow_box.get_width() - arrow_surf.get_width()) // 2,
+                (arrow_box.get_height() - arrow_surf.get_height()) // 2,
+            ),
+        )
+        screen.blit(
+            arrow_box,
+            (
+                base_x + 4,
+                base_y + C.CARD_H - arrow_box.get_height() - 4,
+            ),
+        )
 
     def _draw_result_modal(self, screen) -> None:
         modal_rect = pygame.Rect(0, 0, 420, 220)
