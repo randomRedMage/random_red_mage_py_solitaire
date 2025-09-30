@@ -27,6 +27,21 @@
     ],
     "max_width": 880
   },
+  "british_square": {
+    "title": "British Square — How to Play",
+    "lines": [
+      "Goal: Build each suited foundation from Ace up to King, place the second King on top, then build back down to Ace.",
+      "Setup: Two standard decks are shuffled together. Four rows of four face-up cards form the tableau. Remaining cards become the face-down stock; the waste starts empty.",
+      "Layout: Tableau piles form a centred 4×4 grid. A single column of foundations — Spades, Hearts, Diamonds, Clubs — sits one card-width to the right. Stock and waste piles rest to the left.",
+      "Moves to foundations: Drag or double-click any exposed tableau or waste top card that matches the next rank required for its suited foundation (A→K, the second K, then K→A).",
+      "Tableau building: Move one card at a time between tableau piles when it matches suit and is exactly one rank above or below the destination top card. The first move sets that pile's build direction until the pile is emptied.",
+      "Empty tableau piles immediately refill from the waste top card when available; otherwise draw the next stock card (turned face-up) to fill the vacancy.",
+      "Stock & waste: Click the stock to deal one card face-up to the waste. Waste cards may play to tableau piles (respecting suit/direction) or foundations.",
+      "Controls: The toolbar provides New, Restart, Undo, Hint, Auto (once stock and waste are empty), Help, and Save & Exit. Dragging near edges pans the table when layouts exceed the screen.",
+      "End: Win when all four foundations complete both ascending and descending sequences. If the stock and waste are empty and no tableau moves remain, the game is lost."
+    ],
+    "max_width": 900
+  },
   "beleaguered_castle": {
     "title": "Beleaguered Castle - How to Play",
     "lines": [
