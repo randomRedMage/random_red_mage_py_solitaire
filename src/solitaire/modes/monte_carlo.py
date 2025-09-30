@@ -598,10 +598,12 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
 
     def _queue_move(
         self,
-        card: C.Card,
+        card: Optional[C.Card],
         from_xy: Tuple[int, int],
         to_xy: Tuple[int, int],
         *,
+        card_getter: Optional[Callable[[], Optional[C.Card]]] = None,
+        on_start: Optional[Callable[[], None]] = None,
         on_complete: Optional[Callable[[], None]] = None,
         dur_ms: int = 240,
     ) -> None:
@@ -610,6 +612,8 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
             "from": from_xy,
             "to": to_xy,
             "dur": max(60, int(dur_ms)),
+            "card_getter": card_getter,
+            "on_start": on_start,
             "on_complete": on_complete,
         }
         self._move_queue.append(move)
@@ -624,6 +628,26 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
             return
         move = self._move_queue.pop(0)
 
+        card = move.get("card")
+        if card is None:
+            getter = move.get("card_getter")
+            if callable(getter):
+                try:
+                    card = getter()
+                except Exception:
+                    card = None
+        if card is None:
+            self._start_next_move()
+            return
+        move["card"] = card
+
+        on_start = move.get("on_start")
+        if callable(on_start):
+            try:
+                on_start()
+            except Exception:
+                pass
+
         def _finish(m=move) -> None:
             callback = m.get("on_complete")
             if callable(callback):
@@ -631,7 +655,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
             self._start_next_move()
 
         self.anim.start_move(
-            move["card"],
+            card,
             move["from"],
             move["to"],
             dur_ms=move.get("dur", 240),
@@ -709,17 +733,31 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
                 if not self.stock_pile.cards:
                     break
                 if self.tableau[row][col] is None:
-                    card = self.stock_pile.cards.pop()
-                    card.face_up = True
                     dest_rect = self._cell_rect(row, col)
+                    card_holder: List[Optional[C.Card]] = [None]
 
-                    def _place(card_ref: C.Card = card, r: int = row, c: int = col) -> None:
-                        self.tableau[r][c] = card_ref
+                    def _get_card(holder: List[Optional[C.Card]] = card_holder) -> Optional[C.Card]:
+                        if not self.stock_pile.cards:
+                            return None
+                        card_ref = self.stock_pile.cards.pop()
+                        card_ref.face_up = True
+                        holder[0] = card_ref
+                        return card_ref
+
+                    def _place(
+                        holder: List[Optional[C.Card]] = card_holder,
+                        r: int = row,
+                        c: int = col,
+                    ) -> None:
+                        card_ref = holder[0]
+                        if card_ref is not None:
+                            self.tableau[r][c] = card_ref
 
                     self._queue_move(
-                        card,
+                        None,
                         (self.stock_pile.x, self.stock_pile.y),
                         (dest_rect.x, dest_rect.y),
+                        card_getter=_get_card,
                         on_complete=_place,
                         dur_ms=260,
                     )
@@ -877,7 +915,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
         layout, target_positions = self._simulate_compact_layout()
         self._pending_layout_after_compact = layout
 
-        moves: List[Tuple[C.Card, Tuple[int, int], Tuple[int, int]]] = []
+        moves: List[Tuple[C.Card, Tuple[int, int], Tuple[int, int], Tuple[int, int]]] = []
         for card, start in original_positions.items():
             end = target_positions.get(card, start)
             if end != start:
@@ -885,16 +923,20 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
                 er, ec = end
                 start_rect = self._cell_rect(sr, sc)
                 end_rect = self._cell_rect(er, ec)
-                moves.append((card, (start_rect.x, start_rect.y), (end_rect.x, end_rect.y)))
-
-        for card, start in original_positions.items():
-            if target_positions.get(card, start) != start:
-                sr, sc = start
-                self.tableau[sr][sc] = None
+                moves.append((card, (start_rect.x, start_rect.y), (end_rect.x, end_rect.y), (sr, sc)))
 
         if moves:
-            for card, from_xy, to_xy in moves:
-                self._queue_move(card, from_xy, to_xy, dur_ms=220)
+            for card, from_xy, to_xy, (sr, sc) in moves:
+                def _clear_source(r: int = sr, c: int = sc) -> None:
+                    self.tableau[r][c] = None
+
+                self._queue_move(
+                    card,
+                    from_xy,
+                    to_xy,
+                    on_start=_clear_source,
+                    dur_ms=220,
+                )
             self._set_post_queue_callback(self._apply_compacted_layout_and_fill)
         else:
             self._apply_compacted_layout_and_fill()
