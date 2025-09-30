@@ -773,6 +773,7 @@ class BritishSquareGameScene(C.Scene):
                     src_index=0,
                     offset=(world[0] - self.waste_pile.x, world[1] - self.waste_pile.y),
                 )
+                self.edge_pan.set_active(True)
                 self._last_click_time = now
                 self._last_click_pos = world
                 return
@@ -798,10 +799,12 @@ class BritishSquareGameScene(C.Scene):
             if now - self._last_click_time < 350 and (abs(world[0] - self._last_click_pos[0]) < 6 and abs(world[1] - self._last_click_pos[1]) < 6):
                 if self._try_move_to_foundation("tableau", idx):
                     self.drag_state = None
+                    self.edge_pan.set_active(False)
                     self._fill_empty_piles()
                     self._check_for_completion()
                     self._check_for_loss()
                     return
+            self.edge_pan.set_active(True)
             self._last_click_time = pygame.time.get_ticks()
             self._last_click_pos = world
             return
@@ -822,6 +825,7 @@ class BritishSquareGameScene(C.Scene):
         world = self._screen_to_world(pos)
         drag = self.drag_state
         self.drag_state = None
+        self.edge_pan.set_active(False)
 
         card = drag.cards[-1]
         if drag.src_kind == "tableau":
@@ -863,10 +867,7 @@ class BritishSquareGameScene(C.Scene):
 
     def _on_mouse_motion(self, pos: Tuple[int, int], rel: Tuple[int, int]) -> None:
         world = self._screen_to_world(pos)
-        if self.drag_state:
-            self.edge_pan.on_mouse_motion(pos, rel)
-        else:
-            self.edge_pan.reset()
+        self.edge_pan.on_mouse_pos(pos)
         piles_for_peek = [self.waste_pile] + self.tableau
         self.peek.on_motion_over_piles(piles_for_peek, world)
 
@@ -876,9 +877,14 @@ class BritishSquareGameScene(C.Scene):
     def update(self, dt: float) -> None:
         self._maybe_expire_hint()
         self._auto_play_step()
-        self.edge_pan.update(self)
-        if not self.drag_state:
-            self.drag_pan.update(self)
+        min_sx, max_sx, min_sy, max_sy = self._scroll_limits()
+        has_h = max_sx > min_sx
+        has_v = max_sy > min_sy
+        dx, dy = self.edge_pan.step(has_h_scroll=has_h, has_v_scroll=has_v)
+        if dx or dy:
+            self.scroll_x += dx
+            self.scroll_y += dy
+            self._clamp_scroll_xy()
 
     def draw(self, screen) -> None:
         screen.fill(C.TABLE_BG)
