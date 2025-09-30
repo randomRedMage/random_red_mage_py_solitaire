@@ -1,11 +1,11 @@
 Unit Tests
 
-This directory contains automated tests for the Solitaire app. They validate end‑to‑end scene flow (Title → Menu → Game options → Game → back) and basic invariants per game mode without rendering a real window.
+This directory contains automated tests for the Solitaire app. They validate end‑to‑end scene flow (Title → Menu → Game options modal → Game → back) and basic invariants per game mode without rendering a real window.
 
 What the tests cover
 - App boot and main loop integration via `solitaire.__main__`
 - Title and main menu transitions
-- Game option scenes for each mode (prefers `solitaire.scenes.game_options.*` if present, falls back to in‑mode classes during refactors)
+- Game option modals driven by the main menu controllers for each mode
 - Starting a new game from options and returning to the menu
 - Light per‑mode assertions (e.g., pile counts, flags, basic layout defaults)
 
@@ -27,6 +27,6 @@ Run the tests
 - Verbose output: `pytest -q` or `pytest -vv`
 
 Notes
-- The app‑flow test parametrizes across all supported games. It prefers the new per‑game options modules under `solitaire.scenes.game_options` and will still work for modes not yet refactored.
-- If you add a new game or move an OptionsScene, update the mode entry in `tests/unit_tests/test_app_flow.py` if needed (usually just the `options_module` value).
+- The app‑flow test parametrizes across all supported games using the controller registry in `solitaire.scenes.menu_options`.
+- If you add a new game or adjust controller behaviour, update the mode entry in `tests/unit_tests/test_app_flow.py` accordingly.
 

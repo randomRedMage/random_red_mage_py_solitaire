@@ -1,4 +1,17 @@
 {
+  "accordion": {
+    "title": "Accordion — How to Play",
+    "lines": [
+      "Goal: Finish with piles at or below the difficulty target once the stock is empty.",
+      "Setup: A shuffled 52-card stock sits at the upper left. Click it to deal face-up cards in rows of seven, wrapping left to start each new row.",
+      "Layout: Each dealt card becomes its own pile. When a new row starts, the first card is considered adjacent to the final column of the previous row.",
+      "Moves: Drag the top pile one space to the left when the top cards match in rank or suit. You may also jump three piles to the left with the same match rule.",
+      "Dragging carries the entire pile with the top card. There is no need to fan the cards in a pile.",
+      "Dealing: You may deal a new card at any time until the stock is empty. On Normal and Hard, dealing disables undo until another move is made.",
+      "Win: Stock empty and no moves left with 7 (Easy), 4 (Normal), or 1 (Hard) piles remaining. Otherwise the game is a loss.",
+      "Toolbar: Menu, New game, Undo, Save&Exit, and Help."
+    ]
+  },
   "big_ben": {
     "title": "Big Ben - How to Play",
     "lines": [
@@ -52,6 +65,46 @@
       "Press H/Esc to close this help."
     ]
   },
+  "chameleon": {
+    "title": "Chameleon — How to Play",
+    "lines": [
+      "Goal: Build each foundation by suit starting from the starter card and wrapping K→A.",
+      "Setup: Deal 12 face-up cards to the reserve at the upper left, then flip the next card to start the first foundation and set the base rank.",
+      "Tableau: Three columns beneath the foundations build down by 1 regardless of suit, wrapping A→K, and may move in complete descending sequences.",
+      "Reserve: Only the top card may be played. Empty tableau columns auto-fill from the reserve, then from the waste if the reserve is empty.",
+      "Stock/Waste: Click the stock to deal one card face-up to the waste. When the stock is empty, turn the waste over to form a new stock until redeals run out.",
+      "Moves: Drag single cards or valid descending sequences between tableau columns, or play any eligible card to its foundation.",
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+    ],
+    "max_width": 880
+  },
+  "demon": {
+    "title": "Demon (Canfield) — How to Play",
+    "lines": [
+      "Goal: Build each foundation by suit starting from the starter card and wrapping K→A.",
+      "Setup: Deal 13 face-up cards to the Demon reserve at the upper left, then flip the next card to start the first foundation and set the base rank.",
+      "Tableau: Four face-up columns beneath the foundations build down by 1 with alternating colors, wrapping A→K.",
+      "Reserve: Only the top card of the Demon may be played. Empty tableau columns auto-fill from the reserve, then from the waste if the reserve is empty.",
+      "Stock/Waste: Click the stock to deal up to three cards face-up to the waste. When the stock is empty, turn the waste over to form a new stock until replays run out.",
+      "Moves: Drag single cards or ordered alternating sequences between tableau columns, or play any eligible card to its foundation.",
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+    ],
+    "max_width": 880
+  },
+  "duchess": {
+    "title": "Duchess — How to Play",
+    "lines": [
+      "Goal: Build each foundation by suit starting from the chosen base rank, wrapping K→A.",
+      "Setup: Deal four horizontal reserve fans of 4/3/3/3 cards above the foundations, and one face-up card to each tableau column.",
+      "Starter: Choose one reserve top card to begin the first foundation and define the base rank; the remaining foundations follow suit order.",
+      "Tableau: Four face-up columns beneath the foundations build down by 1 with alternating colors, wrapping A→K, and may move in complete alternating sequences.",
+      "Reserve: Only the top card of each reserve fan may be played. Empty tableau columns auto-fill from the reserves, then the waste, then the stock if available.",
+      "Stock/Waste: Click the stock to deal one card face-up to the waste. When empty, turn the waste over once to form a new stock.",
+      "Moves: Drag single cards or valid descending alternating sequences between tableau columns, or play any eligible card to its foundation.",
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+    ],
+    "max_width": 880
+  },
   "golf": {
     "title": "Golf — How to Play",
     "lines": [
@@ -63,6 +116,18 @@
       "Scoring: If tableau is cleared, score = -remaining stock; else = remaining tableau count.",
       "Save&Exit lets you continue later; recent totals shown in Scores.",
       "Undo/Restart available from the toolbar. Press Esc/Close to dismiss help."
+    ]
+  },
+  "monte_carlo": {
+    "title": "Monte Carlo — How to Play",
+    "lines": [
+      "Goal: Remove every card from the tableau and stock by pairing ranks.",
+      "Setup: Deal a 5×5 grid of face-up cards. The remaining deck stays face-down as a stock with a pairs pile beneath it.",
+      "Moves: Select two touching cards (orthogonal or diagonal) of the same rank to discard them to the pairs pile.",
+      "Compacting: Whenever gaps exist you may press Compact or click the stock to slide cards leftward, then upward, repeating until packed.",
+      "After compacting, empty spots refill left-to-right, top-to-bottom from the stock until it is empty.",
+      "Win: All tableau and stock cards are cleared. Lose: the grid is full, the stock is empty, and no adjacent matches remain.",
+      "Toolbar: Menu, New game, Restart, Compact, Save&Exit, and Help."
     ]
   },
   "klondike": {
@@ -116,5 +181,21 @@
       "Auto completes when all tableau cards are face-up.",
       "Use Save&Exit to continue later."
     ]
+  },
+  "bowling_solitaire": {
+    "title": "Bowling Solitaire — How to Play",
+    "lines": [
+      "Goal: Play 10 frames of bowling using card-matching shots and score like ten-pin bowling.",
+      "Setup: Aces through Tens of hearts and spades are shuffled. Ten cards form an upside-down triangle of pins.",
+      "The remaining cards become three ball piles (sizes 5/3/2). Top cards of each pile are face-up for the current ball.",
+      "Shot: Select a face-up ball card then choose 1, 2, or 3 adjacent pins. A single pin must match the card rank.",
+      "For combos, the ones digit of the pin total must match the ball card's ones digit. Removed pins go to the gutter.",
+      "First-ball restrictions: back row pins can't be the very first knock-down, and the middle pin must be part of a combo.",
+      "Second (and third) balls require every picked pin to touch at least one pin knocked down on the prior ball, unless pins reset.",
+      "A ball ends when you clear all pins, discard a ball card, or no moves remain. Strike/spare scoring follows bowling rules.",
+      "Tenth frame: strikes or spares earn extra balls. Pins reset between bonus balls when a rack is cleared.",
+      "Toolbar: Menu, New game, Save&Exit, Help. Action buttons handle Knock Down, Discard Ball, and clearing your selection."
+    ],
+    "max_width": 880
   }
 }
