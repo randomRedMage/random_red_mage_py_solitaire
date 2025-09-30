@@ -151,11 +151,6 @@ class BritishSquareGameScene(C.Scene):
             restart_action={"on_click": self.restart, "tooltip": "Restart current deal"},
             undo_action={"on_click": self.undo, "enabled": can_undo, "tooltip": "Undo last move"},
             hint_action={"on_click": self.show_hint, "enabled": lambda: not self.auto_active},
-            auto_action={
-                "on_click": self.start_autocomplete,
-                "enabled": self.can_autocomplete,
-                "tooltip": "Automatically play remaining cards",
-            },
             save_action=(
                 "Save&Exit",
                 {
@@ -1007,12 +1002,16 @@ class BritishSquareGameScene(C.Scene):
                 screen.blit(surf, (px + self.scroll_x, py + self.scroll_y))
 
     def _draw_pile(self, screen, pile: C.Pile, kind: str = "", index: int = -1) -> None:
-        skip_top = (
-            kind == "tableau"
-            and self.drag_state
-            and self.drag_state.src_kind == "tableau"
-            and self.drag_state.src_index == index
-        )
+        skip_top = False
+        if self.drag_state:
+            if (
+                kind == "tableau"
+                and self.drag_state.src_kind == "tableau"
+                and self.drag_state.src_index == index
+            ):
+                skip_top = True
+            elif kind == "waste" and self.drag_state.src_kind == "waste":
+                skip_top = True
         visible_count = len(pile.cards) - (1 if skip_top else 0)
         if visible_count <= 0:
             pygame.draw.rect(
