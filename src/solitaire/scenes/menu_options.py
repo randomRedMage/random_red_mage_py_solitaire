@@ -732,6 +732,46 @@ class KlondikeController(GameOptionsController):
         return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
 
 
+# --- British Square ---------------------------------------------------
+
+from solitaire.modes import british_square as british_square_mode
+
+
+class BritishSquareController(GameOptionsController):
+    def _has_save(self) -> bool:
+        return british_square_mode.has_saved_game()
+
+    def buttons(self) -> Sequence[ButtonState]:
+        return [
+            ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
+            ButtonState("start", "Start", variant="primary"),
+        ]
+
+    def handle_button(self, key: str) -> ActionResult:
+        if key == "cancel":
+            return ActionResult(close_modal=True)
+        if key == "start":
+            try:
+                british_square_mode._clear_saved_game()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            self.menu_scene.next_scene = british_square_mode.BritishSquareGameScene(self.app)
+            return ActionResult(close_modal=True)
+        if key == "resume" and self._has_save():
+            state = british_square_mode.load_saved_game()
+            if state:
+                self.menu_scene.next_scene = british_square_mode.BritishSquareGameScene(
+                    self.app,
+                    load_state=state,
+                )
+                return ActionResult(close_modal=True)
+        return ActionResult(close_modal=False)
+
+    def compatibility_actions(self) -> Dict[str, str]:
+        return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
+
+
 # --- Pyramid ---------------------------------------------------------
 
 from solitaire.modes import pyramid as pyramid_mode
@@ -946,6 +986,7 @@ CONTROLLER_REGISTRY = {
     "accordion": AccordionController,
     "beleaguered_castle": BeleagueredCastleController,
     "big_ben": BigBenController,
+    "british_square": BritishSquareController,
     "bowling_solitaire": BowlingSolitaireController,
     "chameleon": ChameleonController,
     "demon": DemonController,
