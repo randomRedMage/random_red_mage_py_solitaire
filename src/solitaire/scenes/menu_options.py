@@ -802,6 +802,7 @@ class PyramidController(GameOptionsController):
 # --- TriPeaks --------------------------------------------------------
 
 from solitaire.modes import tripeaks as tripeaks_mode
+from solitaire.modes import monte_carlo as monte_carlo_mode
 
 
 class TriPeaksController(GameOptionsController):
@@ -848,6 +849,44 @@ class TriPeaksController(GameOptionsController):
                     self.app,
                     wrap_ak=wrap,
                     load_state=state,
+                )
+                return ActionResult(close_modal=True)
+            self.set_message("No saved game found.")
+        return ActionResult(close_modal=False)
+
+    def compatibility_actions(self) -> Dict[str, str]:
+        return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
+
+
+# --- Monte Carlo -----------------------------------------------------
+
+
+class MonteCarloController(GameOptionsController):
+    def _has_save(self) -> bool:
+        return monte_carlo_mode.has_saved_game()
+
+    def buttons(self) -> Sequence[ButtonState]:
+        return [
+            ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
+            ButtonState("start", "Start", variant="primary"),
+        ]
+
+    def handle_button(self, key: str) -> ActionResult:
+        if key == "cancel":
+            return ActionResult(close_modal=True)
+        if key == "start":
+            try:
+                monte_carlo_mode._clear_saved_game()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            self.menu_scene.next_scene = monte_carlo_mode.MonteCarloGameScene(self.app)
+            return ActionResult(close_modal=True)
+        if key == "resume" and self._has_save():
+            state = monte_carlo_mode.load_saved_game()
+            if state:
+                self.menu_scene.next_scene = monte_carlo_mode.MonteCarloGameScene(
+                    self.app, load_state=state
                 )
                 return ActionResult(close_modal=True)
             self.set_message("No saved game found.")
@@ -914,6 +953,7 @@ CONTROLLER_REGISTRY = {
     "freecell": FreeCellController,
     "gate": GateController,
     "golf": GolfController,
+    "monte_carlo": MonteCarloController,
     "klondike": KlondikeController,
     "pyramid": PyramidController,
     "tripeaks": TriPeaksController,

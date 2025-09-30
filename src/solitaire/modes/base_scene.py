@@ -107,6 +107,12 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         section="Builders",
     ),
     GameMetadata(
+        key="monte_carlo",
+        label="Monte Carlo",
+        icon_filename="icon_monte_carlo.png",
+        section="Builders",
+    ),
+    GameMetadata(
         key="pyramid",
         label="Pyramid",
         icon_filename="icon_pyramid.png",
@@ -133,7 +139,7 @@ GAME_REGISTRY: Dict[str, GameMetadata] = {meta.key: meta for meta in _GAME_METAD
 # Section definitions preserve the ordering from the original main menu.
 GAME_SECTIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("Packers", ("klondike", "freecell", "gate", "demon", "duchess", "chameleon", "beleaguered_castle", "yukon")),
-    ("Builders", ("big_ben", "golf", "pyramid", "tripeaks")),
+    ("Builders", ("big_ben", "golf", "monte_carlo", "pyramid", "tripeaks")),
     ("Other", ("accordion", "bowling_solitaire")),
 )
 
@@ -263,7 +269,7 @@ class ModeUIHelper:
         register("Restart", restart_action, shortcut=pygame.K_r, store_key="restart")
         register("Undo", undo_action, shortcut=pygame.K_u)
         register("Auto", auto_action, shortcut=pygame.K_a)
-        register("Hint", hint_action, shortcut=pygame.K_h, store_key="hint")
+        register("Hint", hint_action, shortcut=pygame.K_h)
         register("Save", save_action, shortcut=pygame.K_s, store_key="save")
         register("Help", help_action, store_key="help")
 
@@ -287,7 +293,6 @@ class ModeUIHelper:
             restart_action=stored.get("restart"),
             help_action=stored.get("help"),
             save_action=stored.get("save"),
-            hint_action=stored.get("hint"),
         )
 
         return make_toolbar(actions, **kwargs)
