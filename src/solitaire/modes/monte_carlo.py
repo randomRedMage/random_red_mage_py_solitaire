@@ -411,7 +411,7 @@ class MonteCarloGameScene(ScrollableSceneMixin, C.Scene):
                     },
                 )
             ],
-            toolbar_kwargs={"primary_labels": ("Compact", "Undo")},
+            toolbar_kwargs={"primary_labels": ("Compact", "Undo", "Hint")},
         )
 
         self.compute_layout()

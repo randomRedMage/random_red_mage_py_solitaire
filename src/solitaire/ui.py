@@ -379,7 +379,6 @@ class GameMenuModal:
         restart_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
         help_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
         save_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
-        hint_action: Optional[Tuple[str, Mapping[str, Any]]] = None,
     ) -> None:
         self.helper = helper
         self.visible = False
@@ -392,7 +391,6 @@ class GameMenuModal:
             "restart": restart_action,
             "help": help_action,
             "save": save_action,
-            "hint": hint_action,
         }
         self._layout_dirty = True
         self._confirm_state: Optional[Dict[str, Any]] = None
@@ -406,8 +404,6 @@ class GameMenuModal:
             specs.append(("new", "New Game"))
         if self._actions.get("restart"):
             specs.append(("restart", "Restart Game"))
-        if self._actions.get("hint"):
-            specs.append(("hint", "Hint"))
         specs.append(("options", "Game Options"))
         if self._actions.get("help"):
             specs.append(("help", "Help"))
@@ -419,7 +415,7 @@ class GameMenuModal:
 
         for key, label in specs:
             enabled_fn: Optional[Callable[[], bool]] = None
-            if key in ("new", "restart", "hint", "help", "save"):
+            if key in ("new", "restart", "help", "save"):
                 entry = self._actions.get(key)
                 if entry is None:
                     continue
@@ -436,6 +432,14 @@ class GameMenuModal:
             self._buttons.append(button)
             self._button_keys.append(key)
         self._layout_dirty = True
+
+    def remove_action(self, key: str) -> None:
+        if key not in self._actions:
+            return
+        if self._actions[key] is None:
+            return
+        self._actions[key] = None
+        self._build_buttons()
 
     def relayout(self) -> None:
         self._layout_dirty = True
@@ -544,8 +548,6 @@ class GameMenuModal:
                 )
             else:
                 self._execute_entry(entry)
-        elif key == "hint":
-            self._execute_entry(self._actions.get("hint"))
         elif key == "help":
             self._execute_entry(self._actions.get("help"))
         elif key == "save":
