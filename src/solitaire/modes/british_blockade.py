@@ -230,6 +230,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
         self._initialising: bool = False
         self._foundation_up_base: List[Tuple[int, int]] = [(0, 0) for _ in self.foundation_up]
         self._foundation_down_base: List[Tuple[int, int]] = [(0, 0) for _ in self.foundation_down]
+        self._refill_button = None
 
         self.ui_helper = ModeUIHelper(self, game_id="british_blockade")
 
@@ -246,7 +247,21 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
                 {"on_click": lambda: self._save_game(to_menu=True), "tooltip": "Save game and return to menu"},
             ),
             menu_tooltip="Return to menu",
+            extra_actions=[
+                (
+                    "Refill",
+                    {
+                        "on_click": self._on_refill_clicked,
+                        "tooltip": "Deal a new row from the stock",
+                    },
+                )
+            ],
+            toolbar_kwargs={"primary_labels": ("Undo", "Refill")},
         )
+        for button in getattr(self.toolbar, "buttons", []):
+            if getattr(button, "label", "") == "Refill":
+                self._refill_button = button
+                break
 
         self.end_prompt = _EndGamePrompt(self.deal_new, self.ui_helper.goto_menu)
 
@@ -277,7 +292,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
         self._ensure_rows(len(self.tableau_rows) or 1)
 
         foundation_pad = max(self.tableau_gap_x, 24)
-        foundation_y = self.tableau_top + C.CARD_H // 2
+        foundation_y = self.stock_pile.y
         self._foundation_up_base = []
         for idx, pile in enumerate(self.foundation_up):
             base_x = self.tableau_left - foundation_pad - C.CARD_W
@@ -484,10 +499,6 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
 
     def iter_scroll_piles(self) -> Iterable[C.Pile]:  # type: ignore[override]
         for _row, _col, pile in self._iter_tableau():
-            yield pile
-        for pile in self.foundation_up:
-            yield pile
-        for pile in self.foundation_down:
             yield pile
         yield self.stock_pile
 
@@ -763,25 +774,31 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
             if self.drag_state:
                 self.edge_pan.on_mouse_pos(event.pos)
 
+    def _on_refill_clicked(self) -> None:
+        self._handle_stock_action()
+
+    def _handle_stock_action(self) -> None:
+        if self.anim.active:
+            return
+        self.hint_cells = None
+        if self.hint_stock:
+            self.hint_stock = False
+            self.hint_stock_expires_at = 0
+        if not self.phase_two:
+            return
+        if not self.stock_pile.cards:
+            return
+        self.push_undo()
+        self._deal_from_stock_phase_two()
+
     def _on_mouse_down(self, pos: Tuple[int, int]) -> None:
         if self.anim.active:
             return
         self.hint_cells = None
         world = self._screen_to_world(pos)
 
-        if not self.phase_two and self.stock_pile.hit(world) is not None:
-            if self.hint_stock:
-                self.hint_stock = False
-                self.hint_stock_expires_at = 0
-            return
-
-        if self.phase_two and self.stock_pile.hit(world) is not None:
-            if self.hint_stock:
-                self.hint_stock = False
-                self.hint_stock_expires_at = 0
-            if self.stock_pile.cards:
-                self.push_undo()
-                self._deal_from_stock_phase_two()
+        if self.stock_pile.hit(world) is not None:
+            self._handle_stock_action()
             return
 
         # Tableau selection
@@ -1004,6 +1021,15 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
 
         self.draw_top_bar(screen, "British Blockade")
         self.toolbar.draw(screen)
+        if self.hint_stock and self._refill_button is not None:
+            overlay = pygame.Surface(self._refill_button.rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(
+                overlay,
+                (255, 255, 0, 90),
+                overlay.get_rect(),
+                border_radius=8,
+            )
+            screen.blit(overlay, self._refill_button.rect.topleft)
         self.ui_helper.draw_menu_modal(screen)
         if self.end_prompt.visible:
             self.end_prompt.draw(screen)
