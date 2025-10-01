@@ -19,6 +19,7 @@ BTN_BG_DISABLED = (200, 200, 205)
 BTN_BORDER = (160, 160, 170)
 BTN_TEXT = (30, 30, 35)
 BTN_TEXT_DISABLED = (120, 120, 130)
+BTN_HIGHLIGHT = (255, 235, 120)
 MENU_PANEL_BG = (245, 245, 250)
 
 FONT = pygame.font.SysFont("Segoe UI", 18)
@@ -50,6 +51,7 @@ class Button:
         self.min_width = min_width
         self.rect = pygame.Rect(0, 0, 0, 0)
         self._hover = False
+        self._highlight = False
 
         text_w = FONT.render(self.label, True, BTN_TEXT).get_width()
         w = max(self.min_width, text_w + DEFAULT_BUTTON_PADDING_X * 2)
@@ -70,9 +72,18 @@ class Button:
                 return True
         return False
 
+    def set_highlight(self, active: bool) -> None:
+        self._highlight = active
+
+    def is_highlighted(self) -> bool:
+        return self._highlight
+
     def draw(self, surface: pygame.Surface):
         enabled = self.is_enabled()
         bg = BTN_BG_DISABLED if not enabled else (BTN_BG_HOVER if self._hover else BTN_BG)
+        if self._highlight:
+            highlight_rect = self.rect.inflate(10, 10)
+            pygame.draw.rect(surface, BTN_HIGHLIGHT, highlight_rect, border_radius=12)
         pygame.draw.rect(surface, bg, self.rect, border_radius=8)
         pygame.draw.rect(surface, BTN_BORDER, self.rect, width=1, border_radius=8)
         color = BTN_TEXT if enabled else BTN_TEXT_DISABLED
@@ -128,6 +139,12 @@ class Toolbar:
     def draw(self, surface: pygame.Surface):
         for b in self.buttons:
             b.draw(surface)
+
+    def get_button(self, label: str) -> Optional[Button]:
+        for b in self.buttons:
+            if getattr(b, "label", None) == label:
+                return b
+        return None
 
 class HamburgerMenuButton(Button):
     """Toolbar button that opens an in-game modal menu."""
