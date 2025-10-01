@@ -14,7 +14,6 @@ from solitaire import common as C
 from solitaire import mechanics as M
 from solitaire.help_data import create_modal_help
 from solitaire.modes.base_scene import ModeUIHelper
-from solitaire.ui import Button
 
 
 _SAVE_FILENAME = "british_square_save.json"
@@ -124,11 +123,9 @@ class BritishSquareGameScene(C.Scene):
         self.auto_active = False
         self.auto_last_time = 0
         self.auto_interval_ms = 200
-        self._stock_hint_active = False
 
         # End-of-game modal state
         self._result_modal: Optional[Dict[str, Any]] = None
-        self._refill_button: Optional[Button] = None
 
         # UI helper / toolbar
         self.ui_helper = ModeUIHelper(self, game_id="british_square")
@@ -162,18 +159,7 @@ class BritishSquareGameScene(C.Scene):
                 },
             ),
             help_action={"on_click": lambda: self.help.open(), "tooltip": "How to play"},
-            extra_actions=[
-                (
-                    "Refill",
-                    {
-                        "on_click": self._on_click_refill,
-                        "tooltip": "Draw from stock",
-                    },
-                )
-            ],
-            toolbar_kwargs={"primary_labels": ("Refill", "Undo", "Hint")},
         )
-        self._refill_button = self.toolbar.get_button("Refill")
 
         # Help modal (raises if entry missing – ensures help text provided)
         self.help = create_modal_help("british_square")
@@ -216,15 +202,10 @@ class BritishSquareGameScene(C.Scene):
 
         # Foundations column to the right with full card width gap
         rightmost = left + (cols - 1) * (C.CARD_W + gap_x)
-        foundation_gap_x = max(gap_x, C.CARD_W // 2)
-        foundation_cols = 2
-        foundation_rows = max(1, (len(self.foundations) + foundation_cols - 1) // foundation_cols)
-        foundation_start_x = rightmost + C.CARD_W + foundation_gap_x
+        foundation_x = rightmost + C.CARD_W * 2
         for i, pile in enumerate(self.foundations):
-            col = i // foundation_rows
-            row = i % foundation_rows
-            pile.x = foundation_start_x + col * (C.CARD_W + foundation_gap_x)
-            pile.y = stock_y + row * (C.CARD_H + gap_y)
+            pile.x = foundation_x
+            pile.y = top_y + i * (C.CARD_H + gap_y)
 
         # Stock / waste to the left of tableau for balance
         stock_gap = max(gap_x * 2, int(C.CARD_W * 0.8))
@@ -251,7 +232,7 @@ class BritishSquareGameScene(C.Scene):
         return min(xs), max(xs), min(ys), max(ys)
 
     def _content_bounds(self) -> Tuple[int, int, int, int]:
-        piles = [self.stock_pile, self.waste_pile] + self.tableau
+        piles = [self.stock_pile, self.waste_pile] + self.tableau + self.foundations
         bounds = [self._pile_bounds(p) for p in piles]
         lefts, rights, tops, bottoms = zip(*bounds)
         pad = 18
@@ -275,11 +256,6 @@ class BritishSquareGameScene(C.Scene):
             max_sy = min_sy
         self.scroll_x = max(min(self.scroll_x, max_sx), min_sx)
         self.scroll_y = max(min(self.scroll_y, max_sy), min_sy)
-
-    def _scroll_offset_for_kind(self, kind: str) -> Tuple[int, int]:
-        if kind in {"stock", "waste", "tableau"}:
-            return self.scroll_x, self.scroll_y
-        return 0, 0
 
     def _vertical_scrollbar(self):
         min_sx, max_sx, min_sy, max_sy = self._scroll_limits()
@@ -374,7 +350,7 @@ class BritishSquareGameScene(C.Scene):
         if self.undo_mgr.can_undo():
             self.undo_mgr.undo()
             self.peek.cancel()
-            self._clear_hint_targets()
+            self.hint_targets = None
             self.auto_active = False
             self._game_over = False
             self._result_modal = None
@@ -388,7 +364,6 @@ class BritishSquareGameScene(C.Scene):
             self._game_over = False
             self.auto_active = False
             self._result_modal = None
-            self._clear_hint_targets()
 
     def _save_game(self, *, to_menu: bool = False) -> None:
         state = self.record_snapshot()
@@ -401,13 +376,11 @@ class BritishSquareGameScene(C.Scene):
 
     def _load_from_state(self, state: Dict[str, Any]) -> None:
         self.restore_snapshot(state)
-        self._clear_hint_targets()
 
     # ------------------------------------------------------------------
     # Dealing & stock logic
     # ------------------------------------------------------------------
     def deal_new(self) -> None:
-        self._clear_hint_targets()
         deck: List[C.Card] = []
         for _ in range(2):
             for suit in range(4):
@@ -428,6 +401,7 @@ class BritishSquareGameScene(C.Scene):
         self.message = ""
         self.auto_active = False
         self._result_modal = None
+        self.hint_targets = None
 
         cols = 4
         rows = 4
@@ -589,7 +563,6 @@ class BritishSquareGameScene(C.Scene):
             (dest_rect.x, dest_rect.y),
             dur_ms=260,
             on_complete=_on_complete,
-            to_use_scroll=False,
         )
         return True
 
@@ -633,7 +606,7 @@ class BritishSquareGameScene(C.Scene):
         if self._result_modal:
             return
         self.auto_active = False
-        self._clear_hint_targets()
+        self.hint_targets = None
         self._result_modal = {
             "win": win,
             "message": "You won! Start a new game?" if win else "No more moves. Start a new game?",
@@ -730,7 +703,7 @@ class BritishSquareGameScene(C.Scene):
     def show_hint(self) -> None:
         if self.auto_active or self._result_modal:
             return
-        self._clear_hint_targets()
+        self.hint_targets = None
         now = pygame.time.get_ticks()
 
         # Moves to foundation
@@ -775,39 +748,9 @@ class BritishSquareGameScene(C.Scene):
                     self.hint_expires_at = now + 2500
                     return
 
-        if self.stock_pile.cards:
-            self.hint_targets = [("stock", 0)]
-            self._set_stock_hint_active(True)
-            self.hint_expires_at = now + 2500
-            return
-
     def _maybe_expire_hint(self) -> None:
         if self.hint_targets and pygame.time.get_ticks() > self.hint_expires_at:
-            self._clear_hint_targets()
-
-    def _set_stock_hint_active(self, active: bool) -> None:
-        if self._stock_hint_active == active:
-            return
-        self._stock_hint_active = active
-        if self._refill_button:
-            self._refill_button.set_highlight(active)
-
-    def _clear_hint_targets(self) -> None:
-        self.hint_targets = None
-        self._set_stock_hint_active(False)
-
-    def _handle_stock_action(self) -> None:
-        self._clear_hint_targets()
-        if not self.stock_pile.cards:
-            return
-        self.push_undo()
-        if self._draw_from_stock():
-            self.peek.cancel()
-
-    def _on_click_refill(self) -> None:
-        if self.animator.active:
-            return
-        self._handle_stock_action()
+            self.hint_targets = None
 
     # ------------------------------------------------------------------
     # Event handling
@@ -855,12 +798,14 @@ class BritishSquareGameScene(C.Scene):
     def _on_mouse_down(self, pos: Tuple[int, int]) -> None:
         if self.animator.active:
             return
-        self._clear_hint_targets()
+        self.hint_targets = None
         world = self._screen_to_world(pos)
 
         # Stock click
         if self.stock_pile.hit(world) is not None:
-            self._handle_stock_action()
+            if self.stock_pile.cards:
+                self.push_undo()
+                self._draw_from_stock()
             return
 
         # Waste drag
@@ -912,7 +857,7 @@ class BritishSquareGameScene(C.Scene):
 
         # Foundation double-click (no drag)
         for fi, pile in enumerate(self.foundations):
-            hit = pile.hit(pos)
+            hit = pile.hit(world)
             if hit is None:
                 continue
             if pile.cards:
@@ -937,7 +882,7 @@ class BritishSquareGameScene(C.Scene):
         # Attempt foundation placement first
         for fi, pile in enumerate(self.foundations):
             rect = pygame.Rect(pile.x, pile.y, C.CARD_W, C.CARD_H)
-            if rect.collidepoint(pos):
+            if rect.collidepoint(world):
                 if self._can_place_on_foundation(card, fi):
                     self.push_undo()
                     origin.cards.pop()
@@ -1015,14 +960,9 @@ class BritishSquareGameScene(C.Scene):
             for kind, index in self.hint_targets:
                 if kind == "tableau":
                     pile = self.tableau[index]
-                elif kind == "waste":
-                    pile = self.waste_pile
-                elif kind == "stock":
-                    pile = self.stock_pile
                 else:
-                    continue
-                ox, oy = self._scroll_offset_for_kind(kind)
-                screen.blit(overlay, (pile.x + ox, pile.y + oy))
+                    pile = self.waste_pile
+                screen.blit(overlay, (pile.x + self.scroll_x, pile.y + self.scroll_y))
 
         # Scrollbars
         vbar = self._vertical_scrollbar()
@@ -1073,12 +1013,11 @@ class BritishSquareGameScene(C.Scene):
             elif kind == "waste" and self.drag_state.src_kind == "waste":
                 skip_top = True
         visible_count = len(pile.cards) - (1 if skip_top else 0)
-        ox, oy = self._scroll_offset_for_kind(kind)
         if visible_count <= 0:
             pygame.draw.rect(
                 screen,
                 (255, 255, 255, 50),
-                (pile.x + ox, pile.y + oy, C.CARD_W, C.CARD_H),
+                (pile.x + self.scroll_x, pile.y + self.scroll_y, C.CARD_W, C.CARD_H),
                 width=2,
                 border_radius=C.CARD_RADIUS,
             )
@@ -1088,7 +1027,7 @@ class BritishSquareGameScene(C.Scene):
                     continue
                 rect = pile.rect_for_index(idx_card)
                 surf = C.get_card_surface(card)
-                screen.blit(surf, (rect.x + ox, rect.y + oy))
+                screen.blit(surf, (rect.x + self.scroll_x, rect.y + self.scroll_y))
         if kind == "tableau":
             self._draw_tableau_indicators(screen, pile, index, skip_top)
 
@@ -1097,9 +1036,8 @@ class BritishSquareGameScene(C.Scene):
     ) -> None:
         if not hasattr(self, "tableau_info_font"):
             return
-        ox, oy = self._scroll_offset_for_kind("tableau")
-        base_x = pile.x + ox
-        base_y = pile.y + oy
+        base_x = pile.x + self.scroll_x
+        base_y = pile.y + self.scroll_y
         display_count = max(0, len(pile.cards) - (1 if skip_top else 0))
 
         count_text = self.tableau_info_font.render(str(display_count), True, (255, 255, 255))
