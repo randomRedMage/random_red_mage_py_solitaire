@@ -228,6 +228,8 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
         self._pending_auto_fill: bool = False
         self._initial_state: Optional[Dict] = None
         self._initialising: bool = False
+        self._foundation_up_base: List[Tuple[int, int]] = [(0, 0) for _ in self.foundation_up]
+        self._foundation_down_base: List[Tuple[int, int]] = [(0, 0) for _ in self.foundation_down]
 
         self.ui_helper = ModeUIHelper(self, game_id="british_blockade")
 
@@ -276,12 +278,17 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
 
         foundation_pad = max(self.tableau_gap_x, 24)
         foundation_y = self.tableau_top + C.CARD_H // 2
+        self._foundation_up_base = []
         for idx, pile in enumerate(self.foundation_up):
-            pile.x = self.tableau_left - foundation_pad - C.CARD_W
-            pile.y = foundation_y + idx * (C.CARD_H + self.tableau_gap_y)
+            base_x = self.tableau_left - foundation_pad - C.CARD_W
+            base_y = foundation_y + idx * (C.CARD_H + self.tableau_gap_y)
+            self._foundation_up_base.append((base_x, base_y))
+        self._foundation_down_base = []
         for idx, pile in enumerate(self.foundation_down):
-            pile.x = self.tableau_left + total_width + foundation_pad
-            pile.y = foundation_y + idx * (C.CARD_H + self.tableau_gap_y)
+            base_x = self.tableau_left + total_width + foundation_pad
+            base_y = foundation_y + idx * (C.CARD_H + self.tableau_gap_y)
+            self._foundation_down_base.append((base_x, base_y))
+        self._sync_foundation_positions()
 
     def _ensure_rows(self, count: int) -> None:
         while len(self.tableau_rows) < count:
@@ -296,6 +303,22 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
                 pile.fan_x = 0
                 pile.x = self.tableau_left + col_index * (C.CARD_W + self.tableau_gap_x)
                 pile.y = y
+
+    def _sync_foundation_positions(self) -> None:
+        if len(self._foundation_up_base) != len(self.foundation_up):
+            self._foundation_up_base = [
+                (pile.x + self.scroll_x, pile.y + self.scroll_y) for pile in self.foundation_up
+            ]
+        if len(self._foundation_down_base) != len(self.foundation_down):
+            self._foundation_down_base = [
+                (pile.x + self.scroll_x, pile.y + self.scroll_y) for pile in self.foundation_down
+            ]
+        for pile, (base_x, base_y) in zip(self.foundation_up, self._foundation_up_base):
+            pile.x = base_x - self.scroll_x
+            pile.y = base_y - self.scroll_y
+        for pile, (base_x, base_y) in zip(self.foundation_down, self._foundation_down_base):
+            pile.x = base_x - self.scroll_x
+            pile.y = base_y - self.scroll_y
 
     # ------------------------------------------------------------------
     # Persistence helpers
@@ -343,6 +366,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
 
         self._ensure_rows(len(self.tableau_rows))
         self._update_tableau_layout()
+        self._sync_foundation_positions()
         self._pending_auto_fill = False
         self.drag_state = None
         self.deal_queue.clear()
@@ -713,6 +737,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
     # Event handling
     # ------------------------------------------------------------------
     def handle_event(self, event) -> None:
+        self._sync_foundation_positions()
         if self.end_prompt.visible and self.end_prompt.handle_event(event):
             return
         if self.ui_helper.handle_menu_event(event):
@@ -725,6 +750,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
             self.app.running = False
             return
         if ScrollableSceneMixin.handle_scroll_event(self, event):
+            self._sync_foundation_positions()
             return
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.ui_helper.toggle_menu_modal()
@@ -744,9 +770,15 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
         world = self._screen_to_world(pos)
 
         if not self.phase_two and self.stock_pile.hit(world) is not None:
+            if self.hint_stock:
+                self.hint_stock = False
+                self.hint_stock_expires_at = 0
             return
 
         if self.phase_two and self.stock_pile.hit(world) is not None:
+            if self.hint_stock:
+                self.hint_stock = False
+                self.hint_stock_expires_at = 0
             if self.stock_pile.cards:
                 self.push_undo()
                 self._deal_from_stock_phase_two()
@@ -926,7 +958,9 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
 
     def draw(self, screen) -> None:
         screen.fill(C.TABLE_BG)
+        self._sync_foundation_positions()
         with self.scrolling_draw_offset():
+            self._sync_foundation_positions()
             # Draw stock
             self.stock_pile.draw(screen)
             if self.hint_stock:
