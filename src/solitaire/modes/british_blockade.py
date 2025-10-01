@@ -707,6 +707,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
             self.hint_cells = None
         if self.hint_stock and pygame.time.get_ticks() > self.hint_stock_expires_at:
             self.hint_stock = False
+            self.hint_stock_expires_at = 0
 
     # ------------------------------------------------------------------
     # Event handling
@@ -841,7 +842,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
                     if (target_kind == "up" and self._can_place_on_up(card, idx)) or (
                         target_kind == "down" and self._can_place_on_down(card, idx)
                     ):
-                        self._move_card_to_foundation(drag.row, drag.col, target_kind)
+                        self._move_card_to_foundation(drag.row, drag.col, target_kind, animate=False)
                         return
             return
 
@@ -865,7 +866,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
                         pile_ref.cards.append(card_ref)
                         self._check_for_completion()
 
-                    self.anim.start_move(card, (source_pile.x, source_pile.y), (dest_pile.x, dest_pile.y), dur_ms=260, on_complete=_finish)
+                    _finish()
                     return
 
     def _deal_from_stock_phase_two(self) -> None:
@@ -967,6 +968,7 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
             surf = C.get_card_surface(card)
             screen.blit(surf, (mx - dx, my - dy))
 
+        self.draw_top_bar(screen, "British Blockade")
         self.toolbar.draw(screen)
         self.ui_helper.draw_menu_modal(screen)
         if self.end_prompt.visible:
