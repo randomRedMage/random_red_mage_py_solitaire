@@ -22,8 +22,6 @@ class CardAnimator:
         self._on_complete: Optional[Callable[[], None]] = None
         self._flip_mid: bool = False
         self._flipped: bool = False
-        self._from_use_scroll: bool = True
-        self._to_use_scroll: bool = True
 
     def start_move(
         self,
@@ -33,9 +31,6 @@ class CardAnimator:
         dur_ms: int = 300,
         on_complete: Optional[Callable[[], None]] = None,
         flip_mid: bool = False,
-        *,
-        from_use_scroll: bool = True,
-        to_use_scroll: bool = True,
     ):
         self._card = card
         self._from = from_xy
@@ -46,8 +41,6 @@ class CardAnimator:
         self._flip_mid = bool(flip_mid)
         self._flipped = False
         self.active = True
-        self._from_use_scroll = from_use_scroll
-        self._to_use_scroll = to_use_scroll
 
     def cancel(self):
         self.active = False
@@ -75,25 +68,21 @@ class CardAnimator:
         # Interpolate
         sx, sy = self._from
         tx, ty = self._to
-        from_sx = sx + (scroll_x if self._from_use_scroll else 0)
-        from_sy = sy + (scroll_y if self._from_use_scroll else 0)
-        to_sx = tx + (scroll_x if self._to_use_scroll else 0)
-        to_sy = ty + (scroll_y if self._to_use_scroll else 0)
-        x = int(from_sx + (to_sx - from_sx) * t)
-        y = int(from_sy + (to_sy - from_sy) * t)
+        x = int(sx + (tx - sx) * t)
+        y = int(sy + (ty - sy) * t)
         if self._flip_mid:
             if t >= 0.5 and not self._flipped:
                 self._card.face_up = True
                 self._flipped = True
             if t < 0.5:
                 back = C.get_back_surface()
-                surface.blit(back, (x, y))
+                surface.blit(back, (x + scroll_x, y + scroll_y))
             else:
                 surf = C.get_card_surface(self._card)
-                surface.blit(surf, (x, y))
+                surface.blit(surf, (x + scroll_x, y + scroll_y))
         else:
             surf = C.get_card_surface(self._card)
-            surface.blit(surf, (x, y))
+            surface.blit(surf, (x + scroll_x, y + scroll_y))
 
 
 def auto_move_first_ace(
