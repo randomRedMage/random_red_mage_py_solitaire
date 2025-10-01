@@ -230,7 +230,6 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
         self._initialising: bool = False
         self._foundation_up_base: List[Tuple[int, int]] = [(0, 0) for _ in self.foundation_up]
         self._foundation_down_base: List[Tuple[int, int]] = [(0, 0) for _ in self.foundation_down]
-        self._stock_base: Tuple[int, int] = (0, 0)
 
         self.ui_helper = ModeUIHelper(self, game_id="british_blockade")
 
@@ -268,44 +267,27 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
     # ------------------------------------------------------------------
     def compute_layout(self) -> None:
         top_bar = getattr(C, "TOP_BAR_H", 60)
-        total_width = self.columns * C.CARD_W + (self.columns - 1) * self.tableau_gap_x
-        self.tableau_left = C.SCREEN_W // 2 - total_width // 2
-
-        tableau_left_screen = self.tableau_left + self.scroll_x
-        stock_y_world = top_bar + int(C.CARD_H * 0.5)
-        stock_screen_y = stock_y_world + self.scroll_y
-
-        foundation_pad = max(self.tableau_gap_x, 24)
-        foundation_spacing = C.CARD_H + self.tableau_gap_y
-        foundation_gap = max(self.tableau_gap_y, 16)
-
-        foundation_up_screen_x = tableau_left_screen - foundation_pad - C.CARD_W
-        foundation_down_screen_x = tableau_left_screen + total_width + foundation_pad
-
-        stock_screen_x = foundation_down_screen_x
-        self._stock_base = (stock_screen_x, stock_screen_y)
-        self.stock_pile.x = stock_screen_x - self.scroll_x
-        self.stock_pile.y = stock_screen_y - self.scroll_y
+        self.stock_pile.x = C.SCREEN_W // 2 - C.CARD_W // 2
+        self.stock_pile.y = top_bar + int(C.CARD_H * 0.5)
 
         self.tableau_top = self.stock_pile.y + C.CARD_H + int(C.CARD_H * 0.25)
+        total_width = self.columns * C.CARD_W + (self.columns - 1) * self.tableau_gap_x
+        self.tableau_left = self.stock_pile.x + C.CARD_W // 2 - total_width // 2
 
         self._ensure_rows(len(self.tableau_rows) or 1)
 
-        foundation_top_screen_y = stock_screen_y + C.CARD_H + foundation_gap
-        self._foundation_up_base = [
-            (
-                foundation_up_screen_x,
-                foundation_top_screen_y + idx * foundation_spacing,
-            )
-            for idx, _pile in enumerate(self.foundation_up)
-        ]
-        self._foundation_down_base = [
-            (
-                foundation_down_screen_x,
-                foundation_top_screen_y + idx * foundation_spacing,
-            )
-            for idx, _pile in enumerate(self.foundation_down)
-        ]
+        foundation_pad = max(self.tableau_gap_x, 24)
+        foundation_y = self.tableau_top + C.CARD_H // 2
+        self._foundation_up_base = []
+        for idx, pile in enumerate(self.foundation_up):
+            base_x = self.tableau_left - foundation_pad - C.CARD_W
+            base_y = foundation_y + idx * (C.CARD_H + self.tableau_gap_y)
+            self._foundation_up_base.append((base_x, base_y))
+        self._foundation_down_base = []
+        for idx, pile in enumerate(self.foundation_down):
+            base_x = self.tableau_left + total_width + foundation_pad
+            base_y = foundation_y + idx * (C.CARD_H + self.tableau_gap_y)
+            self._foundation_down_base.append((base_x, base_y))
         self._sync_foundation_positions()
 
     def _ensure_rows(self, count: int) -> None:
@@ -323,15 +305,6 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
                 pile.y = y
 
     def _sync_foundation_positions(self) -> None:
-        if not any(self._stock_base) and self.stock_pile:
-            self._stock_base = (
-                self.stock_pile.x + self.scroll_x,
-                self.stock_pile.y + self.scroll_y,
-            )
-        if any(self._stock_base):
-            base_x, base_y = self._stock_base
-            self.stock_pile.x = base_x - self.scroll_x
-            self.stock_pile.y = base_y - self.scroll_y
         if len(self._foundation_up_base) != len(self.foundation_up):
             self._foundation_up_base = [
                 (pile.x + self.scroll_x, pile.y + self.scroll_y) for pile in self.foundation_up
@@ -512,6 +485,11 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
     def iter_scroll_piles(self) -> Iterable[C.Pile]:  # type: ignore[override]
         for _row, _col, pile in self._iter_tableau():
             yield pile
+        for pile in self.foundation_up:
+            yield pile
+        for pile in self.foundation_down:
+            yield pile
+        yield self.stock_pile
 
     def _enqueue_deal(self, target: C.Pile) -> bool:
         if not self.stock_pile.cards:
