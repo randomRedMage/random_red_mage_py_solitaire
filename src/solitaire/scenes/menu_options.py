@@ -221,6 +221,7 @@ class BeleagueredCastleController(GameOptionsController):
 # --- Big Ben ---------------------------------------------------------
 
 from solitaire.modes import big_ben as big_ben_mode
+from solitaire.modes import british_blockade as british_blockade_mode
 
 
 class BigBenController(GameOptionsController):
@@ -255,6 +256,37 @@ class BigBenController(GameOptionsController):
 
     def compatibility_actions(self) -> Dict[str, str]:
         return {"b_start": "start", "b_resume": "resume", "b_back": "cancel"}
+
+
+class BritishBlockadeController(GameOptionsController):
+    def _has_save(self) -> bool:
+        return british_blockade_mode.has_saved_game()
+
+    def buttons(self) -> Sequence[ButtonState]:
+        return [
+            ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
+            ButtonState("start", "Start", variant="primary"),
+        ]
+
+    def handle_button(self, key: str) -> ActionResult:
+        if key == "cancel":
+            return ActionResult(close_modal=True)
+        if key == "start":
+            british_blockade_mode.delete_saved_game()
+            self.menu_scene.next_scene = british_blockade_mode.BritishBlockadeGameScene(self.app)
+            return ActionResult(close_modal=True)
+        if key == "resume":
+            if not self._has_save():
+                return ActionResult(close_modal=False)
+            state = british_blockade_mode.load_saved_game()
+            if not state:
+                return ActionResult(close_modal=False)
+            self.menu_scene.next_scene = british_blockade_mode.BritishBlockadeGameScene(
+                self.app, load_state=state
+            )
+            return ActionResult(close_modal=True)
+        return ActionResult(close_modal=False)
 
 
 # --- Bowling Solitaire -----------------------------------------------
@@ -986,6 +1018,7 @@ CONTROLLER_REGISTRY = {
     "accordion": AccordionController,
     "beleaguered_castle": BeleagueredCastleController,
     "big_ben": BigBenController,
+    "british_blockade": BritishBlockadeController,
     "british_square": BritishSquareController,
     "bowling_solitaire": BowlingSolitaireController,
     "chameleon": ChameleonController,

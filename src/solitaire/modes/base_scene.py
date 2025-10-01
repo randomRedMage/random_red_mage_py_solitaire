@@ -107,6 +107,12 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         section="Builders",
     ),
     GameMetadata(
+        key="british_blockade",
+        label="British\nBlockade",
+        icon_filename="icon_british_blockade.png",
+        section="Builders",
+    ),
+    GameMetadata(
         key="golf",
         label="Golf",
         icon_filename="icon_golf.png",
@@ -158,7 +164,7 @@ GAME_SECTIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
             "british_square",
         ),
     ),
-    ("Builders", ("big_ben", "golf", "monte_carlo", "pyramid", "tripeaks")),
+    ("Builders", ("big_ben", "british_blockade", "golf", "monte_carlo", "pyramid", "tripeaks")),
     ("Other", ("accordion", "bowling_solitaire")),
 )
 
