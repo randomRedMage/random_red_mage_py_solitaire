@@ -221,6 +221,8 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
         self.drag_state: Optional[_DragState] = None
         self.hint_cells: Optional[List[Tuple[int, int]]] = None
         self.hint_expires_at: int = 0
+        self.hint_stock: bool = False
+        self.hint_stock_expires_at: int = 0
         self._last_click_time: int = 0
         self._last_click_pos: Tuple[int, int] = (0, 0)
         self._pending_auto_fill: bool = False
@@ -592,10 +594,10 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
             return False
         if not self.phase_two:
             return True
-        # Phase two – require a vertical neighbour
+        # Phase two – a card can be played only if it has at least one open vertical edge
         has_above = row > 0 and bool(self.tableau_rows[row - 1][col].cards)
         has_below = row + 1 < len(self.tableau_rows) and bool(self.tableau_rows[row + 1][col].cards)
-        return has_above or has_below
+        return not (has_above and has_below)
 
     def _move_card_to_foundation(self, row: int, col: int, target_kind: str, *, animate: bool = True) -> bool:
         if self.anim.active:
@@ -675,6 +677,8 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
     def show_hint(self) -> None:
         self.hint_cells = None
         self.hint_expires_at = 0
+        self.hint_stock = False
+        self.hint_stock_expires_at = 0
         if self.anim.active:
             return
         suggestions: List[Tuple[int, int]] = []
@@ -693,10 +697,16 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
         if suggestions:
             self.hint_cells = suggestions
             self.hint_expires_at = pygame.time.get_ticks() + 3500
+            return
+        if not self._has_any_moves() and self.stock_pile.cards:
+            self.hint_stock = True
+            self.hint_stock_expires_at = pygame.time.get_ticks() + 3500
 
     def _update_hint(self) -> None:
         if self.hint_cells and pygame.time.get_ticks() > self.hint_expires_at:
             self.hint_cells = None
+        if self.hint_stock and pygame.time.get_ticks() > self.hint_stock_expires_at:
+            self.hint_stock = False
 
     # ------------------------------------------------------------------
     # Event handling
@@ -875,6 +885,39 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
     # ------------------------------------------------------------------
     # Update & draw
     # ------------------------------------------------------------------
+    def _draw_pile_with_drag(
+        self,
+        screen: pygame.Surface,
+        pile: C.Pile,
+        *,
+        row: Optional[int] = None,
+        col: Optional[int] = None,
+        foundation_kind: Optional[str] = None,
+        foundation_index: Optional[int] = None,
+    ) -> None:
+        drag = self.drag_state
+        skip_top = False
+        if drag and pile.cards:
+            if drag.src_kind == "tableau" and row is not None and col is not None:
+                if drag.row == row and drag.col == col and pile.cards[-1] is drag.card:
+                    skip_top = True
+            elif (
+                foundation_kind
+                and foundation_index is not None
+                and drag.src_kind == foundation_kind
+                and drag.row == foundation_index
+                and pile.cards[-1] is drag.card
+            ):
+                skip_top = True
+        if skip_top:
+            card = pile.cards.pop()
+            try:
+                pile.draw(screen)
+            finally:
+                pile.cards.append(card)
+        else:
+            pile.draw(screen)
+
     def update(self, dt: float) -> None:
         self._update_hint()
         if not self.anim.active and self.deal_queue:
@@ -885,12 +928,26 @@ class BritishBlockadeGameScene(ScrollableSceneMixin, C.Scene):
         with self.scrolling_draw_offset():
             # Draw stock
             self.stock_pile.draw(screen)
-            for pile in self.foundation_up:
-                pile.draw(screen)
-            for pile in self.foundation_down:
-                pile.draw(screen)
-            for _row_idx, _col_idx, pile in self._iter_tableau():
-                pile.draw(screen)
+            if self.hint_stock:
+                overlay = pygame.Surface((C.CARD_W, C.CARD_H), pygame.SRCALPHA)
+                pygame.draw.rect(overlay, (255, 255, 0, 90), overlay.get_rect(), border_radius=C.CARD_RADIUS)
+                screen.blit(overlay, (self.stock_pile.x + self.scroll_x, self.stock_pile.y + self.scroll_y))
+            for idx, pile in enumerate(self.foundation_up):
+                self._draw_pile_with_drag(
+                    screen,
+                    pile,
+                    foundation_kind="foundation_up",
+                    foundation_index=idx,
+                )
+            for idx, pile in enumerate(self.foundation_down):
+                self._draw_pile_with_drag(
+                    screen,
+                    pile,
+                    foundation_kind="foundation_down",
+                    foundation_index=idx,
+                )
+            for row_idx, col_idx, pile in self._iter_tableau():
+                self._draw_pile_with_drag(screen, pile, row=row_idx, col=col_idx)
 
             if self.hint_cells:
                 overlay = pygame.Surface((C.CARD_W, C.CARD_H), pygame.SRCALPHA)
