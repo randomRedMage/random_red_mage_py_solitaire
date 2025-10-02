@@ -3,6 +3,7 @@ Solitaire Suite (Pygame)
 Overview
 - Simple Pygame-based solitaire suite including Klondike, FreeCell, and Pyramid.
 - Uses built-in vector drawing with optional image card assets bundled under `src/solitaire/assets`.
+- Main menu presents each game section as a four-column gallery that you cycle through with circular arrows; Big Ben now appears with the other Packers games.
 
 Requirements
 - Python 3.11+
