@@ -328,6 +328,7 @@ class MainMenuScene(C.Scene):
     NAV_BUTTON_GAP = 36
     NAV_BUTTON_BG = (245, 245, 245)
     NAV_BUTTON_BORDER = (65, 65, 70)
+    NAV_BUTTON_SCREEN_MARGIN = 20
 
     def __init__(self, app, *, open_game_key: str | None = None):
         super().__init__(app)
@@ -454,7 +455,14 @@ class MainMenuScene(C.Scene):
 
             rect = section["rect"]
             rect.size = (section_width, section_height)
-            rect.centerx = C.SCREEN_W // 2
+            left_center, right_center = self._nav_button_centers()
+            inner_left = left_center + self.NAV_BUTTON_RADIUS + self.NAV_BUTTON_GAP
+            inner_right = right_center - self.NAV_BUTTON_RADIUS - self.NAV_BUTTON_GAP
+            available_width = inner_right - inner_left
+            if available_width > 0 and section_width <= available_width:
+                rect.left = inner_left + (available_width - section_width) // 2
+            else:
+                rect.centerx = self._section_center_x()
             preferred_top = self.SECTION_TOP
             max_top = max(40, C.SCREEN_H - section_height - 40)
             rect.top = min(preferred_top, max_top)
@@ -500,6 +508,20 @@ class MainMenuScene(C.Scene):
             btn.rect.center = (cx, current_y + btn.rect.height // 2)
             current_y += btn.rect.height + gap
 
+    def _section_center_x(self) -> int:
+        left_center, right_center = self._nav_button_centers()
+        inner_left = left_center + self.NAV_BUTTON_RADIUS + self.NAV_BUTTON_GAP
+        inner_right = right_center - self.NAV_BUTTON_RADIUS - self.NAV_BUTTON_GAP
+        if inner_left >= inner_right:
+            return C.SCREEN_W // 2
+        return (inner_left + inner_right) // 2
+
+    def _nav_button_centers(self) -> tuple[int, int]:
+        margin = self.NAV_BUTTON_SCREEN_MARGIN
+        left_center = self.NAV_BUTTON_RADIUS + margin
+        right_center = C.SCREEN_W - self.NAV_BUTTON_RADIUS - margin
+        return left_center, right_center
+
     def _update_nav_rects(self):
         size = self.NAV_BUTTON_RADIUS * 2
         if not self._sections:
@@ -515,8 +537,9 @@ class MainMenuScene(C.Scene):
         left = pygame.Rect(0, 0, size, size)
         right = pygame.Rect(0, 0, size, size)
 
-        left.centerx = max(self.NAV_BUTTON_RADIUS + 20, rect.left - self.NAV_BUTTON_GAP - self.NAV_BUTTON_RADIUS)
-        right.centerx = min(C.SCREEN_W - self.NAV_BUTTON_RADIUS - 20, rect.right + self.NAV_BUTTON_GAP + self.NAV_BUTTON_RADIUS)
+        left_center, right_center = self._nav_button_centers()
+        left.centerx = left_center
+        right.centerx = right_center
         left.centery = center_y
         right.centery = center_y
 
