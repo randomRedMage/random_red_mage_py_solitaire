@@ -622,6 +622,8 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         for pile in self.top_foundations + self.bottom_foundations + self.tableau + [self.stock_pile, self.reserve_pile]:
             pile.draw(surface)
 
+        self._draw_foundation_placeholders(surface)
+
         self._draw_labels(surface)
         self._draw_highlights(surface)
 
@@ -640,6 +642,30 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self.ui_helper.draw_menu_modal(surface)
 
         self.end_modal.draw(surface)
+
+    def _draw_foundation_placeholders(self, surface: pygame.Surface) -> None:
+        font = C.FONT_CORNER_RANK or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
+        color = (245, 245, 250)
+        pad_x = max(6, C.CARD_W // 12)
+        pad_y = max(6, C.CARD_H // 12)
+
+        def draw_marker(pile: C.Pile, text: str) -> None:
+            if pile.cards:
+                return
+            marker = font.render(text, True, color)
+            surface.blit(marker, (pile.x + pad_x, pile.y + pad_y))
+            surface.blit(
+                marker,
+                (
+                    pile.x + C.CARD_W - marker.get_width() - pad_x,
+                    pile.y + C.CARD_H - marker.get_height() - pad_y,
+                ),
+            )
+
+        for pile in self.top_foundations:
+            draw_marker(pile, "K")
+        for pile in self.bottom_foundations:
+            draw_marker(pile, "A")
 
     def _draw_labels(self, surface: pygame.Surface) -> None:
         label_font = C.FONT_UI or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
