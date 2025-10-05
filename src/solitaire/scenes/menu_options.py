@@ -875,6 +875,7 @@ class PyramidController(GameOptionsController):
 
 from solitaire.modes import tripeaks as tripeaks_mode
 from solitaire.modes import monte_carlo as monte_carlo_mode
+from solitaire.modes import duchess_de_luynes as duchess_de_luynes_mode
 
 
 class TriPeaksController(GameOptionsController):
@@ -968,6 +969,37 @@ class MonteCarloController(GameOptionsController):
         return {"b_start": "start", "b_back": "cancel", "b_continue": "resume"}
 
 
+class DuchessDeLuynesController(GameOptionsController):
+    def _has_save(self) -> bool:
+        return duchess_de_luynes_mode.has_saved_game()
+
+    def buttons(self) -> Sequence[ButtonState]:
+        return [
+            ButtonState("cancel", "Cancel", variant="cancel"),
+            ButtonState("resume", "Resume", enabled=self._has_save()),
+            ButtonState("start", "Start", variant="primary"),
+        ]
+
+    def handle_button(self, key: str) -> ActionResult:
+        if key == "cancel":
+            return ActionResult(close_modal=True)
+        if key == "start":
+            duchess_de_luynes_mode.delete_saved_game()
+            self.menu_scene.next_scene = duchess_de_luynes_mode.LaDuchesseDeLuynesGameScene(self.app)
+            return ActionResult(close_modal=True)
+        if key == "resume" and self._has_save():
+            state = duchess_de_luynes_mode.load_saved_game()
+            if state:
+                self.menu_scene.next_scene = duchess_de_luynes_mode.LaDuchesseDeLuynesGameScene(
+                    self.app, load_state=state
+                )
+                return ActionResult(close_modal=True)
+        return ActionResult(close_modal=False)
+
+    def compatibility_actions(self) -> Dict[str, str]:
+        return {"b_start": "start", "b_continue": "resume", "b_back": "cancel"}
+
+
 # --- Yukon -----------------------------------------------------------
 
 from solitaire.modes import yukon as yukon_mode
@@ -1024,6 +1056,7 @@ CONTROLLER_REGISTRY = {
     "chameleon": ChameleonController,
     "demon": DemonController,
     "duchess": DuchessController,
+    "duchess_de_luynes": DuchessDeLuynesController,
     "freecell": FreeCellController,
     "gate": GateController,
     "golf": GolfController,

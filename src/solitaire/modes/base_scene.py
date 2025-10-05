@@ -125,6 +125,12 @@ _GAME_METADATA: Tuple[GameMetadata, ...] = (
         section="Builders",
     ),
     GameMetadata(
+        key="duchess_de_luynes",
+        label="La Duchesse\nde Luynes",
+        icon_filename="icon_duchess_luynes.png",
+        section="Builders",
+    ),
+    GameMetadata(
         key="pyramid",
         label="Pyramid",
         icon_filename="icon_pyramid.png",
@@ -165,7 +171,10 @@ GAME_SECTIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
             "big_ben",
         ),
     ),
-    ("Builders", ("british_blockade", "golf", "monte_carlo", "pyramid", "tripeaks")),
+    (
+        "Builders",
+        ("british_blockade", "golf", "monte_carlo", "duchess_de_luynes", "pyramid", "tripeaks"),
+    ),
     ("Other", ("accordion", "bowling_solitaire")),
 )
 
