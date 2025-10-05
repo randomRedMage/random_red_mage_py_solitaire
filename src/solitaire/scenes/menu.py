@@ -322,10 +322,18 @@ class MainMenuScene(C.Scene):
     SECTION_BORDER = (0, 0, 0)
     SECTION_BORDER_RADIUS = 26
 
-    SCROLL_MIN_TOP = 140
-    SCROLL_BOTTOM_MARGIN = 80
-    SCROLLBAR_WIDTH = 14
-    SCROLL_STEP = 48
+    GRID_COLUMNS = 4
+    MIN_GRID_COLUMNS = 3
+    MIN_GRID_ROWS = 3
+    SECTION_TOP = 220
+    NAV_BUTTON_RADIUS = 42
+    NAV_BUTTON_GAP = 36
+    NAV_BUTTON_BG = (245, 245, 245)
+    NAV_BUTTON_BORDER = (65, 65, 70)
+    NAV_BUTTON_SCREEN_MARGIN = 20
+
+    SCROLLBAR_WIDTH = 12
+    SCROLLBAR_MARGIN = 12
 
     def __init__(self, app, *, open_game_key: str | None = None):
         super().__init__(app)
@@ -358,6 +366,11 @@ class MainMenuScene(C.Scene):
                     "rect": pygame.Rect(0, 0, 0, 0),
                     "title_surf": None,
                     "title_rect": pygame.Rect(0, 0, 0, 0),
+                    "viewport_rect": pygame.Rect(0, 0, 0, 0),
+                    "scroll_offset": 0,
+                    "scroll_max": 0,
+                    "row_stride": 0,
+                    "has_scroll": False,
                 }
             )
 
@@ -365,6 +378,12 @@ class MainMenuScene(C.Scene):
         for section in self._sections:
             for entry in section["entries"]:
                 self._entry_lookup[entry.key] = entry
+
+        if self._pending_open_key:
+            for idx, section in enumerate(self._sections):
+                if any(entry.key == self._pending_open_key for entry in section["entries"]):
+                    self._section_index = idx
+                    break
 
         self._modal_rect = pygame.Rect(0, 0, 520, 360)
         self._modal_padding_top = 130
@@ -375,17 +394,12 @@ class MainMenuScene(C.Scene):
         self._modal_quit = C.Button("Quit Game", 0, 0, center=True)
         self._modal_buttons = [self._modal_settings, self._modal_back, self._modal_quit]
 
-        # Scroll state
-        self._scroll_offset = 0
-        self._max_scroll = 0
-        self._viewport_height = 0
-        self._content_start = self.SCROLL_MIN_TOP
-        self._content_total_height = 0
-        self._scroll_track_rect = pygame.Rect(0, 0, 0, 0)
-        self._scroll_thumb_rect = pygame.Rect(0, 0, 0, 0)
-        self._scroll_dragging = False
-        self._scroll_drag_anchor = 0
-        self._scroll_drag_start_offset = 0
+        # Section navigation state
+        self._section_index = 0
+        self._nav_left_rect = pygame.Rect(0, 0, 0, 0)
+        self._nav_right_rect = pygame.Rect(0, 0, 0, 0)
+        self._nav_hover_left = False
+        self._nav_hover_right = False
 
         self._prepare_assets()
         self.compute_layout()
@@ -436,86 +450,83 @@ class MainMenuScene(C.Scene):
 
     # --- layout --------------------------------------------------------
     def compute_layout(self):
-        sections_info = []
-        margin_x = min(self.SECTION_OUTER_MARGIN_X, max(20, (C.SCREEN_W - 640) // 4))
-        available_width = max(self.ICON_SIZE, C.SCREEN_W - margin_x * 2)
-
         for section in self._sections:
             entries = section["entries"]
-            columns = max(1, min(len(entries), (available_width + self.ICON_GAP) // (self.ICON_SIZE + self.ICON_GAP)))
-            rows = ceil(len(entries) / columns)
-            content_width = columns * self.ICON_SIZE + (columns - 1) * self.ICON_GAP
+            entry_count = len(entries)
+            columns = max(1, min(self.GRID_COLUMNS, entry_count)) if entry_count else 1
+            rows = ceil(entry_count / columns) if entry_count else 0
             max_label_height = max((entry.label_surf.get_height() if entry.label_surf else 0) for entry in entries)
             row_height = self.ICON_SIZE + self.LABEL_MARGIN + max_label_height
-            content_height = rows * row_height + (rows - 1) * self.ICON_GAP
+            row_stride = row_height + self.ICON_GAP
+
+            actual_width = columns * self.ICON_SIZE + max(0, columns - 1) * self.ICON_GAP if entry_count else 0
+            min_columns_width = self.MIN_GRID_COLUMNS * self.ICON_SIZE + max(0, self.MIN_GRID_COLUMNS - 1) * self.ICON_GAP
+            viewport_width = max(actual_width, min_columns_width)
+            viewport_height = self.MIN_GRID_ROWS * row_height + max(0, self.MIN_GRID_ROWS - 1) * self.ICON_GAP
+            actual_height = rows * row_height + max(0, rows - 1) * self.ICON_GAP if rows else 0
+            has_scroll = actual_height > viewport_height
+            scrollbar_space = (self.SCROLLBAR_WIDTH + self.SCROLLBAR_MARGIN) if has_scroll else 0
+            content_width = viewport_width + scrollbar_space
             title_surf: pygame.Surface = section["title_surf"]
             title_height = title_surf.get_height()
             section_width = content_width + self.SECTION_PADDING * 2
-            section_height = content_height + self.SECTION_PADDING * 2 + title_height + self.SECTION_TITLE_GAP
-            sections_info.append({
-                "section": section,
-                "columns": columns,
-                "rows": rows,
-                "content_width": content_width,
-                "row_height": row_height,
-                "section_width": section_width,
-                "section_height": section_height,
-                "title_height": title_height,
-            })
+            section_height = viewport_height + self.SECTION_PADDING * 2 + title_height + self.SECTION_TITLE_GAP
 
-        total_height = sum(info["section_height"] for info in sections_info)
-        if sections_info:
-            total_height += self.SECTION_VERTICAL_GAP * (len(sections_info) - 1)
-
-        available_height = max(120, C.SCREEN_H - (self.SCROLL_MIN_TOP + self.SCROLL_BOTTOM_MARGIN))
-        if total_height <= available_height:
-            start_top = self.SCROLL_MIN_TOP + (available_height - total_height) // 2
-            self._max_scroll = 0
-            self._scroll_offset = 0
-        else:
-            start_top = self.SCROLL_MIN_TOP
-            self._max_scroll = total_height - available_height
-            self._scroll_offset = max(0, min(self._scroll_offset, self._max_scroll))
-        self._viewport_height = available_height
-        self._content_start = start_top
-        self._content_total_height = total_height
-
-        top = start_top
-        for info in sections_info:
-            section = info["section"]
             rect = section["rect"]
-            rect.size = (info["section_width"], info["section_height"])
-            rect.centerx = C.SCREEN_W // 2
-            rect.top = top
+            rect.size = (section_width, section_height)
+            left_center, right_center = self._nav_button_centers()
+            inner_left = left_center + self.NAV_BUTTON_RADIUS + self.NAV_BUTTON_GAP
+            inner_right = right_center - self.NAV_BUTTON_RADIUS - self.NAV_BUTTON_GAP
+            available_width = inner_right - inner_left
+            if available_width > 0 and section_width <= available_width:
+                rect.left = inner_left + (available_width - section_width) // 2
+            else:
+                rect.centerx = self._section_center_x()
+            preferred_top = self.SECTION_TOP
+            max_top = max(40, C.SCREEN_H - section_height - 40)
+            rect.top = min(preferred_top, max_top)
 
-            title_rect = section["title_surf"].get_rect()
+            title_rect = title_surf.get_rect()
             title_rect.centerx = rect.centerx
             title_rect.top = rect.top + self.SECTION_PADDING
             section["title_rect"] = title_rect
 
-            grid_left = rect.left + self.SECTION_PADDING
-            grid_top = title_rect.bottom + self.SECTION_TITLE_GAP
+            viewport_left = rect.left + self.SECTION_PADDING
+            extra_width = content_width - scrollbar_space - viewport_width
+            if extra_width > 0:
+                viewport_left += extra_width // 2
+            viewport_top = title_rect.bottom + self.SECTION_TITLE_GAP
+            viewport_rect = pygame.Rect(viewport_left, viewport_top, viewport_width, viewport_height)
 
-            columns = info["columns"]
-            row_height = info["row_height"]
-            for index, entry in enumerate(section["entries"]):
+            grid_left = viewport_left
+            if actual_width and actual_width < viewport_width:
+                grid_left += (viewport_width - actual_width) // 2
+            grid_top = viewport_top
+            if actual_height and actual_height < viewport_height:
+                grid_top += (viewport_height - actual_height) // 2
+
+            for index, entry in enumerate(entries):
                 col = index % columns
                 row = index // columns
                 x = grid_left + col * (self.ICON_SIZE + self.ICON_GAP)
-                y = grid_top + row * (row_height + self.ICON_GAP)
+                y = grid_top + row * row_stride
                 entry.rect.topleft = (x, y)
                 entry.label_rect.centerx = entry.rect.centerx
                 entry.label_rect.top = entry.rect.bottom + self.LABEL_MARGIN
 
-            top = rect.bottom + self.SECTION_VERTICAL_GAP
+            section["columns"] = columns
+            section["rows"] = rows
+            section["viewport_rect"] = viewport_rect
+            section["scroll_max"] = max(0, actual_height - viewport_height)
+            section["row_stride"] = row_stride
+            section["scroll_offset"] = min(max(0, section.get("scroll_offset", 0)), section["scroll_max"])
+            section["has_scroll"] = has_scroll
 
         margin_x, margin_y = self._menu_margin
         self._menu_button_rect.topright = (C.SCREEN_W - margin_x, margin_y)
         self._modal_rect.center = (C.SCREEN_W // 2, C.SCREEN_H // 2)
         self._position_modal_buttons()
-        self._update_scrollbar_rects()
-        if not self._max_scroll:
-            self._scroll_dragging = False
+        self._update_nav_rects()
 
     def _position_modal_buttons(self):
         gap = self._modal_gap
@@ -532,40 +543,95 @@ class MainMenuScene(C.Scene):
             btn.rect.center = (cx, current_y + btn.rect.height // 2)
             current_y += btn.rect.height + gap
 
-    def _update_scrollbar_rects(self):
-        if self._viewport_height <= 0:
-            self._scroll_track_rect = pygame.Rect(0, 0, 0, 0)
-            self._scroll_thumb_rect = pygame.Rect(0, 0, 0, 0)
-            return
-        track_x = C.SCREEN_W - self.SCROLLBAR_WIDTH - 32
-        self._scroll_track_rect = pygame.Rect(track_x, self._content_start, self.SCROLLBAR_WIDTH, self._viewport_height)
-        if self._max_scroll <= 0:
-            self._scroll_thumb_rect = pygame.Rect(track_x, self._content_start, self.SCROLLBAR_WIDTH, self._viewport_height)
-            return
-        ratio = min(1.0, self._viewport_height / float(self._content_total_height)) if self._content_total_height else 0
-        thumb_h = max(40, int(self._viewport_height * ratio))
-        thumb_h = min(self._viewport_height, thumb_h)
-        travel = max(1, self._viewport_height - thumb_h)
-        thumb_y = self._content_start + int((self._scroll_offset / self._max_scroll) * travel)
-        self._scroll_thumb_rect = pygame.Rect(track_x, thumb_y, self.SCROLLBAR_WIDTH, thumb_h)
+    def _section_center_x(self) -> int:
+        left_center, right_center = self._nav_button_centers()
+        inner_left = left_center + self.NAV_BUTTON_RADIUS + self.NAV_BUTTON_GAP
+        inner_right = right_center - self.NAV_BUTTON_RADIUS - self.NAV_BUTTON_GAP
+        if inner_left >= inner_right:
+            return C.SCREEN_W // 2
+        return (inner_left + inner_right) // 2
 
-    def _scroll_by(self, delta: int):
-        if self._max_scroll <= 0:
-            self._scroll_offset = 0
-            return
-        self._scroll_offset = max(0, min(self._max_scroll, self._scroll_offset + delta))
-        self._update_scrollbar_rects()
+    def _nav_button_centers(self) -> tuple[int, int]:
+        margin = self.NAV_BUTTON_SCREEN_MARGIN
+        left_center = self.NAV_BUTTON_RADIUS + margin
+        right_center = C.SCREEN_W - self.NAV_BUTTON_RADIUS - margin
+        return left_center, right_center
 
-    def _to_content_pos(self, pos):
-        return pos[0], pos[1] + self._scroll_offset
+    def _entry_icon_rect(self, section: dict, entry: _GameEntry) -> pygame.Rect:
+        offset = section.get("scroll_offset", 0)
+        return entry.rect.move(0, -offset)
+
+    def _entry_label_rect(self, section: dict, entry: _GameEntry) -> pygame.Rect:
+        offset = section.get("scroll_offset", 0)
+        return entry.label_rect.move(0, -offset)
+
+    def _scroll_section(self, section: dict, lines: int) -> None:
+        if not lines:
+            return
+        scroll_max = section.get("scroll_max", 0)
+        if scroll_max <= 0:
+            return
+        stride = section.get("row_stride", self.ICON_SIZE + self.LABEL_MARGIN + self.ICON_GAP)
+        offset = section.get("scroll_offset", 0)
+        offset = max(0, min(scroll_max, offset - lines * stride))
+        if offset != section.get("scroll_offset"):
+            section["scroll_offset"] = offset
+            self._hover_entry = None
+
+    def _update_nav_rects(self):
+        size = self.NAV_BUTTON_RADIUS * 2
+        if not self._sections:
+            self._nav_left_rect = pygame.Rect(0, 0, 0, 0)
+            self._nav_right_rect = pygame.Rect(0, 0, 0, 0)
+            return
+
+        index = max(0, min(self._section_index, len(self._sections) - 1))
+        self._section_index = index
+        rect = self._sections[index]["rect"]
+
+        center_y = rect.centery
+        left = pygame.Rect(0, 0, size, size)
+        right = pygame.Rect(0, 0, size, size)
+
+        left_center, right_center = self._nav_button_centers()
+        left.centerx = left_center
+        right.centerx = right_center
+        left.centery = center_y
+        right.centery = center_y
+
+        self._nav_left_rect = left
+        self._nav_right_rect = right
+        self._nav_hover_left = False
+        self._nav_hover_right = False
+
+    def _change_section(self, delta: int) -> None:
+        if not self._sections:
+            return
+        new_index = max(0, min(len(self._sections) - 1, self._section_index + delta))
+        if new_index == self._section_index:
+            return
+        self._section_index = new_index
+        new_section = self._sections[self._section_index]
+        if new_section.get("scroll_offset"):
+            new_section["scroll_offset"] = 0
+        self._hover_entry = None
+        self._update_nav_rects()
 
     def get_entry_rect(self, key: str):
         entry = self._entry_lookup.get(key)
         if entry is None:
             return None
-        rect = entry.rect.copy()
-        rect.y -= self._scroll_offset
-        return rect
+        for idx, section in enumerate(self._sections):
+            if any(e.key == key for e in section["entries"]):
+                if idx != self._section_index:
+                    self._section_index = idx
+                    target_section = self._sections[self._section_index]
+                    if target_section.get("scroll_offset"):
+                        target_section["scroll_offset"] = 0
+                    self._update_nav_rects()
+                break
+        section = self._sections[self._section_index]
+        return self._entry_icon_rect(section, entry)
 
     # --- interaction ---------------------------------------------------
     def _open_game_modal(self, game_key: str, *, proxy=None) -> bool:
@@ -624,14 +690,6 @@ class MainMenuScene(C.Scene):
             return
 
     def handle_event(self, e):
-        if e.type == pygame.MOUSEWHEEL and not self._modal_open:
-            if self._max_scroll > 0:
-                self._scroll_by(-e.y * self.SCROLL_STEP)
-            return
-
-        if e.type == pygame.MOUSEBUTTONUP and e.button == 1:
-            self._scroll_dragging = False
-
         if self._options_modal is not None:
             should_close = False
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION, pygame.KEYDOWN):
@@ -647,50 +705,71 @@ class MainMenuScene(C.Scene):
             return
 
         if e.type == pygame.MOUSEMOTION:
-            if self._scroll_dragging and self._max_scroll > 0:
-                dy = e.pos[1] - self._scroll_drag_anchor
-                travel = max(1, self._viewport_height - self._scroll_thumb_rect.height)
-                ratio = dy / float(travel)
-                self._scroll_offset = max(0, min(self._max_scroll, self._scroll_drag_start_offset + ratio * self._max_scroll))
-                self._update_scrollbar_rects()
-                return
             self._menu_hover = self._menu_button_rect.collidepoint(e.pos)
+            left_enabled = self._section_index > 0
+            right_enabled = self._section_index < len(self._sections) - 1
+            self._nav_hover_left = left_enabled and self._nav_left_rect.collidepoint(e.pos)
+            self._nav_hover_right = right_enabled and self._nav_right_rect.collidepoint(e.pos)
             self._hover_entry = None
-            content_pos = self._to_content_pos(e.pos)
-            for section in self._sections:
-                for entry in section["entries"]:
-                    if entry.rect.collidepoint(content_pos):
-                        self._hover_entry = entry
-                        break
-                if self._hover_entry is not None:
-                    break
+            if self._sections:
+                section = self._sections[self._section_index]
+                viewport_rect = section.get("viewport_rect")
+                if viewport_rect is None or viewport_rect.collidepoint(e.pos):
+                    for entry in section["entries"]:
+                        icon_rect = self._entry_icon_rect(section, entry)
+                        label_rect = self._entry_label_rect(section, entry)
+                        if icon_rect.collidepoint(e.pos) or label_rect.collidepoint(e.pos):
+                            self._hover_entry = entry
+                            break
+            return
+
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button in (4, 5):
+            if self._sections:
+                section = self._sections[self._section_index]
+                viewport_rect = section.get("viewport_rect")
+                if viewport_rect is None or viewport_rect.collidepoint(e.pos):
+                    self._scroll_section(section, 1 if e.button == 4 else -1)
             return
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            if self._max_scroll > 0 and self._scroll_thumb_rect.collidepoint(e.pos):
-                self._scroll_dragging = True
-                self._scroll_drag_anchor = e.pos[1]
-                self._scroll_drag_start_offset = self._scroll_offset
-                return
-            if self._max_scroll > 0 and self._scroll_track_rect.collidepoint(e.pos):
-                if e.pos[1] < self._scroll_thumb_rect.top:
-                    self._scroll_by(-self._viewport_height)
-                else:
-                    self._scroll_by(self._viewport_height)
-                return
             if self._menu_button_rect.collidepoint(e.pos):
                 self._modal_open = True
                 return
-            content_pos = self._to_content_pos(e.pos)
-            for section in self._sections:
-                for entry in section["entries"]:
-                    if entry.rect.collidepoint(content_pos):
-                        self._activate_entry(entry)
-                        return
+            if self._section_index > 0 and self._nav_left_rect.collidepoint(e.pos):
+                self._change_section(-1)
+                return
+            if self._section_index < len(self._sections) - 1 and self._nav_right_rect.collidepoint(e.pos):
+                self._change_section(1)
+                return
+            if self._sections:
+                section = self._sections[self._section_index]
+                viewport_rect = section.get("viewport_rect")
+                if viewport_rect is None or viewport_rect.collidepoint(e.pos):
+                    for entry in section["entries"]:
+                        icon_rect = self._entry_icon_rect(section, entry)
+                        label_rect = self._entry_label_rect(section, entry)
+                        if icon_rect.collidepoint(e.pos) or label_rect.collidepoint(e.pos):
+                            self._activate_entry(entry)
+                            return
         elif e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
                 from solitaire.scenes.title import TitleScene
                 self.next_scene = TitleScene(self.app)
+            elif e.key == pygame.K_LEFT:
+                self._change_section(-1)
+            elif e.key == pygame.K_RIGHT:
+                self._change_section(1)
+        elif e.type == pygame.MOUSEWHEEL:
+            if not self._sections:
+                return
+            section = self._sections[self._section_index]
+            viewport_rect = section.get("viewport_rect")
+            if viewport_rect is None:
+                self._scroll_section(section, e.y)
+                return
+            mx, my = pygame.mouse.get_pos()
+            if viewport_rect.collidepoint((mx, my)):
+                self._scroll_section(section, e.y)
 
     # --- drawing -------------------------------------------------------
     def _draw_menu_button(self, screen):
@@ -710,28 +789,87 @@ class MainMenuScene(C.Scene):
             pygame.draw.line(screen, line_color, (start_x, y), (start_x + line_width, y), 3)
 
     def _draw_sections(self, screen):
-        for section in self._sections:
-            rect = section["rect"].move(0, -self._scroll_offset)
-            if rect.bottom < 0 or rect.top > C.SCREEN_H:
-                continue
-            pygame.draw.rect(screen, self.SECTION_BG, rect, border_radius=self.SECTION_BORDER_RADIUS)
-            pygame.draw.rect(screen, self.SECTION_BORDER, rect, width=2, border_radius=self.SECTION_BORDER_RADIUS)
-            title_rect = section["title_rect"].move(0, -self._scroll_offset)
-            screen.blit(section["title_surf"], title_rect.topleft)
-            for entry in section["entries"]:
-                icon_rect = entry.rect.move(0, -self._scroll_offset)
-                label_rect = entry.label_rect.move(0, -self._scroll_offset)
-                screen.blit(entry.surface, icon_rect.topleft)
-                if entry.label_surf is not None:
-                    screen.blit(entry.label_surf, label_rect.topleft)
-
-    def _draw_scrollbar(self, screen):
-        if self._max_scroll <= 0:
+        if not self._sections:
             return
-        track = self._scroll_track_rect
-        thumb = self._scroll_thumb_rect
-        pygame.draw.rect(screen, (40, 40, 45), track, border_radius=6)
-        pygame.draw.rect(screen, (180, 180, 190), thumb, border_radius=6)
+        section = self._sections[self._section_index]
+        rect = section["rect"]
+        pygame.draw.rect(screen, self.SECTION_BG, rect, border_radius=self.SECTION_BORDER_RADIUS)
+        pygame.draw.rect(screen, self.SECTION_BORDER, rect, width=2, border_radius=self.SECTION_BORDER_RADIUS)
+        title_rect = section["title_rect"]
+        screen.blit(section["title_surf"], title_rect.topleft)
+        viewport_rect: pygame.Rect = section.get("viewport_rect", pygame.Rect(0, 0, 0, 0))
+        previous_clip = screen.get_clip()
+        if viewport_rect.width > 0 and viewport_rect.height > 0:
+            screen.set_clip(viewport_rect)
+        for entry in section["entries"]:
+            icon_rect = self._entry_icon_rect(section, entry)
+            label_rect = self._entry_label_rect(section, entry)
+            if viewport_rect.width > 0 and viewport_rect.height > 0 and not viewport_rect.colliderect(icon_rect):
+                if not viewport_rect.colliderect(label_rect):
+                    continue
+            if entry.surface is not None:
+                screen.blit(entry.surface, icon_rect.topleft)
+            if entry.label_surf is not None:
+                screen.blit(entry.label_surf, label_rect.topleft)
+        if viewport_rect.width > 0 and viewport_rect.height > 0:
+            screen.set_clip(previous_clip)
+
+        if section.get("scroll_max", 0) > 0 and viewport_rect.height > 0:
+            track_rect = pygame.Rect(
+                viewport_rect.right + self.SCROLLBAR_MARGIN,
+                viewport_rect.top,
+                self.SCROLLBAR_WIDTH,
+                viewport_rect.height,
+            )
+            pygame.draw.rect(screen, (220, 220, 225), track_rect, border_radius=self.SCROLLBAR_WIDTH // 2)
+            content_height = viewport_rect.height + section["scroll_max"]
+            if content_height > 0:
+                thumb_height = max(32, int(viewport_rect.height * viewport_rect.height / content_height))
+                thumb_travel = max(0, track_rect.height - thumb_height)
+                offset = section.get("scroll_offset", 0)
+                thumb_top = track_rect.top
+                if thumb_travel > 0 and section["scroll_max"] > 0:
+                    thumb_top += int(thumb_travel * (offset / section["scroll_max"]))
+                thumb_rect = pygame.Rect(
+                    track_rect.left,
+                    thumb_top,
+                    track_rect.width,
+                    thumb_height,
+                )
+                pygame.draw.rect(screen, (150, 150, 160), thumb_rect, border_radius=self.SCROLLBAR_WIDTH // 2)
+
+    def _draw_nav_button(self, screen, rect: pygame.Rect, direction: int, enabled: bool, hover: bool) -> None:
+        if rect.width <= 0 or rect.height <= 0 or not enabled and len(self._sections) <= 1:
+            return
+        bg = self.NAV_BUTTON_BG if enabled else (210, 210, 215)
+        if hover and enabled:
+            bg = (max(0, bg[0] - 10), max(0, bg[1] - 10), max(0, bg[2] - 10))
+        border = self.NAV_BUTTON_BORDER
+        pygame.draw.ellipse(screen, bg, rect)
+        pygame.draw.ellipse(screen, border, rect, width=3)
+
+        cx, cy = rect.center
+        arrow_size = rect.width // 3
+        arrow_color = border if enabled else (140, 140, 145)
+        if direction < 0:
+            points = [
+                (cx + arrow_size // 2, cy - arrow_size),
+                (cx - arrow_size // 2, cy),
+                (cx + arrow_size // 2, cy + arrow_size),
+            ]
+        else:
+            points = [
+                (cx - arrow_size // 2, cy - arrow_size),
+                (cx + arrow_size // 2, cy),
+                (cx - arrow_size // 2, cy + arrow_size),
+            ]
+        pygame.draw.polygon(screen, arrow_color, points)
+
+    def _draw_navigation(self, screen):
+        if len(self._sections) <= 1:
+            return
+        self._draw_nav_button(screen, self._nav_left_rect, -1, self._section_index > 0, self._nav_hover_left)
+        self._draw_nav_button(screen, self._nav_right_rect, 1, self._section_index < len(self._sections) - 1, self._nav_hover_right)
 
     def _draw_modal(self, screen):
         overlay = pygame.Surface((C.SCREEN_W, C.SCREEN_H), pygame.SRCALPHA)
@@ -752,7 +890,7 @@ class MainMenuScene(C.Scene):
         title = C.FONT_TITLE.render("Solitaire Suite", True, C.WHITE) if C.FONT_TITLE else pygame.font.SysFont(pygame.font.get_default_font(), 44, bold=True).render("Solitaire Suite", True, C.WHITE)
         screen.blit(title, (C.SCREEN_W // 2 - title.get_width() // 2, 110))
         self._draw_sections(screen)
-        self._draw_scrollbar(screen)
+        self._draw_navigation(screen)
         self._draw_menu_button(screen)
         if self._modal_open:
             self._draw_modal(screen)
