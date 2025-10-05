@@ -279,7 +279,11 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             pile.y = bottom_y
 
         if self.toolbar:
-            self.toolbar.reflow()
+            # The shared toolbar exposes a ``relayout`` helper (matching other
+            # modes such as Monte Carlo). The previous call to ``reflow`` was a
+            # typo which caused an ``AttributeError`` when the scene initialised
+            # via the menu options controller.
+            self.toolbar.relayout()
 
     # ------------------------------------------------------------------
     # Game setup & persistence
