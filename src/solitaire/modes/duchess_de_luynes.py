@@ -321,6 +321,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self._reserve_active: bool = False
         self._reserve_peek_index: Optional[int] = None
         self._reserve_fan_y: int = 0
+        self._reserve_available: bool = True
 
         self.end_modal = _EndGameModal(self.deal_new_game, self.ui_helper.goto_menu)
         self.game_over_modal = _GameOverModal(self.deal_new_game, self.ui_helper.goto_menu)
@@ -419,6 +420,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self.redeals_used = 0
         self._reserve_active = False
         self._reserve_peek_index = None
+        self._reserve_available = True
         self.game_over_modal.close()
         self._clear_all_piles()
         deck = _deck_two_decks()
@@ -432,6 +434,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
     def _deal_initial_layout(self) -> None:
         self._pending_post_deal = False
         dealt_tableau = False
+        dealt_reserve = False
         for pile in self.tableau:
             if not self.stock_pile.cards:
                 break
@@ -439,13 +442,11 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
                 dealt_tableau = True
         reserve_to_deal = 0 if self.redeals_used >= self.max_redeals else 2
         for _ in range(reserve_to_deal):
-            stock_entry = self._pop_stock_card()
-            if not stock_entry:
+            if self._deal_card_to_reserve():
+                dealt_reserve = True
+            else:
                 break
-            card, _ = stock_entry
-            card.face_up = False
-            self.reserve_pile.cards.append(card)
-        if dealt_tableau:
+        if dealt_tableau or dealt_reserve:
             self._pending_post_deal = True
         else:
             if not self.stock_pile.cards:
@@ -459,6 +460,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self._pending_post_deal = False
         dealt_tableau = False
         dealt_any = False
+        dealt_reserve = False
         undo_pushed = False
         for pile in self.tableau:
             if not self.stock_pile.cards:
@@ -478,14 +480,11 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
                 self.push_undo()
                 self._clear_hint()
                 undo_pushed = True
-            stock_entry = self._pop_stock_card()
-            if not stock_entry:
+            if not self._deal_card_to_reserve():
                 break
-            card, _ = stock_entry
-            card.face_up = False
-            self.reserve_pile.cards.append(card)
             dealt_any = True
-        if dealt_tableau:
+            dealt_reserve = True
+        if dealt_tableau or dealt_reserve:
             self._pending_post_deal = True
             return True
         if dealt_any:
@@ -523,6 +522,8 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             pile.cards = []
         self.stock_pile.cards = new_stock
         self.redeals_used += 1
+        if self.redeals_used >= self.max_redeals:
+            self._reserve_available = False
         self._pending_post_deal = False
         self.drag_state = None
         self._highlight_targets = []
@@ -584,8 +585,9 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             cards = bottom_states[idx] if idx < len(bottom_states) else []
             pile.cards = _deserialise_cards(cards)
         self.redeals_used = int(state.get("redeals_used", 0))
+        self._reserve_available = self.redeals_used < self.max_redeals
         self._reserve_active = bool(state.get("reserve_active", False))
-        if self._reserve_active and self.stock_pile.cards:
+        if (self._reserve_active and self.stock_pile.cards) or not self._reserve_available:
             self._reserve_active = False
         if self._reserve_active:
             for card in self.reserve_pile.cards:
@@ -612,6 +614,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             "completed": self._is_completed(),
             "redeals_used": self.redeals_used,
             "reserve_active": self._reserve_active,
+            "reserve_available": self._reserve_available,
         }
 
     def _restore_snapshot(self, snapshot: Dict[str, Any]) -> None:
@@ -644,8 +647,9 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self.end_modal.close()
         self.game_over_modal.close()
         self.redeals_used = int(snapshot.get("redeals_used", self.redeals_used))
+        self._reserve_available = bool(snapshot.get("reserve_available", True))
         self._reserve_active = bool(snapshot.get("reserve_active", False))
-        if self._reserve_active and self.stock_pile.cards:
+        if (self._reserve_active and self.stock_pile.cards) or not self._reserve_available:
             self._reserve_active = False
         if self._reserve_active:
             for card in self.reserve_pile.cards:
@@ -693,7 +697,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             eligible = self._eligible_destinations(card, ("tableau", idx))
             if eligible:
                 return ([("tableau", idx)], eligible, False)
-        if self._reserve_active:
+        if self._reserve_available and self._reserve_active:
             for idx, card in enumerate(self.reserve_pile.cards):
                 eligible = self._eligible_destinations(card, ("reserve", idx))
                 if eligible:
@@ -847,6 +851,21 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self._enqueue_animation(card, from_xy, (pile.x, pile.y), _complete)
         return True
 
+    def _deal_card_to_reserve(self) -> bool:
+        if not self._reserve_available:
+            return False
+        stock_entry = self._pop_stock_card()
+        if not stock_entry:
+            return False
+        card, from_xy = stock_entry
+        card.face_up = False
+
+        def _complete(card_ref: C.Card = card) -> None:
+            self.reserve_pile.cards.append(card_ref)
+
+        self._enqueue_animation(card, from_xy, (self.reserve_pile.x, self.reserve_pile.y), _complete)
+        return True
+
     def _eligible_foundations(self, card: C.Card) -> List[Tuple[str, int]]:
         results: List[Tuple[str, int]] = []
         idx = card.suit
@@ -895,7 +914,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         return filtered
 
     def _activate_reserve_mode(self) -> None:
-        if self._reserve_active or self.stock_pile.cards:
+        if not self._reserve_available or self._reserve_active or self.stock_pile.cards:
             return
         self._reserve_active = True
         self._reserve_peek_index = None
@@ -927,7 +946,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         return rects
 
     def _reserve_card_at_pos(self, pos: Tuple[int, int]) -> Optional[int]:
-        if not self._reserve_active or not self.reserve_pile.cards:
+        if not self._reserve_available or not self._reserve_active or not self.reserve_pile.cards:
             return None
         rects = self._reserve_card_rects()
         for idx in reversed(range(len(rects))):
@@ -947,7 +966,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
                 continue
             if self._eligible_destinations(card, ("tableau", idx)):
                 return True
-        if self._reserve_active:
+        if self._reserve_available and self._reserve_active:
             for idx, card in enumerate(self.reserve_pile.cards):
                 if self._eligible_destinations(card, ("reserve", idx)):
                     return True
@@ -1294,10 +1313,11 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
 
         for pile in self.top_foundations + self.bottom_foundations + self.tableau + [self.stock_pile]:
             pile.draw(surface)
-        if self._reserve_active:
-            self._draw_reserve_fan(surface)
-        else:
-            self.reserve_pile.draw(surface)
+        if self._reserve_available:
+            if self._reserve_active:
+                self._draw_reserve_fan(surface)
+            else:
+                self.reserve_pile.draw(surface)
 
         self._draw_foundation_placeholders(surface)
 
@@ -1384,6 +1404,8 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         rects = self._reserve_card_rects()
         cards = self.reserve_pile.cards
         if not rects or not cards:
+            if not self._reserve_available:
+                return
             placeholder = pygame.Rect(C.SCREEN_W // 2 - C.CARD_W // 2, self._reserve_fan_y, C.CARD_W, C.CARD_H)
             pygame.draw.rect(surface, (200, 205, 215), placeholder, border_radius=C.CARD_RADIUS)
             pygame.draw.rect(surface, (80, 80, 95), placeholder, width=2, border_radius=C.CARD_RADIUS)
