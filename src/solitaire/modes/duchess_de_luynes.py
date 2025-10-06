@@ -646,7 +646,6 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
     def _draw_foundation_placeholders(self, surface: pygame.Surface) -> None:
         corner_font = C.FONT_CORNER_RANK or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
         suit_font = C.FONT_CENTER_SUIT or pygame.font.SysFont(pygame.font.get_default_font(), 64)
-        font = C.FONT_CORNER_RANK or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
         color = (245, 245, 250)
         pad_x = max(6, C.CARD_W // 12)
         pad_y = max(6, C.CARD_H // 12)
@@ -655,10 +654,6 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             if pile.cards:
                 return
             marker = corner_font.render(text, True, color)
-        def draw_marker(pile: C.Pile, text: str) -> None:
-            if pile.cards:
-                return
-            marker = font.render(text, True, color)
             surface.blit(marker, (pile.x + pad_x, pile.y + pad_y))
             surface.blit(
                 marker,
@@ -692,16 +687,6 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         label_font = C.FONT_UI or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
         reserve_surf = label_font.render("Reserve", True, C.WHITE)
         surface.blit(reserve_surf, (self._reserve_label_pos[0] - reserve_surf.get_width() // 2, self._reserve_label_pos[1]))
-
-        suit_font = C.FONT_UI or pygame.font.SysFont(pygame.font.get_default_font(), 24, bold=True)
-        for idx, pile in enumerate(self.top_foundations):
-            text = C.SUITS[self.FOUNDATION_ORDER[idx]]
-            surf = suit_font.render(text, True, C.WHITE)
-            surface.blit(surf, (pile.x + C.CARD_W // 2 - surf.get_width() // 2, pile.y - 26))
-        for idx, pile in enumerate(self.bottom_foundations):
-            text = C.SUITS[self.FOUNDATION_ORDER[idx]]
-            surf = suit_font.render(text, True, C.WHITE)
-            surface.blit(surf, (pile.x + C.CARD_W // 2 - surf.get_width() // 2, pile.y + C.CARD_H + 6))
 
     def _draw_highlights(self, surface: pygame.Surface) -> None:
         if self._stock_highlight and self.stock_pile.cards:
