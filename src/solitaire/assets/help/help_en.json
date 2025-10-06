@@ -9,7 +9,8 @@
       "Dragging carries the entire pile with the top card. There is no need to fan the cards in a pile.",
       "Dealing: You may deal a new card at any time until the stock is empty. On Normal and Hard, dealing disables undo until another move is made.",
       "Win: Stock empty and no moves left with 7 (Easy), 4 (Normal), or 1 (Hard) piles remaining. Otherwise the game is a loss.",
-      "Toolbar: Menu, New game, Undo, Save&Exit, and Help."
+      "Toolbar: Menu, New game, Undo, Save&Exit, and Help.",
+      "Options: Pick Easy, Normal, or Hard from the options dialog or resume a saved deal with your last difficulty setting."
     ]
   },
   "big_ben": {
@@ -23,7 +24,8 @@
       "Stock: Click the stock to refill every fan with fewer than three cards (starting at 12 o'clock clockwise). If no fan needs cards, the click moves the top stock card to the waste face-up.",
       "Waste: Its top card can only be played to foundations. It never refills tableau fans.",
       "End: Win when all foundations reach their clock rank. Lose when the stock is empty and there are no legal moves left.",
-      "Toolbar: Menu (return to Big Ben menu), New deal, Restart, Undo, Help, Save&Exit."
+      "Toolbar: Menu (return to Big Ben menu), New deal, Restart, Undo, Help, Save&Exit.",
+      "Options: Big Ben uses a single ruleset; the options dialog simply lets you resume an unfinished clock or start a new one."
     ],
     "max_width": 880
   },
@@ -38,7 +40,8 @@
       "Empty tableau piles immediately refill from the waste top card when available; otherwise draw the next stock card (turned face-up) to fill the vacancy.",
       "Stock & waste: Click the stock to deal one card face-up to the waste. Waste cards may play to tableau piles (respecting suit/direction) or foundations.",
       "Controls: The toolbar provides New, Restart, Undo, Hint, Auto (once stock and waste are empty), Help, and Save & Exit. Dragging near edges pans the table when layouts exceed the screen.",
-      "End: Win when all four foundations complete both ascending and descending sequences. If the stock and waste are empty and no tableau moves remain, the game is lost."
+      "End: Win when all four foundations complete both ascending and descending sequences. If the stock and waste are empty and no tableau moves remain, the game is lost.",
+      "Options: British Square has fixed rules; the options screen only offers resume/start controls."
     ],
     "max_width": 900
   },
@@ -49,35 +52,36 @@
       "Setup: All four aces start on the central foundations. The remaining 48 cards are dealt face-up into eight rows of six cards that flank each foundation (left and right).",
       "Moves: You may move only the exposed bottom card of any row. Place it onto another row when its rank is exactly one less than the target card, regardless of suit. Empty rows may be filled by any single card.",
       "Foundations: When a top card is the next rank for its suited foundation, double-click it (or drag it) to build upward. Foundations build A->K and cannot move back to the tableau.",
-      "Controls: Toolbar buttons provide New Deal, Restart, Undo, Auto-complete, Help, Save & Exit, and return to the menu. Auto-complete becomes available when every tableau row is already in perfect descending order."
+      "Controls: Toolbar buttons provide New Deal, Restart, Undo, Auto-complete, Help, Save & Exit, and return to the menu. Auto-complete becomes available when every tableau row is already in perfect descending order.",
+      "Options: Beleaguered Castle offers no variants—the options dialog only resumes a saved layout or deals a fresh one."
     ],
     "max_width": 860
   },
   "freecell": {
     "title": "FreeCell — How to Play",
     "lines": [
-      "Goal: Build up four foundations A→K by suit.",
-      "Tableau: Build down by rank with alternating colors.",
-      "Empty column accepts any card or a valid descending run.",
-      "Free cells: Four cells each hold one card to help maneuver.",
-      "You can drag runs; movable length depends on empty cells and columns.",
-      "Double-click a safe top card to move to a foundation.",
-      "Use Auto to move obvious cards to foundations. Undo/Restart available.",
-      "Press H to close this help."
+      "Goal: Move all cards to the four foundations, building each A→K by suit.",
+      "Setup: A 52-card deck deals face-up into eight tableau columns; the first four receive seven cards, the last four receive six.",
+      "Layout: Four single-slot free cells sit to the left of the foundations. Any face-up card may occupy a free cell.",
+      "Tableau building: Build downward by rank while alternating colors. Only ordered alternating runs may move between columns.",
+      "Moving stacks: The longest run you can drag equals (empty tableau columns + 1) × (empty free cells + 1). Empty columns accept any card or legal run.",
+      "Foundations: Double-click or drag eligible cards to build up in suit. The Auto button sends all safe cards home once no further tableau play is lost.",
+      "Undo and Restart are always available for corrections or to replay the current deal from its initial layout.",
+      "Options: FreeCell has a single ruleset; the options dialog lets you resume a saved deal or start a fresh random deal."
     ]
   },
   "gate": {
     "title": "Gate — How to Play",
     "lines": [
-      "Goal: Build four foundations A→K by suit.",
-      "Layout: 8 center tableau piles (2×4) build down with alternating colors.",
-      "Reserves: Two side reserves start with 5 face-up cards; you cannot place onto reserves.",
-      "You may move a reserve top card to a center pile or to its foundation.",
-      "Stock/Waste: Click stock to draw 1 to waste (no redeals).",
-      "When a center pile is emptied it auto-fills from Stock, else from Waste.",
-      "If both are empty it stays empty; you may fill it from a reserve.",
-      "Double-click eligible tops to foundations. Auto-finish available.",
-      "Press H/Esc to close this help."
+      "Goal: Build all four foundations A→K by suit before you run out of moves.",
+      "Setup: Deal one face-up card to each of the eight center tableau piles (arranged in two rows). Each side reserve receives five face-up cards stacked vertically; the remaining deck forms the face-down stock above the waste.",
+      "Layout: Foundations sit above the center grid with fixed suits (Spades, Hearts, Diamonds, Clubs). Stock and waste share the left edge, while the reserves flank the tableau on both sides.",
+      "Tableau play: Move only the top card of a center pile, placing it on another center pile when it is one rank lower and opposite in color. Empty centers normally refill themselves—you cannot directly place a card onto a gap while stock or waste remain.",
+      "Reserves: The exposed card from either reserve may move to a foundation or to a center pile. When a center pile empties it automatically draws from the nearest reserve; if both reserves are empty it pulls from the waste, then the stock (aces leap straight to foundations).",
+      "Stock & waste: Click the stock to draw one card face-up to the waste. There are no redeals. Waste top cards may play to the center grid or foundations if they meet the usual requirements.",
+      "Manual fills: Once both stock and waste are empty you may drag a reserve top card onto an empty center space to keep the game moving.",
+      "Toolbar: New Deal, Restart, Undo, Auto-finish, Help, and Save & Exit buttons are available at all times.",
+      "Options: Gate offers no variant toggles; the options dialog simply lets you resume a saved game or begin a new one."
     ]
   },
   "chameleon": {
@@ -89,7 +93,8 @@
       "Reserve: Only the top card may be played. Empty tableau columns auto-fill from the reserve, then from the waste if the reserve is empty.",
       "Stock/Waste: Click the stock to deal one card face-up to the waste. When the stock is empty, turn the waste over to form a new stock until redeals run out.",
       "Moves: Drag single cards or valid descending sequences between tableau columns, or play any eligible card to its foundation.",
-      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help.",
+      "Options: Set the number of allowed redeals (Unlimited, None, or 1) from the options dialog; resumes honor the chosen limit."
     ],
     "max_width": 880
   },
@@ -102,7 +107,8 @@
       "Reserve: Only the top card of the Demon may be played. Empty tableau columns auto-fill from the reserve, then from the waste if the reserve is empty.",
       "Stock/Waste: Click the stock to deal up to three cards face-up to the waste. When the stock is empty, turn the waste over to form a new stock until replays run out.",
       "Moves: Drag single cards or ordered alternating sequences between tableau columns, or play any eligible card to its foundation.",
-      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help.",
+      "Options: Choose how many stock replays are allowed (Unlimited, 3, or 1) in the options dialog or resume a saved deal with that limit."
     ],
     "max_width": 880
   },
@@ -116,85 +122,90 @@
       "Reserve: Only the top card of each reserve fan may be played. Empty tableau columns auto-fill from the reserves, then the waste, then the stock if available.",
       "Stock/Waste: Click the stock to deal one card face-up to the waste. When empty, turn the waste over once to form a new stock.",
       "Moves: Drag single cards or valid descending alternating sequences between tableau columns, or play any eligible card to its foundation.",
-      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help."
+      "Toolbar: Menu, New game, Restart, Undo, Save&Exit, and Help.",
+      "Options: Duchess follows a single ruleset; use the options dialog to resume a saved deal or start a new one."
     ],
     "max_width": 880
   },
   "golf": {
     "title": "Golf — How to Play",
     "lines": [
-      "Goal: Clear tableau piles across 1/3/9/18 holes for a low total score.",
-      "Play: Move the top card of any tableau pile to the foundation",
-      "if it is one rank higher or lower than the foundation top (suit doesn't matter).",
-      "Wrap A↔K is controlled by the Around-the-Corner option on the options screen.",
-      "Stock: Flip one to the foundation to start, and when stuck. No redeals.",
-      "Scoring: If tableau is cleared, score = -remaining stock; else = remaining tableau count.",
-      "Save&Exit lets you continue later; recent totals shown in Scores.",
-      "Undo/Restart available from the toolbar. Press Esc/Close to dismiss help."
+      "Goal: Complete the chosen 1-, 3-, 9-, or 18-hole course with the lowest total score.",
+      "Setup: Seven tableau columns each receive five face-up cards. The remaining deck sits face-down as a stock; the waste/foundation pile starts empty until you flip the first stock card.",
+      "Play: Only the top card of each tableau pile is active. Move it to the foundation when its rank is exactly one higher or lower than the foundation top, regardless of suit.",
+      "Around the Corner: When this option is on, Aces and Kings are adjacent; when off, sequences stop at the ends.",
+      "Stock: Flip one card at a time to the foundation whenever you need a new starting rank. There are no redeals within a hole.",
+      "Scoring: Clearing every tableau card scores the negative of the cards still in stock; otherwise you score the number of cards left in the tableau. Course score is the sum of hole scores, with par targets shown on the scorecard.",
+      "Between holes: Once a hole ends, the next begins automatically with the current Around/Length settings. Use Save&Exit to preserve your multi-hole progress and resume later.",
+      "Toolbar: New Game (reset course), Restart Hole, Undo, Help, and Save&Exit are always available.",
+      "Options: Course Length chooses 1, 3, 9, or 18 holes; Around the Corner toggles whether ranks wrap A↔K. Access the Scores button from the options dialog to review past rounds."
     ]
   },
   "monte_carlo": {
     "title": "Monte Carlo — How to Play",
     "lines": [
-      "Goal: Remove every card from the tableau and stock by pairing ranks.",
-      "Setup: Deal a 5×5 grid of face-up cards. The remaining deck stays face-down as a stock with a pairs pile beneath it.",
-      "Moves: Select two touching cards (orthogonal or diagonal) of the same rank to discard them to the pairs pile.",
-      "Compacting: Whenever gaps exist you may press Compact or click the stock to slide cards leftward, then upward, repeating until packed.",
-      "After compacting, empty spots refill left-to-right, top-to-bottom from the stock until it is empty.",
-      "Win: All tableau and stock cards are cleared. Lose: the grid is full, the stock is empty, and no adjacent matches remain.",
-      "Toolbar: Menu, New game, Restart, Compact, Save&Exit, and Help."
+      "Goal: Remove every card from the tableau and stock by discarding touching pairs of equal rank.",
+      "Setup: Deal a 5×5 grid of face-up cards. The remaining cards form a face-down stock with a pairs pile beneath it to collect discards.",
+      "Selecting cards: Choose any two orthogonally or diagonally adjacent cards of the same rank. Matched cards slide to the pairs pile and leave gaps in the grid.",
+      "Compacting: Whenever spaces appear, click Compact (or tap the stock) to squeeze cards left within each row, then slide rows upward, repeating until the tableau packs tightly.",
+      "Refilling: After a compact, empty cells fill from the stock in reading order (left-to-right, top-to-bottom). When the stock runs out, further compacts only slide the remaining grid.",
+      "End of game: You win once both tableau and stock are empty. You lose when no adjacent matches remain and the stock cannot refill gaps.",
+      "Options: Monte Carlo uses a single ruleset; the options dialog only allows resuming a saved game or starting anew.",
+      "Toolbar: Menu, New Game, Restart, Compact, Save&Exit, and Help buttons remain available during play."
     ]
   },
   "klondike": {
     "title": "Klondike — How to Play",
     "lines": [
-      "Goal: Build up four foundations A→K by suit.",
-      "Tableau: Build down by rank with alternating colors.",
-      "You may drag sequences that follow alternating colors.",
-      "Empty column: Only a King or a stack starting with King.",
-      "Stock/Waste: Click stock to deal 1 or 3 cards depending on Draw setting.",
-      "Redeals depend on Difficulty: Easy=unlimited, Medium=2, Hard=1.",
-      "Double-click a top card to auto-move to a foundation if legal.",
-      "Use Auto to auto-finish when eligible. Undo/Restart from toolbar.",
-      "Press H to close this help."
+      "Goal: Build four foundations from Ace to King in each suit.",
+      "Setup: Seven tableau piles run left to right with 1–7 cards; only the top card of each pile begins face-up. The remaining deck forms a face-down stock with a waste pile beside it.",
+      "Tableau play: Build down by rank while alternating colors. You may drag an ordered run of alternating colors between columns, revealing facedown cards as they become exposed.",
+      "Empty columns: Only a King (or a properly ordered run headed by a King) may occupy an empty tableau space.",
+      "Foundations: Double-click or drag eligible cards to build upward by suit from Ace to King. The Auto button finishes once all moves to foundations are safe.",
+      "Stock & waste: Click the stock to turn cards face-up onto the waste in packets of 1 or 3 depending on the Draw Mode option. Play the waste top back to the tableau or straight to a foundation.",
+      "Redeals: The Stock Cycles option controls how many times you may recycle the waste onto the stock—Unlimited, 2 cycles, or 1 cycle for hard mode.",
+      "Controls: Toolbar buttons include New Game, Restart, Undo, Hint, Auto, Help, and Save & Exit.",
+      "Options: Choose Draw 1 or Draw 3 and set allowed stock cycles from the options dialog; you can also resume a saved deal from there."
     ]
   },
   "pyramid": {
     "title": "Pyramid — How to Play",
     "lines": [
-      "Goal: Remove all cards by making pairs that sum to 13.",
-      "Kings (13) remove by themselves.",
-      "Only uncovered (exposed) cards can be paired.",
-      "Use the two waste piles under the stock; pair with wastes when possible.",
-      "Stock: Click to deal to waste. Resets allowed depend on difficulty:",
-      "Easy=unlimited, Normal=2, Hard=1.",
-      "Use Hint to highlight a possible pair. Undo/Restart available.",
-      "Press H to close this help."
+      "Goal: Clear the pyramid by removing cards in combinations that total 13.",
+      "Setup: Build a seven-row pyramid of 28 face-up cards. The remaining cards form a face-down stock above two waste piles positioned beneath it.",
+      "Available cards: Only uncovered pyramid cards (those without cards resting on them) and the top cards of either waste pile may be played.",
+      "Matching: Combine two available cards whose ranks sum to 13—Jacks count 11, Queens 12, Kings 13. Kings remove on their own.",
+      "Stock & waste: Clicking the stock deals one card face-up to the left waste. If a card was already there, it slides to the right waste so you can still pair it later.",
+      "Resets: When the stock is empty you may recycle the right waste into a new stock, turning the cards face-down in order. The Resets option determines how many redeals remain (Unlimited, 2, or 1).",
+      "End of game: Win by clearing every pyramid card. If no legal pairs exist and you are out of resets, the game ends in a loss.",
+      "Toolbar: New Game, Restart, Undo, Hint, Help, and Save&Exit controls remain available throughout play.",
+      "Options: Choose the number of allowed stock resets from the options dialog or resume an unfinished game from there."
     ]
   },
   "tripeaks": {
     "title": "TriPeaks — How to Play",
     "lines": [
-      "Goal: Clear all tableau cards.",
-      "Move any exposed card that is one rank higher or lower",
-      "than the waste top (suit does not matter).",
-      "Wrap A↔K is controlled by the Wrap option on the options screen.",
-      "Click stock to deal the next card to waste; no redeals.",
-      "Use Hint to highlight a playable card. Undo/Restart available.",
-      "Press Esc or Close to dismiss this help."
+      "Goal: Clear every tableau card by playing them to the waste pile in sequence.",
+      "Setup: The tableau forms three overlapping peaks. Ten cards make the base row, nine sit above it, then six, then three at the top. Only the bottom row starts face-up.",
+      "Available cards: A tableau card becomes playable when nothing covers it. Move a playable card to the waste when its rank is exactly one higher or lower than the current waste top, regardless of suit.",
+      "Wrap option: If Wrap A↔K is enabled, Aces and Kings count as adjacent; when off, runs stop at Ace and King.",
+      "Stock: The first stock card automatically flips to start the waste. When no moves remain, click the stock to deal the next card. There are no redeals once the stock empties.",
+      "Scoring & finish: You win by clearing the tableau before the stock runs out. Hint highlights a playable card; Undo and Restart retrace or replay the current deal.",
+      "Toolbar: New Game, Restart, Undo, Hint, Help, and Save&Exit are available at any time.",
+      "Options: Toggle Wrap A↔K from the options dialog or resume a saved game from there."
     ]
   },
   "yukon": {
     "title": "Yukon — How to Play",
     "lines": [
-      "Goal: Build four foundations A→K by suit.",
-      "Layout: 7 tableau piles with counts 1,6,7,8,9,10,11 (top 5 face-up).",
-      "Move: Drag any face-up substack; it need not be ordered.",
-      "Target: Bottom card must be one rank lower and opposite color than the destination top.",
-      "Empty column: Only Kings (or stacks starting with King).",
-      "Aces auto-move to foundations when exposed. Double-click top to send to foundation.",
-      "Auto completes when all tableau cards are face-up.",
-      "Use Save&Exit to continue later."
+      "Goal: Build four foundations from Ace to King in each suit.",
+      "Setup: Seven tableau piles sit left of the foundations. From left to right they contain 1, 6, 7, 8, 9, 10, and 11 cards; only the top five cards of each multi-card pile start face-up. There is no stock or waste.",
+      "Tableau play: You may drag any group of face-up cards together—even if the sequence is broken—as long as the bottom card is one rank lower and the opposite color of the destination top card.",
+      "Empty columns: Only a King or a stack headed by a King may occupy an empty tableau column.",
+      "Foundations: Build upward by suit from Ace to King. Newly uncovered aces jump to their foundations automatically, and double-clicking moves other eligible top cards.",
+      "Progress: Reveal facedown cards by moving the piles above them. Once every tableau card is face-up you can trigger Auto to finish the game.",
+      "Toolbar: New Deal, Restart, Undo, Auto, Help, and Save&Exit remain available while you play.",
+      "Options: Yukon has a single ruleset; the options dialog offers resume/start controls without additional variants."
     ]
   },
   "bowling_solitaire": {
@@ -209,7 +220,8 @@
       "Second (and third) balls require every picked pin to touch at least one pin knocked down on the prior ball, unless pins reset.",
       "A ball ends when you clear all pins, discard a ball card, or no moves remain. Strike/spare scoring follows bowling rules.",
       "Tenth frame: strikes or spares earn extra balls. Pins reset between bonus balls when a rack is cleared.",
-      "Toolbar: Menu, New game, Save&Exit, Help. Action buttons handle Knock Down, Discard Ball, and clearing your selection."
+      "Toolbar: Menu, New game, Save&Exit, Help. Action buttons handle Knock Down, Discard Ball, and clearing your selection.",
+      "Options: Bowling Solitaire has a single rule set; open the options dialog to resume a saved series or start a new game."
     ],
     "max_width": 880
   }
