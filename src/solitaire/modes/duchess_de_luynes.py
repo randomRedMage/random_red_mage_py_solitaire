@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 import os
 import random
+from collections import deque
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pygame
 
@@ -213,6 +214,10 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             pile.fan_y = 0
 
         self.anim = M.CardAnimator()
+        self._animation_queue: Deque[
+            Tuple[C.Card, Tuple[int, int], Tuple[int, int], Optional[Callable[[], None]], bool, int]
+        ] = deque()
+        self._pending_post_deal: bool = False
         self.drag_state: Optional[_DragState] = None
         self._drag_pos: Tuple[int, int] = (0, 0)
         self._last_click_time: int = 0
@@ -294,46 +299,61 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         deck = _deck_two_decks()
         self.stock_pile.cards = deck
         self._deal_initial_layout()
-        self._save_game()
 
     def restart_current_deal(self) -> None:
         # Restart behaves as a new shuffle for now.
         self.deal_new_game()
 
     def _deal_initial_layout(self) -> None:
+        self._pending_post_deal = False
+        dealt_tableau = False
         for pile in self.tableau:
-            if self.stock_pile.cards:
-                card = self.stock_pile.cards.pop()
-                card.face_up = True
-                pile.cards.append(card)
-                self._auto_move_if_ace_or_king(pile)
+            if not self.stock_pile.cards:
+                break
+            if self._deal_card_to_tableau(pile):
+                dealt_tableau = True
         for _ in range(2):
-            if self.stock_pile.cards:
-                card = self.stock_pile.cards.pop()
-                card.face_up = False
-                self.reserve_pile.cards.append(card)
-        self._update_move_state()
+            stock_entry = self._pop_stock_card()
+            if not stock_entry:
+                break
+            card, _ = stock_entry
+            card.face_up = False
+            self.reserve_pile.cards.append(card)
+        if dealt_tableau:
+            self._pending_post_deal = True
+        else:
+            self._update_move_state()
+            self._save_game()
 
-    def _deal_round_from_stock(self) -> None:
+    def _deal_round_from_stock(self) -> bool:
+        if self.anim.active or self._animation_queue:
+            return False
+        self._pending_post_deal = False
+        dealt_tableau = False
         dealt_any = False
         for pile in self.tableau:
             if not self.stock_pile.cards:
                 break
-            card = self.stock_pile.cards.pop()
-            card.face_up = True
-            pile.cards.append(card)
-            dealt_any = True
-            self._auto_move_if_ace_or_king(pile)
+            if self._deal_card_to_tableau(pile):
+                dealt_tableau = True
+                dealt_any = True
         for _ in range(2):
-            if not self.stock_pile.cards:
+            stock_entry = self._pop_stock_card()
+            if not stock_entry:
                 break
-            card = self.stock_pile.cards.pop()
+            card, _ = stock_entry
             card.face_up = False
             self.reserve_pile.cards.append(card)
             dealt_any = True
+        if dealt_tableau:
+            self._pending_post_deal = True
+            return True
         if dealt_any:
             self._save_game()
+            self._update_move_state()
+            return True
         self._update_move_state()
+        return False
 
     def _clear_all_piles(self) -> None:
         for pile in (
@@ -344,6 +364,8 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         ):
             pile.cards = []
         self.anim.cancel()
+        self._animation_queue.clear()
+        self._pending_post_deal = False
         self.drag_state = None
         self._highlight_targets = []
         self._highlight_until = 0
@@ -385,20 +407,104 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    def _auto_move_if_ace_or_king(self, tableau_pile: C.Pile) -> None:
-        if not tableau_pile.cards:
+    def _enqueue_animation(
+        self,
+        card: C.Card,
+        from_xy: Tuple[int, int],
+        to_xy: Tuple[int, int],
+        on_complete: Optional[Callable[[], None]] = None,
+        *,
+        flip_mid: bool = False,
+        duration: int = 260,
+    ) -> None:
+        self._animation_queue.append((card, from_xy, to_xy, on_complete, flip_mid, duration))
+        if not self.anim.active:
+            self._start_next_animation()
+
+    def _start_next_animation(self) -> None:
+        if self.anim.active:
             return
-        card = tableau_pile.cards[-1]
-        if card.rank == 13:
-            dest = self.top_foundations[card.suit]
-            if not dest.cards:
-                tableau_pile.cards.pop()
-                dest.cards.append(card)
-        elif card.rank == 1:
-            dest = self.bottom_foundations[card.suit]
-            if not dest.cards:
-                tableau_pile.cards.pop()
-                dest.cards.append(card)
+        if not self._animation_queue:
+            self._on_animation_queue_empty()
+            return
+        card, from_xy, to_xy, callback, flip_mid, duration = self._animation_queue.popleft()
+
+        def _finish(cb: Optional[Callable[[], None]] = callback) -> None:
+            if cb:
+                try:
+                    cb()
+                except Exception:
+                    pass
+            self._start_next_animation()
+
+        self.anim.start_move(
+            card,
+            from_xy,
+            to_xy,
+            dur_ms=duration,
+            on_complete=_finish,
+            flip_mid=flip_mid,
+        )
+
+    def _on_animation_queue_empty(self) -> None:
+        if self._pending_post_deal:
+            self._handle_post_deal_actions()
+
+    def _handle_post_deal_actions(self) -> None:
+        self._pending_post_deal = False
+        if self._queue_auto_foundation_moves():
+            self._pending_post_deal = True
+            return
+        self._update_move_state()
+        self._save_game()
+
+    def _queue_auto_foundation_moves(self) -> bool:
+        moves: List[Tuple[C.Pile, C.Pile]] = []
+        for pile in self.tableau:
+            if not pile.cards:
+                continue
+            card = pile.cards[-1]
+            if card.rank == 13:
+                dest = self.top_foundations[card.suit]
+                if not dest.cards:
+                    moves.append((pile, dest))
+            elif card.rank == 1:
+                dest = self.bottom_foundations[card.suit]
+                if not dest.cards:
+                    moves.append((pile, dest))
+        for source, dest in moves:
+            if not source.cards:
+                continue
+            top_index = len(source.cards) - 1
+            rect = source.rect_for_index(top_index)
+            card = source.cards.pop()
+
+            def _complete(card_ref: C.Card = card, dest_pile: C.Pile = dest) -> None:
+                dest_pile.cards.append(card_ref)
+
+            self._enqueue_animation(card, (rect.x, rect.y), (dest.x, dest.y), _complete)
+        return bool(moves)
+
+    def _pop_stock_card(self) -> Optional[Tuple[C.Card, Tuple[int, int]]]:
+        if not self.stock_pile.cards:
+            return None
+        index = len(self.stock_pile.cards) - 1
+        rect = self.stock_pile.rect_for_index(index)
+        card = self.stock_pile.cards.pop()
+        return card, (rect.x, rect.y)
+
+    def _deal_card_to_tableau(self, pile: C.Pile) -> bool:
+        stock_entry = self._pop_stock_card()
+        if not stock_entry:
+            return False
+        card, from_xy = stock_entry
+        card.face_up = True
+
+        def _complete(card_ref: C.Card = card, dest_pile: C.Pile = pile) -> None:
+            dest_pile.cards.append(card_ref)
+
+        self._enqueue_animation(card, from_xy, (pile.x, pile.y), _complete)
+        return True
 
     def _eligible_foundations(self, card: C.Card) -> List[Tuple[str, int]]:
         results: List[Tuple[str, int]] = []
@@ -553,8 +659,11 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         rect = pygame.Rect(self.stock_pile.x, self.stock_pile.y, C.CARD_W, C.CARD_H)
         if rect.collidepoint(pos):
             if self.stock_pile.cards:
-                self._deal_round_from_stock()
-            self._stock_highlight = False
+                dealt = self._deal_round_from_stock()
+            else:
+                dealt = False
+            if dealt or not self.stock_pile.cards:
+                self._stock_highlight = False
             return True
         return False
 
