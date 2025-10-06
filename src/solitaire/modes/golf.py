@@ -779,19 +779,11 @@ class GolfScoresScene(C.Scene):
                 from solitaire.scenes.menu import MainMenuScene
 
                 menu_scene = MainMenuScene(self.app)
-                try:
-                    menu_scene._open_game_modal("golf")
-                except Exception:
-                    pass
                 self.next_scene = menu_scene
         elif e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
             from solitaire.scenes.menu import MainMenuScene
 
             menu_scene = MainMenuScene(self.app)
-            try:
-                menu_scene._open_game_modal("golf")
-            except Exception:
-                pass
             self.next_scene = menu_scene
 
     def draw(self, screen):
