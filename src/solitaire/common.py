@@ -134,24 +134,38 @@ FONT_CENTER_SUIT = None
 def setup_fonts():
     global FONT_NAME, FONT_RANK, FONT_SMALL, FONT_UI, FONT_TITLE, FONT_CORNER_RANK, FONT_CORNER_SUIT, FONT_CENTER_SUIT
     FONT_NAME = pygame.font.get_default_font()
-    # Core UI/number fonts (system default is fine)
-    FONT_RANK = pygame.font.SysFont(FONT_NAME, 24, bold=True)
-    FONT_SMALL = pygame.font.SysFont(FONT_NAME, 20, bold=True)
-    FONT_UI = pygame.font.SysFont(FONT_NAME, 26, bold=True)
-    FONT_TITLE = pygame.font.SysFont(FONT_NAME, 44, bold=True)
-    FONT_CORNER_RANK = pygame.font.SysFont(FONT_NAME, 28, bold=True)
+
+    bundled_font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "DejaVuSans.ttf")
+
+    def _load_font(size: int, *, bold: bool = True) -> pygame.font.Font:
+        """Create a font that includes extended glyphs when available."""
+
+        if os.path.isfile(bundled_font_path):
+            try:
+                font = pygame.font.Font(bundled_font_path, size)
+                font.set_bold(bold)
+                return font
+            except Exception:
+                pass
+        return pygame.font.SysFont(FONT_NAME, size, bold=bold)
+
+    # Core UI/number fonts prefer the bundled DejaVuSans to guarantee glyphs like arrows.
+    FONT_RANK = _load_font(24)
+    FONT_SMALL = _load_font(20)
+    FONT_UI = _load_font(26)
+    FONT_TITLE = _load_font(44)
+    FONT_CORNER_RANK = _load_font(28)
 
     # Suit glyphs require a Unicode-capable font. Prefer bundled DejaVuSans.
     suit_font_small = None
     suit_font_large = None
-    try:
-        _font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "DejaVuSans.ttf")
-        if os.path.isfile(_font_path):
-            suit_font_small = pygame.font.Font(_font_path, 26)
-            suit_font_large = pygame.font.Font(_font_path, 56)
-    except Exception:
-        suit_font_small = None
-        suit_font_large = None
+    if os.path.isfile(bundled_font_path):
+        try:
+            suit_font_small = pygame.font.Font(bundled_font_path, 26)
+            suit_font_large = pygame.font.Font(bundled_font_path, 56)
+        except Exception:
+            suit_font_small = None
+            suit_font_large = None
     # Fallbacks for environments without the bundled font
     if suit_font_small is None:
         try:
