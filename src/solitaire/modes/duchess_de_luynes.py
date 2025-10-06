@@ -14,7 +14,7 @@ import os
 import random
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import pygame
 
@@ -604,18 +604,22 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
 
     def _queue_auto_foundation_moves(self) -> bool:
         moves: List[Tuple[C.Pile, C.Pile]] = []
+        moved_top_suits: Set[int] = set()
+        moved_bottom_suits: Set[int] = set()
         for pile in self.tableau:
             if not pile.cards:
                 continue
             card = pile.cards[-1]
             if card.rank == 13:
                 dest = self.top_foundations[card.suit]
-                if not dest.cards:
+                if not dest.cards and card.suit not in moved_top_suits:
                     moves.append((pile, dest))
+                    moved_top_suits.add(card.suit)
             elif card.rank == 1:
                 dest = self.bottom_foundations[card.suit]
-                if not dest.cards:
+                if not dest.cards and card.suit not in moved_bottom_suits:
                     moves.append((pile, dest))
+                    moved_bottom_suits.add(card.suit)
         if moves:
             self.push_undo()
             self._clear_hint()
