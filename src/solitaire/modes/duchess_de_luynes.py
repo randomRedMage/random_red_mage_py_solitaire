@@ -644,11 +644,17 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self.end_modal.draw(surface)
 
     def _draw_foundation_placeholders(self, surface: pygame.Surface) -> None:
+        corner_font = C.FONT_CORNER_RANK or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
+        suit_font = C.FONT_CENTER_SUIT or pygame.font.SysFont(pygame.font.get_default_font(), 64)
         font = C.FONT_CORNER_RANK or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
         color = (245, 245, 250)
         pad_x = max(6, C.CARD_W // 12)
         pad_y = max(6, C.CARD_H // 12)
 
+        def draw_corner_markers(pile: C.Pile, text: str) -> None:
+            if pile.cards:
+                return
+            marker = corner_font.render(text, True, color)
         def draw_marker(pile: C.Pile, text: str) -> None:
             if pile.cards:
                 return
@@ -662,10 +668,25 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
                 ),
             )
 
-        for pile in self.top_foundations:
-            draw_marker(pile, "K")
-        for pile in self.bottom_foundations:
-            draw_marker(pile, "A")
+        def draw_suit_symbol(pile: C.Pile, suit_index: int) -> None:
+            if pile.cards:
+                return
+            suit_char = C.SUITS[suit_index]
+            suit_surface = suit_font.render(suit_char, True, color)
+            surface.blit(
+                suit_surface,
+                (
+                    pile.x + C.CARD_W // 2 - suit_surface.get_width() // 2,
+                    pile.y + C.CARD_H // 2 - suit_surface.get_height() // 2,
+                ),
+            )
+
+        for idx, pile in enumerate(self.top_foundations):
+            draw_suit_symbol(pile, self.FOUNDATION_ORDER[idx])
+            draw_corner_markers(pile, "K")
+        for idx, pile in enumerate(self.bottom_foundations):
+            draw_suit_symbol(pile, self.FOUNDATION_ORDER[idx])
+            draw_corner_markers(pile, "A")
 
     def _draw_labels(self, surface: pygame.Surface) -> None:
         label_font = C.FONT_UI or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
