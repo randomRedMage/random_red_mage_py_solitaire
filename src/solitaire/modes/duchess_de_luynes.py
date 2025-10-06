@@ -108,6 +108,7 @@ class _DragState:
     card: C.Card
     origin: Tuple[str, int]  # ("tableau", index)
     offset: Tuple[int, int]
+    snapshot: Optional[Dict[str, Any]] = None
 
 
 class _EndGameModal:
@@ -217,6 +218,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self._animation_queue: Deque[
             Tuple[C.Card, Tuple[int, int], Tuple[int, int], Optional[Callable[[], None]], bool, int]
         ] = deque()
+        self.undo_mgr = C.UndoManager()
         self._pending_post_deal: bool = False
         self.drag_state: Optional[_DragState] = None
         self._drag_pos: Tuple[int, int] = (0, 0)
@@ -225,12 +227,32 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self._highlight_targets: List[Tuple[str, int]] = []
         self._highlight_until: int = 0
         self._stock_highlight: bool = False
+        self._hint_sources: List[Tuple[str, int]] = []
+        self._hint_targets: List[Tuple[str, int]] = []
+        self._hint_until: int = 0
+        self._hint_stock: bool = False
 
         self.end_modal = _EndGameModal(self.deal_new_game, self.ui_helper.goto_menu)
+
+        def can_undo() -> bool:
+            return self.undo_mgr.can_undo() and not (self.anim.active or self._animation_queue)
+
+        def can_hint() -> bool:
+            return self._can_show_hint()
 
         self.toolbar = self.ui_helper.build_toolbar(
             new_action={"on_click": self.deal_new_game},
             restart_action={"on_click": self.restart_current_deal},
+            undo_action={
+                "on_click": self.undo,
+                "enabled": can_undo,
+                "tooltip": "Undo last move",
+            },
+            hint_action={
+                "on_click": self.show_hint,
+                "enabled": can_hint,
+                "tooltip": "Highlight a possible move",
+            },
             save_action=(
                 "Save&Exit",
                 {"on_click": lambda: self._save_game(to_menu=True), "tooltip": "Save game and return to menu"},
@@ -295,6 +317,11 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
     # ------------------------------------------------------------------
     def deal_new_game(self) -> None:
         delete_saved_game()
+        self.undo_mgr = C.UndoManager()
+        self._clear_hint()
+        self._highlight_targets = []
+        self._highlight_until = 0
+        self._stock_highlight = False
         self._clear_all_piles()
         deck = _deck_two_decks()
         self.stock_pile.cards = deck
@@ -331,13 +358,24 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self._pending_post_deal = False
         dealt_tableau = False
         dealt_any = False
+        undo_pushed = False
         for pile in self.tableau:
             if not self.stock_pile.cards:
                 break
+            if not undo_pushed:
+                self.push_undo()
+                self._clear_hint()
+                undo_pushed = True
             if self._deal_card_to_tableau(pile):
                 dealt_tableau = True
                 dealt_any = True
         for _ in range(2):
+            if not self.stock_pile.cards:
+                break
+            if not undo_pushed:
+                self.push_undo()
+                self._clear_hint()
+                undo_pushed = True
             stock_entry = self._pop_stock_card()
             if not stock_entry:
                 break
@@ -367,6 +405,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         self._animation_queue.clear()
         self._pending_post_deal = False
         self.drag_state = None
+        self._clear_hint()
         self._highlight_targets = []
         self._highlight_until = 0
         self.end_modal.close()
@@ -403,6 +442,111 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         if state.get("completed") and self._is_completed():
             self.end_modal.open()
         self._update_move_state()
+
+    # ------------------------------------------------------------------
+    # Undo & hint helpers
+    # ------------------------------------------------------------------
+    def _record_snapshot(self) -> Dict[str, Any]:
+        return {
+            "stock": _serialise_cards(self.stock_pile.cards),
+            "reserve": _serialise_cards(self.reserve_pile.cards),
+            "tableau": [_serialise_cards(p.cards) for p in self.tableau],
+            "foundations_top": [_serialise_cards(p.cards) for p in self.top_foundations],
+            "foundations_bottom": [_serialise_cards(p.cards) for p in self.bottom_foundations],
+            "completed": self._is_completed(),
+        }
+
+    def _restore_snapshot(self, snapshot: Dict[str, Any]) -> None:
+        self.anim.cancel()
+        self._animation_queue.clear()
+        self.drag_state = None
+        self._clear_hint()
+        self._highlight_targets = []
+        self._highlight_until = 0
+        self._pending_post_deal = False
+
+        self.stock_pile.cards = _deserialise_cards(snapshot.get("stock", []))
+        self.reserve_pile.cards = _deserialise_cards(snapshot.get("reserve", []))
+
+        tableau_states = snapshot.get("tableau", [])
+        for idx, pile in enumerate(self.tableau):
+            cards = tableau_states[idx] if idx < len(tableau_states) else []
+            pile.cards = _deserialise_cards(cards)
+
+        top_states = snapshot.get("foundations_top", [])
+        for idx, pile in enumerate(self.top_foundations):
+            cards = top_states[idx] if idx < len(top_states) else []
+            pile.cards = _deserialise_cards(cards)
+
+        bottom_states = snapshot.get("foundations_bottom", [])
+        for idx, pile in enumerate(self.bottom_foundations):
+            cards = bottom_states[idx] if idx < len(bottom_states) else []
+            pile.cards = _deserialise_cards(cards)
+
+        self.end_modal.close()
+        if snapshot.get("completed") and self._is_completed():
+            self.end_modal.open()
+
+        self._update_move_state()
+        self._save_game()
+
+    def push_undo(self, snapshot: Optional[Dict[str, Any]] = None) -> None:
+        snap = snapshot if snapshot is not None else self._record_snapshot()
+        self.undo_mgr.push(lambda snap=snap: self._restore_snapshot(snap))
+
+    def undo(self) -> None:
+        if not self.undo_mgr.can_undo() or self.anim.active or self._animation_queue:
+            return
+        self.anim.cancel()
+        self._animation_queue.clear()
+        self.drag_state = None
+        self._clear_hint()
+        self._highlight_targets = []
+        self._highlight_until = 0
+        self.undo_mgr.undo()
+
+    def _clear_hint(self) -> None:
+        self._hint_sources = []
+        self._hint_targets = []
+        self._hint_until = 0
+        self._hint_stock = False
+
+    def _compute_hint(self) -> Optional[Tuple[List[Tuple[str, int]], List[Tuple[str, int]], bool]]:
+        if self.anim.active or self._animation_queue:
+            return None
+        for idx, pile in enumerate(self.tableau):
+            if not pile.cards:
+                continue
+            card = pile.cards[-1]
+            if not card.face_up:
+                continue
+            eligible = self._eligible_foundations(card)
+            if eligible:
+                return ([("tableau", idx)], eligible, False)
+        if self.stock_pile.cards:
+            return ([], [], True)
+        return None
+
+    def _can_show_hint(self) -> bool:
+        return self._compute_hint() is not None
+
+    def show_hint(self) -> None:
+        hint = self._compute_hint()
+        self._clear_hint()
+        if not hint:
+            return
+        sources, targets, stock_flag = hint
+        now = pygame.time.get_ticks()
+        if stock_flag and self.stock_pile.cards:
+            self._hint_stock = True
+            self._hint_until = now + 2200
+            return
+        if not targets:
+            return
+        self._hint_sources = sources
+        self._hint_targets = targets
+        self._hint_until = now + 2200
+
 
     # ------------------------------------------------------------------
     # Helpers
@@ -472,6 +616,9 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
                 dest = self.bottom_foundations[card.suit]
                 if not dest.cards:
                     moves.append((pile, dest))
+        if moves:
+            self.push_undo()
+            self._clear_hint()
         for source, dest in moves:
             if not source.cards:
                 continue
@@ -636,6 +783,8 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
         if not pile.cards:
             return True
         source_rect = pile.rect_for_index(len(pile.cards) - 1)
+        self.push_undo()
+        self._clear_hint()
         card_to_move = pile.cards.pop()
 
         dest_pile = self.top_foundations[dest_index] if dest_type == "top" else self.bottom_foundations[dest_index]
@@ -677,13 +826,14 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
                 continue
             if hit != len(pile.cards) - 1:
                 continue
+            snapshot = self._record_snapshot()
             card = pile.cards.pop()
             if not card.face_up:
                 pile.cards.append(card)
                 continue
             rect = pile.rect_for_index(len(pile.cards)) if pile.cards else pygame.Rect(pile.x, pile.y, C.CARD_W, C.CARD_H)
             offset = (mx - rect.x, my - rect.y)
-            self.drag_state = _DragState(card=card, origin=("tableau", idx), offset=offset)
+            self.drag_state = _DragState(card=card, origin=("tableau", idx), offset=offset, snapshot=snapshot)
             self._drag_pos = pos
             return True
         return False
@@ -709,6 +859,8 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             return
         dest_type, dest_index = destination
         dest_pile = self.top_foundations[dest_index] if dest_type == "top" else self.bottom_foundations[dest_index]
+        self.push_undo(drag.snapshot)
+        self._clear_hint()
         dest_pile.cards.append(card)
         self._update_move_state()
         self._save_game()
@@ -721,9 +873,12 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
     # Update & draw
     # ------------------------------------------------------------------
     def update(self, dt: float) -> None:
-        if self._highlight_targets and pygame.time.get_ticks() >= self._highlight_until:
+        now = pygame.time.get_ticks()
+        if self._highlight_targets and now >= self._highlight_until:
             self._highlight_targets = []
             self._highlight_until = 0
+        if self._hint_until and now >= self._hint_until:
+            self._clear_hint()
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.fill(C.TABLE_BG)
@@ -802,10 +957,36 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             rect = pygame.Rect(self.stock_pile.x - 4, self.stock_pile.y - 4, C.CARD_W + 8, C.CARD_H + 8)
             pygame.draw.rect(surface, (255, 215, 0), rect, width=4, border_radius=C.CARD_RADIUS)
 
+        if self._hint_stock and self.stock_pile.cards and self._hint_until and pygame.time.get_ticks() <= self._hint_until:
+            rect = pygame.Rect(self.stock_pile.x - 4, self.stock_pile.y - 4, C.CARD_W + 8, C.CARD_H + 8)
+            pygame.draw.rect(surface, (120, 200, 255), rect, width=4, border_radius=C.CARD_RADIUS)
+
         if self._highlight_targets and pygame.time.get_ticks() <= self._highlight_until:
             color = (255, 230, 90)
             for dest_type, dest_index in self._highlight_targets:
                 pile = self.top_foundations[dest_index] if dest_type == "top" else self.bottom_foundations[dest_index]
                 rect = pygame.Rect(pile.x - 4, pile.y - 4, C.CARD_W + 8, C.CARD_H + 8)
                 pygame.draw.rect(surface, color, rect, width=4, border_radius=C.CARD_RADIUS)
+
+        if self._hint_targets and self._hint_until and pygame.time.get_ticks() <= self._hint_until:
+            hint_color = (120, 200, 255)
+            for dest_type, dest_index in self._hint_targets:
+                pile = self.top_foundations[dest_index] if dest_type == "top" else self.bottom_foundations[dest_index]
+                rect = pygame.Rect(pile.x - 4, pile.y - 4, C.CARD_W + 8, C.CARD_H + 8)
+                pygame.draw.rect(surface, hint_color, rect, width=4, border_radius=C.CARD_RADIUS)
+
+        if self._hint_sources and self._hint_until and pygame.time.get_ticks() <= self._hint_until:
+            hint_color = (120, 200, 255)
+            for origin_type, origin_index in self._hint_sources:
+                rect: Optional[pygame.Rect] = None
+                if origin_type == "tableau":
+                    pile = self.tableau[origin_index]
+                    if pile.cards:
+                        rect = pile.rect_for_index(len(pile.cards) - 1)
+                elif origin_type == "reserve":
+                    rect = pygame.Rect(self.reserve_pile.x, self.reserve_pile.y, C.CARD_W, C.CARD_H)
+                if rect is None:
+                    continue
+                inflated = pygame.Rect(rect.x - 4, rect.y - 4, rect.width + 8, rect.height + 8)
+                pygame.draw.rect(surface, hint_color, inflated, width=4, border_radius=C.CARD_RADIUS)
 
