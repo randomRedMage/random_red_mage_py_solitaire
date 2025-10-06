@@ -474,14 +474,11 @@ class MainMenuScene(C.Scene):
 
             rect = section["rect"]
             rect.size = (section_width, section_height)
-            left_center, right_center = self._nav_button_centers()
-            inner_left = left_center + self.NAV_BUTTON_RADIUS + self.NAV_BUTTON_GAP
-            inner_right = right_center - self.NAV_BUTTON_RADIUS - self.NAV_BUTTON_GAP
-            available_width = inner_right - inner_left
-            if available_width > 0 and section_width <= available_width:
-                rect.left = inner_left + (available_width - section_width) // 2
-            else:
-                rect.centerx = self._section_center_x()
+            rect.centerx = self._section_center_x()
+            if rect.left < 0:
+                rect.left = 0
+            if rect.right > C.SCREEN_W:
+                rect.right = C.SCREEN_W
             preferred_top = self.SECTION_TOP
             max_top = max(40, C.SCREEN_H - section_height - 40)
             rect.top = min(preferred_top, max_top)
@@ -544,18 +541,7 @@ class MainMenuScene(C.Scene):
             current_y += btn.rect.height + gap
 
     def _section_center_x(self) -> int:
-        left_center, right_center = self._nav_button_centers()
-        inner_left = left_center + self.NAV_BUTTON_RADIUS + self.NAV_BUTTON_GAP
-        inner_right = right_center - self.NAV_BUTTON_RADIUS - self.NAV_BUTTON_GAP
-        if inner_left >= inner_right:
-            return C.SCREEN_W // 2
-        return (inner_left + inner_right) // 2
-
-    def _nav_button_centers(self) -> tuple[int, int]:
-        margin = self.NAV_BUTTON_SCREEN_MARGIN
-        left_center = self.NAV_BUTTON_RADIUS + margin
-        right_center = C.SCREEN_W - self.NAV_BUTTON_RADIUS - margin
-        return left_center, right_center
+        return C.SCREEN_W // 2
 
     def _entry_icon_rect(self, section: dict, entry: _GameEntry) -> pygame.Rect:
         offset = section.get("scroll_offset", 0)
@@ -593,7 +579,23 @@ class MainMenuScene(C.Scene):
         left = pygame.Rect(0, 0, size, size)
         right = pygame.Rect(0, 0, size, size)
 
-        left_center, right_center = self._nav_button_centers()
+        radius = self.NAV_BUTTON_RADIUS
+        gap = self.NAV_BUTTON_GAP
+        margin = self.NAV_BUTTON_SCREEN_MARGIN
+
+        left_center = rect.left - gap - radius
+        right_center = rect.right + gap + radius
+
+        min_center = radius + margin
+        max_center = C.SCREEN_W - radius - margin
+
+        left_center = max(min_center, left_center)
+        right_center = min(max_center, right_center)
+
+        if right_center <= left_center:
+            left_center = radius + margin
+            right_center = C.SCREEN_W - radius - margin
+
         left.centerx = left_center
         right.centerx = right_center
         left.centery = center_y
@@ -607,7 +609,7 @@ class MainMenuScene(C.Scene):
     def _change_section(self, delta: int) -> None:
         if not self._sections:
             return
-        new_index = max(0, min(len(self._sections) - 1, self._section_index + delta))
+        new_index = (self._section_index + delta) % len(self._sections)
         if new_index == self._section_index:
             return
         self._section_index = new_index
@@ -706,10 +708,9 @@ class MainMenuScene(C.Scene):
 
         if e.type == pygame.MOUSEMOTION:
             self._menu_hover = self._menu_button_rect.collidepoint(e.pos)
-            left_enabled = self._section_index > 0
-            right_enabled = self._section_index < len(self._sections) - 1
-            self._nav_hover_left = left_enabled and self._nav_left_rect.collidepoint(e.pos)
-            self._nav_hover_right = right_enabled and self._nav_right_rect.collidepoint(e.pos)
+            arrows_enabled = len(self._sections) > 1
+            self._nav_hover_left = arrows_enabled and self._nav_left_rect.collidepoint(e.pos)
+            self._nav_hover_right = arrows_enabled and self._nav_right_rect.collidepoint(e.pos)
             self._hover_entry = None
             if self._sections:
                 section = self._sections[self._section_index]
@@ -735,10 +736,10 @@ class MainMenuScene(C.Scene):
             if self._menu_button_rect.collidepoint(e.pos):
                 self._modal_open = True
                 return
-            if self._section_index > 0 and self._nav_left_rect.collidepoint(e.pos):
+            if len(self._sections) > 1 and self._nav_left_rect.collidepoint(e.pos):
                 self._change_section(-1)
                 return
-            if self._section_index < len(self._sections) - 1 and self._nav_right_rect.collidepoint(e.pos):
+            if len(self._sections) > 1 and self._nav_right_rect.collidepoint(e.pos):
                 self._change_section(1)
                 return
             if self._sections:
@@ -868,8 +869,9 @@ class MainMenuScene(C.Scene):
     def _draw_navigation(self, screen):
         if len(self._sections) <= 1:
             return
-        self._draw_nav_button(screen, self._nav_left_rect, -1, self._section_index > 0, self._nav_hover_left)
-        self._draw_nav_button(screen, self._nav_right_rect, 1, self._section_index < len(self._sections) - 1, self._nav_hover_right)
+        enabled = len(self._sections) > 1
+        self._draw_nav_button(screen, self._nav_left_rect, -1, enabled, self._nav_hover_left)
+        self._draw_nav_button(screen, self._nav_right_rect, 1, enabled, self._nav_hover_right)
 
     def _draw_modal(self, screen):
         overlay = pygame.Surface((C.SCREEN_W, C.SCREEN_H), pygame.SRCALPHA)
