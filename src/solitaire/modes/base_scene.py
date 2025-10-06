@@ -451,11 +451,6 @@ class ModeUIHelper:
         from solitaire.scenes.menu import MainMenuScene
 
         menu_scene = MainMenuScene(self.scene.app)
-        if self._game_id:
-            try:
-                menu_scene._open_game_modal(self._game_id)
-            except Exception:
-                pass
         self.scene.next_scene = menu_scene
 
     def handle_shortcuts(self, event) -> bool:
