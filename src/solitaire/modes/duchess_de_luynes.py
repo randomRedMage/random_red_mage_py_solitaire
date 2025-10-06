@@ -1371,6 +1371,15 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             label_x, label_y = self._reserve_label_pos
         surface.blit(reserve_surf, (label_x - reserve_surf.get_width() // 2, label_y))
 
+        if not self.stock_pile.cards:
+            redeals_left = max(self.max_redeals - self.redeals_used, 0)
+            redeal_text = f"Redeals: {redeals_left}"
+            redeal_font = C.FONT_UI or pygame.font.SysFont(pygame.font.get_default_font(), 24, bold=True)
+            redeal_surf = redeal_font.render(redeal_text, True, C.WHITE)
+            text_x = self.stock_pile.x + C.CARD_W // 2 - redeal_surf.get_width() // 2
+            text_y = self.stock_pile.y + C.CARD_H // 2 - redeal_surf.get_height() // 2
+            surface.blit(redeal_surf, (text_x, text_y))
+
     def _draw_reserve_fan(self, surface: pygame.Surface) -> None:
         rects = self._reserve_card_rects()
         cards = self.reserve_pile.cards
@@ -1380,6 +1389,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             pygame.draw.rect(surface, (80, 80, 95), placeholder, width=2, border_radius=C.CARD_RADIUS)
             return
         visible = self._reserve_visible_width()
+        peek_overlay: Optional[Tuple[pygame.Rect, pygame.Surface]] = None
         for idx, rect in enumerate(rects):
             card = cards[idx]
             card.face_up = True
@@ -1387,12 +1397,13 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             clip_width = C.CARD_W if idx == len(cards) - 1 else visible
             clip_rect = pygame.Rect(0, 0, clip_width, C.CARD_H)
             surface.blit(surf, (rect.x, rect.y), area=clip_rect)
-        if self._reserve_peek_index is not None and 0 <= self._reserve_peek_index < len(cards):
-            card = cards[self._reserve_peek_index]
-            surf = C.get_card_surface(card)
-            peek_rect = rects[self._reserve_peek_index]
-            peek_y = max(self._reserve_fan_y - C.CARD_H - 12, 10)
-            surface.blit(surf, (peek_rect.x, peek_y))
+            if self._reserve_peek_index == idx:
+                peek_overlay = (rect, surf)
+        if peek_overlay is not None:
+            rect, surf = peek_overlay
+            surface.blit(surf, (rect.x, rect.y))
+            highlight_rect = pygame.Rect(rect.x - 2, rect.y - 2, C.CARD_W + 4, C.CARD_H + 4)
+            pygame.draw.rect(surface, (250, 250, 255), highlight_rect, width=3, border_radius=C.CARD_RADIUS)
 
     def _draw_highlights(self, surface: pygame.Surface) -> None:
         if self._stock_highlight and self.stock_pile.cards:
