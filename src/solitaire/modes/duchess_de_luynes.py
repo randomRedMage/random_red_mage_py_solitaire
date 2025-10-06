@@ -646,6 +646,7 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
     def _draw_foundation_placeholders(self, surface: pygame.Surface) -> None:
         corner_font = C.FONT_CORNER_RANK or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
         suit_font = C.FONT_CENTER_SUIT or pygame.font.SysFont(pygame.font.get_default_font(), 64)
+        font = C.FONT_CORNER_RANK or pygame.font.SysFont(pygame.font.get_default_font(), 26, bold=True)
         color = (245, 245, 250)
         pad_x = max(6, C.CARD_W // 12)
         pad_y = max(6, C.CARD_H // 12)
@@ -654,6 +655,10 @@ class LaDuchesseDeLuynesGameScene(C.Scene):
             if pile.cards:
                 return
             marker = corner_font.render(text, True, color)
+        def draw_marker(pile: C.Pile, text: str) -> None:
+            if pile.cards:
+                return
+            marker = font.render(text, True, color)
             surface.blit(marker, (pile.x + pad_x, pile.y + pad_y))
             surface.blit(
                 marker,
